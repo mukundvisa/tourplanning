@@ -1,0 +1,137 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Trip {
+  id                    String                 @id @default(uuid())
+  title                 String
+  destination           String
+  departureCity         String
+  startDate             DateTime
+  endDate               DateTime
+  durationDays          Int
+  durationNights        Int
+  numTravellers         Int
+  consultantName        String
+  consultantPhone       String
+  coverImage            String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  priceQuoteItems       PriceQuoteItem[]
+  tripFinancials        TripFinancials?
+  itineraryDays         ItineraryDay[]
+  accommodations        Accommodation[]
+  flightDetails         FlightDetail[]
+  addOns                AddOn[]
+  restaurantSuggestions RestaurantSuggestion[]
+  tripTerms             TripTerms?
+}
+
+model PriceQuoteItem {
+  id        String @id @default(uuid())
+  tripId    String
+  trip      Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  label     String
+  amount    Float
+  sortOrder Int    @default(0)
+}
+
+model TripFinancials {
+  id            String  @id @default(uuid())
+  tripId        String  @unique
+  trip          Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tcsPercentage Float   @default(5.0)
+  tcsAmount     Float
+  totalWithTcs  Float
+  notes         String?
+}
+
+model ItineraryDay {
+  id                   String   @id @default(uuid())
+  tripId               String
+  trip                 Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  dayNumber            Int
+  cityOrStay           String
+  title                String
+  durationHours        Float?
+  description          String
+  inclusions           String[]
+  exclusions           String[]
+  customerLovedTips    String[]
+  customerWatchOutTips String[]
+  sortOrder            Int      @default(0)
+}
+
+model Accommodation {
+  id                String   @id @default(uuid())
+  tripId            String
+  trip              Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  location          String
+  checkInDate       DateTime
+  checkOutDate      DateTime
+  hotelName         String
+  starRating        Int
+  roomType          String
+  mealPlan          String
+  ratingScore       Float?
+  ratingLabel       String?
+  facilities        String[]
+  nearbyAttractions Json     @default("[]") // [{name: string, distanceKm: number}]
+  nearbyRestaurants Json     @default("[]") // [{name: string, distance: string}]
+  photos            String[]
+}
+
+model FlightDetail {
+  id                   String   @id @default(uuid())
+  tripId               String
+  trip                 Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  sector               String
+  airline              String
+  departureDateTime    DateTime
+  arrivalDateTime      DateTime
+  durationText         String
+  stops                Int      @default(0)
+  layoverInfo          String?
+  carryOnBaggageKg     Int?
+  checkInBaggageKg     Int?
+  cancellationPolicy   String?
+  flightNotes          String?
+}
+
+model AddOn {
+  id          String @id @default(uuid())
+  tripId      String
+  trip        Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  name        String
+  detailsJson Json   @default("{}") // e.g. { visaType: string, length: string, validity: string }
+  price       Float
+  priceType   String // "per person" or "per group"
+}
+
+model RestaurantSuggestion {
+  id          String  @id @default(uuid())
+  tripId      String
+  trip        Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  location    String
+  cuisineType String  // "Indian", "Local", "International"
+  name        String
+  rating      Float?
+  reviewCount Int?
+  isVeg       Boolean @default(false)
+  category    String  // "Restaurant", "Beach Club", "Night Club"
+}
+
+model TripTerms {
+  id                 String @id @default(uuid())
+  tripId             String @unique
+  trip               Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  paymentPolicy      String
+  cancellationPolicy String
+  visaRules          String
+  generalNotes       String
+}
