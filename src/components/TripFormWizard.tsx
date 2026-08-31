@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { 
   ArrowLeft, 
@@ -8,8 +9,6 @@ import {
   Save, 
   Plus, 
   Trash2, 
-  ArrowUp, 
-  ArrowDown, 
   Loader2, 
   Calendar, 
   MapPin, 
@@ -22,25 +21,31 @@ import {
   X,
   Check,
   FileDown,
-  Pencil
+  Pencil,
+  Database,
+  Star,
+  Sparkles,
+  ExternalLink,
+  ChevronDown,
 } from "lucide-react";
 import { createTrip, updateTrip } from "@/actions/trips";
+import { getAllMasterDataForSelectors } from "@/actions/master-data";
 import { RichTextEditor } from "./RichTextEditor";
 
 interface TripFormWizardProps {
-  initialData?: any; // Nested trip data structure
-  tripId?: string; // Present only if editing
+  initialData?: any;
+  tripId?: string;
 }
 
 const STEPS = [
-  { number: 1, name: "Base Details", icon: MapPin },
-  { number: 2, name: "Pricing", icon: DollarSign },
-  { number: 3, name: "Itinerary Days", icon: Calendar },
-  { number: 4, name: "Stays", icon: Coffee },
-  { number: 5, name: "Flights", icon: Plane },
-  { number: 6, name: "Add-Ons", icon: PlusCircle },
-  { number: 7, name: "Dining Suggestions", icon: Utensils },
-  { number: 8, name: "Terms & Conditions", icon: FileText },
+  { number: 1, name: "Core Trip & Consultant", icon: MapPin },
+  { number: 2, name: "Price Quotes & Financials", icon: DollarSign },
+  { number: 3, name: "Day-by-Day Itinerary", icon: Calendar },
+  { number: 4, name: "Stays & Accommodations", icon: Coffee },
+  { number: 5, name: "Flight Details", icon: Plane },
+  { number: 6, name: "Optional Add-ons & Visa", icon: PlusCircle },
+  { number: 7, name: "Restaurant & Club Suggestions", icon: Utensils },
+  { number: 8, name: "Master Policies & Guidelines", icon: FileText },
 ];
 
 export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
@@ -49,11 +54,160 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [editingAccIndex, setEditingAccIndex] = useState<number | null>(null);
-  const [editingFlightIndex, setEditingFlightIndex] = useState<number | null>(null);
-  const [editingAddOnIndex, setEditingAddOnIndex] = useState<number | null>(null);
-  const [editingRestIndex, setEditingRestIndex] = useState<number | null>(null);
   const [uploadingCover, setUploadingCover] = useState(false);
+
+  // Master Data Cache
+  const [masterData, setMasterData] = useState<{
+    cities: any[];
+    consultants: any[];
+    taxSetting: any;
+    pricingLabels: any[];
+    activities: any[];
+    hotels: any[];
+    flightRoutes: any[];
+    addOns: any[];
+    restaurants: any[];
+    policyTemplates: any[];
+    titleTemplates: any[];
+    bannerImages: any[];
+  }>({
+    cities: [],
+    consultants: [],
+    taxSetting: { currentTcsPercentage: 5.0 },
+    pricingLabels: [],
+    activities: [],
+    hotels: [],
+    flightRoutes: [],
+    addOns: [],
+    restaurants: [],
+    policyTemplates: [],
+    titleTemplates: [],
+    bannerImages: [],
+  });
+
+  useEffect(() => {
+    async function loadMasterData() {
+      const res = await getAllMasterDataForSelectors();
+      if (res.success && res.data) {
+        setMasterData(res.data);
+        // If creating a new trip, ensure initial TCS percentage is pulled from active tax setting
+        if (!initialData && res.data.taxSetting) {
+          setFormData((prev: any) => ({
+            ...prev,
+            tripFinancials: {
+              ...prev.tripFinancials,
+              tcsPercentage: res.data.taxSetting.currentTcsPercentage || 5.0,
+            },
+          }));
+        }
+      }
+    }
+    loadMasterData();
+  }, [initialData]);
+
+  // Form State
+  const [formData, setFormData] = useState<any>(() => {
+    if (initialData) {
+      const data = { ...initialData };
+      if (data.startDate) data.startDate = new Date(data.startDate).toISOString().split("T")[0];
+      if (data.endDate) data.endDate = new Date(data.endDate).toISOString().split("T")[0];
+      
+      data.accommodations = (data.accommodations || []).map((acc: any) => ({
+        ...acc,
+        checkInDate: acc.checkInDate ? new Date(acc.checkInDate).toISOString().split("T")[0] : "",
+        checkOutDate: acc.checkOutDate ? new Date(acc.checkOutDate).toISOString().split("T")[0] : "",
+      }));
+
+      data.flightDetails = (data.flightDetails || []).map((f: any) => ({
+        ...f,
+        departureDateTime: f.departureDateTime ? new Date(f.departureDateTime).toISOString().slice(0, 16) : "",
+        arrivalDateTime: f.arrivalDateTime ? new Date(f.arrivalDateTime).toISOString().slice(0, 16) : "",
+      }));
+
+      return data;
+    }
+
+    return {
+      title: "",
+      destination: "",
+      departureCity: "",
+      startDate: "",
+      endDate: "",
+      durationDays: 1,
+      durationNights: 0,
+      numTravellers: 2,
+      consultantName: "",
+      consultantPhone: "",
+      coverImage: null,
+      priceQuoteItems: [] as any[],
+      tripFinancials: {
+        tcsPercentage: 5,
+        tcsAmount: 0,
+        totalWithTcs: 0,
+        notes: "*Govt TCS is fully refundable and adjustable against annual income tax returns.",
+      },
+      itineraryDays: [] as any[],
+      accommodations: [] as any[],
+      flightDetails: [] as any[],
+      addOns: [] as any[],
+      restaurantSuggestions: [] as any[],
+      tripTerms: {
+        paymentPolicy: "",
+        cancellationPolicy: "",
+        visaRules: "",
+        generalNotes: "",
+      },
+    };
+  });
+
+  // Auto-calculate Duration Days and Nights from Start and End Dates
+  useEffect(() => {
+    if (formData.startDate && formData.endDate) {
+      const start = new Date(formData.startDate);
+      const end = new Date(formData.endDate);
+      const diffTime = end.getTime() - start.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      
+      if (diffDays >= 1) {
+        setFormData((prev: any) => ({
+          ...prev,
+          durationDays: diffDays,
+          durationNights: Math.max(0, diffDays - 1),
+        }));
+      }
+    }
+  }, [formData.startDate, formData.endDate]);
+
+  // Recalculate TCS and Total Amount whenever Price Items or TCS % changes
+  useEffect(() => {
+    const subtotal = (formData.priceQuoteItems || []).reduce(
+      (acc: number, item: any) => acc + Number(item.amount || 0),
+      0
+    );
+    const tcsPct = Number(formData.tripFinancials?.tcsPercentage ?? 5.0);
+    const tcsAmount = subtotal * (tcsPct / 100);
+    const total = subtotal + tcsAmount;
+
+    setFormData((prev: any) => ({
+      ...prev,
+      tripFinancials: {
+        ...prev.tripFinancials,
+        tcsAmount: Math.round(tcsAmount * 100) / 100,
+        totalWithTcs: Math.round(total * 100) / 100,
+      },
+    }));
+  }, [formData.priceQuoteItems, formData.tripFinancials?.tcsPercentage]);
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    const { name, value, type } = e.target;
+    let finalVal: any = value;
+    if (type === "number") {
+      finalVal = value === "" ? "" : Number(value);
+    }
+    setFormData((prev: any) => ({ ...prev, [name]: finalVal }));
+  };
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -107,90 +261,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     }
   };
 
-  // Form State
-  const [formData, setFormData] = useState<any>(() => {
-    if (initialData) {
-      // Map initial dates to YYYY-MM-DD strings for HTML input compatibility
-      const data = { ...initialData };
-      data.startDate = new Date(data.startDate).toISOString().split("T")[0];
-      data.endDate = new Date(data.endDate).toISOString().split("T")[0];
-      
-      data.accommodations = data.accommodations.map((acc: any) => ({
-        ...acc,
-        checkInDate: new Date(acc.checkInDate).toISOString().split("T")[0],
-        checkOutDate: new Date(acc.checkOutDate).toISOString().split("T")[0],
-      }));
-
-      data.flightDetails = data.flightDetails.map((f: any) => ({
-        ...f,
-        departureDateTime: new Date(f.departureDateTime).toISOString().slice(0, 16),
-        arrivalDateTime: new Date(f.arrivalDateTime).toISOString().slice(0, 16),
-      }));
-
-      return data;
-    }
-
-    return {
-      title: "",
-      destination: "",
-      departureCity: "",
-      startDate: "",
-      endDate: "",
-      durationDays: 1,
-      durationNights: 0,
-      numTravellers: 1,
-      consultantName: "",
-      consultantPhone: "",
-      coverImage: null,
-      priceQuoteItems: [] as any[],
-      tripFinancials: {
-        tcsPercentage: 5,
-        tcsAmount: 0,
-        totalWithTcs: 0,
-        notes: "",
-      },
-      itineraryDays: [] as any[],
-      accommodations: [] as any[],
-      flightDetails: [] as any[],
-      addOns: [] as any[],
-      restaurantSuggestions: [] as any[],
-      tripTerms: {
-        paymentPolicy: "",
-        cancellationPolicy: "",
-        visaRules: "",
-        generalNotes: "",
-      },
-    };
-  });
-
-  // Recalculate TCS and Total whenever Price Items or TCS % changes
-  useEffect(() => {
-    const subtotal = formData.priceQuoteItems.reduce((acc: number, item: any) => acc + Number(item.amount || 0), 0);
-    const tcsPct = Number(formData.tripFinancials?.tcsPercentage || 0);
-    const tcsAmount = subtotal * (tcsPct / 100);
-    const total = subtotal + tcsAmount;
-
-    setFormData((prev: any) => ({
-      ...prev,
-      tripFinancials: {
-        ...prev.tripFinancials,
-        tcsAmount,
-        totalWithTcs: total,
-      },
-    }));
-  }, [formData.priceQuoteItems, formData.tripFinancials?.tcsPercentage]);
-
-  // Handle simple text field inputs
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    let finalVal: any = value;
-    if (type === "number") {
-      finalVal = value === "" ? "" : Number(value);
-    }
-    setFormData((prev: any) => ({ ...prev, [name]: finalVal }));
-  };
-
-  // Step Validation Helpers
   const validateStep = (): boolean => {
     setError(null);
     return true;
@@ -208,16 +278,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     );
   };
 
-  const isFieldEmpty = (name: string) => {
-    const val = formData[name];
-    return !val || (typeof val === "string" && !val.trim());
-  };
-
-  const fail = (msg: string) => {
-    setError(msg);
-    return false;
-  };
-
   const nextStep = () => {
     if (validateStep()) {
       setCurrentStep((prev) => Math.min(prev + 1, STEPS.length));
@@ -230,7 +290,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     window.scrollTo(0, 0);
   };
 
-  // Submit complete wizard
   const handleSubmit = async () => {
     if (!validateStep()) return;
     setLoading(true);
@@ -257,9 +316,9 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     }
   };
 
-  // ==========================
-  // DYNAMIC ITEMS APPENDERS
-  // ==========================
+  // ==========================================
+  // DYNAMIC REPEATERS STATE
+  // ==========================================
 
   // Step 2: Price Quotes
   const [newPriceLabel, setNewPriceLabel] = useState("");
@@ -287,7 +346,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     }));
   };
 
-  // Step 3: Itinerary Days
+  // Step 3: Days
   const addDay = () => {
     const nextDayNum = formData.itineraryDays.length + 1;
     const newDay = {
@@ -315,26 +374,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     setFormData((prev: any) => ({ ...prev, itineraryDays: updated }));
   };
 
-  const moveDay = (index: number, direction: "up" | "down") => {
-    const updated = [...formData.itineraryDays];
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= updated.length) return;
-
-    // Swap elements
-    const temp = updated[index];
-    updated[index] = updated[targetIndex];
-    updated[targetIndex] = temp;
-
-    // Reset day numbers and sortOrder
-    const finalDays = updated.map((d, i) => ({
-      ...d,
-      dayNumber: i + 1,
-      sortOrder: i + 1,
-    }));
-
-    setFormData((prev: any) => ({ ...prev, itineraryDays: finalDays }));
-  };
-
   const updateDayField = (index: number, field: string, value: any) => {
     setFormData((prev: any) => {
       const days = [...prev.itineraryDays];
@@ -343,7 +382,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     });
   };
 
-  // Day array lists
   const [dayInputTags, setDayInputTags] = useState<{ [key: string]: string }>({});
 
   const handleAddDayTag = (dayIndex: number, field: string) => {
@@ -365,6 +403,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   };
 
   // Step 4: Accommodations
+  const [editingAccIndex, setEditingAccIndex] = useState<number | null>(null);
   const [newAcc, setNewAcc] = useState({
     location: "",
     checkInDate: "",
@@ -373,7 +412,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     starRating: 4,
     roomType: "",
     mealPlan: "",
-    ratingScore: 4.5,
+    ratingScore: 4.8,
     ratingLabel: "Very Good",
     facilities: [] as string[],
     nearbyAttractions: [] as { name: string; distanceKm: number }[],
@@ -381,39 +420,9 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     photos: [] as string[],
   });
 
-  const [newAccFacility, setNewAccFacility] = useState("");
-  const [newAccAttractionName, setNewAccAttractionName] = useState("");
-  const [newAccAttractionDist, setNewAccAttractionDist] = useState("");
-  const [newAccRestName, setNewAccRestName] = useState("");
-  const [newAccRestDist, setNewAccRestDist] = useState("");
+  const [scopedHotel, setScopedHotel] = useState<any | null>(null);
   const [newAccPhotoUrl, setNewAccPhotoUrl] = useState("");
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingPhoto(true);
-    const fd = new FormData();
-    fd.append("file", file);
-
-    try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (data.url) {
-        setNewAcc((prev) => ({ ...prev, photos: [...prev.photos, data.url] }));
-      } else {
-        alert("Upload failed: " + data.error);
-      }
-    } catch (err) {
-      alert("Error uploading file");
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
+  const [uploadingAccPhoto, setUploadingAccPhoto] = useState(false);
 
   const startEditAcc = (idx: number) => {
     const acc = formData.accommodations[idx];
@@ -425,19 +434,21 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       starRating: acc.starRating || 4,
       roomType: acc.roomType || "",
       mealPlan: acc.mealPlan || "",
-      ratingScore: acc.ratingScore || 4.5,
+      ratingScore: acc.ratingScore || 4.8,
       ratingLabel: acc.ratingLabel || "Very Good",
       facilities: acc.facilities || [],
       nearbyAttractions: acc.nearbyAttractions || [],
       nearbyRestaurants: acc.nearbyRestaurants || [],
       photos: acc.photos || [],
     });
+    const matched = masterData.hotels.find((h) => h.name === acc.hotelName);
+    setScopedHotel(matched || null);
     setEditingAccIndex(idx);
   };
 
   const addAcc = () => {
     if (!newAcc.hotelName || !newAcc.location || !newAcc.checkInDate || !newAcc.checkOutDate) {
-      alert("Check-in, Check-out, Hotel Name, and Location are required to add stay.");
+      alert("Check-in, Check-out, Hotel Name, and Location are required.");
       return;
     }
     setFormData((prev: any) => {
@@ -450,7 +461,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       return { ...prev, accommodations: list };
     });
     setEditingAccIndex(null);
-    // Reset state
+    setScopedHotel(null);
     setNewAcc({
       location: "",
       checkInDate: "",
@@ -459,7 +470,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       starRating: 4,
       roomType: "",
       mealPlan: "",
-      ratingScore: 4.5,
+      ratingScore: 4.8,
       ratingLabel: "Very Good",
       facilities: [],
       nearbyAttractions: [],
@@ -476,19 +487,8 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   };
 
   // Step 5: Flights
-  const [newFlight, setNewFlight] = useState<{
-    sector: string;
-    airline: string;
-    departureDateTime: string;
-    arrivalDateTime: string;
-    durationText: string;
-    stops: number;
-    layoverInfo: string;
-    carryOnBaggageKg: number | null;
-    checkInBaggageKg: number | null;
-    cancellationPolicy: string;
-    flightNotes: string;
-  }>({
+  const [editingFlightIndex, setEditingFlightIndex] = useState<number | null>(null);
+  const [newFlight, setNewFlight] = useState({
     sector: "",
     airline: "",
     departureDateTime: "",
@@ -512,8 +512,8 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       durationText: f.durationText || "",
       stops: f.stops || 0,
       layoverInfo: f.layoverInfo || "",
-      carryOnBaggageKg: f.carryOnBaggageKg,
-      checkInBaggageKg: f.checkInBaggageKg,
+      carryOnBaggageKg: f.carryOnBaggageKg ?? 7,
+      checkInBaggageKg: f.checkInBaggageKg ?? 20,
       cancellationPolicy: f.cancellationPolicy || "",
       flightNotes: f.flightNotes || "",
     });
@@ -525,12 +525,36 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       alert("Flight Sector, Airline, and Timings are required.");
       return;
     }
+
+    let calculatedDuration = newFlight.durationText;
+    if (!calculatedDuration || !calculatedDuration.trim()) {
+      try {
+        const dep = new Date(newFlight.departureDateTime).getTime();
+        const arr = new Date(newFlight.arrivalDateTime).getTime();
+        const diffMs = arr - dep;
+        if (diffMs > 0) {
+          const hours = Math.floor(diffMs / (1000 * 60 * 60));
+          const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+          calculatedDuration = `${hours}h ${mins}m`;
+        } else {
+          calculatedDuration = "Direct";
+        }
+      } catch (e) {
+        calculatedDuration = "Direct";
+      }
+    }
+
+    const flightToSave = {
+      ...newFlight,
+      durationText: calculatedDuration,
+    };
+
     setFormData((prev: any) => {
       const list = [...prev.flightDetails];
       if (editingFlightIndex !== null) {
-        list[editingFlightIndex] = newFlight;
+        list[editingFlightIndex] = flightToSave;
       } else {
-        list.push(newFlight);
+        list.push(flightToSave);
       }
       return { ...prev, flightDetails: list };
     });
@@ -558,6 +582,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   };
 
   // Step 6: Addons
+  const [editingAddOnIndex, setEditingAddOnIndex] = useState<number | null>(null);
   const [newAddOn, setNewAddOn] = useState({
     name: "",
     visaType: "",
@@ -573,7 +598,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     let desc: any = {};
     try {
       desc = typeof addon.detailsJson === "string" ? JSON.parse(addon.detailsJson) : addon.detailsJson;
-    } catch(e) {}
+    } catch (e) {}
     setNewAddOn({
       name: addon.name || "",
       visaType: desc?.visaType || "",
@@ -627,13 +652,14 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     }));
   };
 
-  // Step 7: Restaurants Suggestions
+  // Step 7: Restaurants
+  const [editingRestIndex, setEditingRestIndex] = useState<number | null>(null);
   const [newRest, setNewRest] = useState({
     location: "",
-    cuisineType: "International",
+    cuisineType: "North & South Indian",
     name: "",
-    rating: 4.5,
-    reviewCount: 150,
+    rating: 4.6,
+    reviewCount: 200,
     isVeg: false,
     category: "Restaurant",
   });
@@ -645,7 +671,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       cuisineType: rest.cuisineType || "International",
       name: rest.name || "",
       rating: rest.rating || 4.5,
-      reviewCount: rest.reviewCount || 150,
+      reviewCount: rest.reviewCount || 100,
       isVeg: rest.isVeg || false,
       category: rest.category || "Restaurant",
     });
@@ -669,10 +695,10 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     setEditingRestIndex(null);
     setNewRest({
       location: "",
-      cuisineType: "International",
+      cuisineType: "North & South Indian",
       name: "",
-      rating: 4.5,
-      reviewCount: 150,
+      rating: 4.6,
+      reviewCount: 200,
       isVeg: false,
       category: "Restaurant",
     });
@@ -685,39 +711,99 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     }));
   };
 
-  // Render Form Steps
+  // Filtered Indian departure cities
+  const indianCities = masterData.cities.filter(
+    (c) => c.country.toLowerCase() === "india"
+  );
+
+  // ==========================================
+  // RENDER FORM STEPS (8 EXACT STEPS)
+  // ==========================================
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#0DA590]">Step 1: Core Trip & Consultant Details</h2>
-            
+            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
+              Step 1: Core Trip & Consultant Details
+            </h2>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Itinerary Title</label>
+              {/* Itinerary Title with Template Picker */}
+              <div className="md:col-span-2 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Itinerary Title *
+                  </label>
+                  {masterData.titleTemplates.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setFormData((prev: any) => ({ ...prev, title: e.target.value }));
+                        }
+                      }}
+                      value=""
+                      className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/8 border border-[#B8944F]/30 rounded-lg px-2.5 py-1 outline-none cursor-pointer"
+                    >
+                      <option value="">⚡ Load from Title Templates...</option>
+                      {masterData.titleTemplates.map((t) => (
+                        <option key={t.id} value={t.title}>
+                          {t.title}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 <input
                   type="text"
                   name="title"
                   value={formData.title}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-2.5 bg-white border rounded-xl text-[#1E3B39] placeholder-zinc-400 focus:outline-none focus:ring-2 ${isFieldEmpty("title") ? "border-red-350 focus:ring-red-500/50 focus:border-red-500" : "border-zinc-200 focus:ring-[#0DA590]/50 focus:border-[#0DA590]"}`}
-                  placeholder="e.g. TripCraft Bali Getaway"
+                  placeholder="e.g. Magical 5 Days Bali Luxury Escape"
+                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Main Tour Planner Image</label>
+              {/* Main Tour Planner Image with Banner Picker */}
+              <div className="md:col-span-2 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Main Tour Planner Image
+                  </label>
+                  {masterData.bannerImages.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setFormData((prev: any) => ({ ...prev, coverImage: e.target.value }));
+                        }
+                      }}
+                      value=""
+                      className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/8 border border-[#B8944F]/30 rounded-lg px-2.5 py-1 outline-none cursor-pointer"
+                    >
+                      <option value="">⚡ Choose from Curated Banners...</option>
+                      {masterData.bannerImages.map((b) => (
+                        <option key={b.id} value={b.imageUrl}>
+                          {b.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
                 <div className="flex items-center space-x-4">
                   {formData.coverImage ? (
-                    <div className="relative h-24 w-40 rounded-xl overflow-hidden group border border-zinc-200 shadow-sm bg-zinc-50">
-                      <img src={formData.coverImage} alt="Cover Preview" className="h-full w-full object-cover" />
+                    <div className="relative h-24 w-44 rounded-lg overflow-hidden group border border-zinc-200 shadow-sm bg-zinc-50">
+                      <img
+                        src={formData.coverImage}
+                        alt="Cover Preview"
+                        className="h-full w-full object-cover"
+                      />
                       <button
                         type="button"
                         onClick={() => setFormData((prev: any) => ({ ...prev, coverImage: null }))}
-                        className="absolute inset-0 bg-red-650/90 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-xs font-bold cursor-pointer"
+                        className="absolute inset-0 bg-red-600/90 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-xs font-bold cursor-pointer"
                       >
-                        Remove
+                        Remove Image
                       </button>
                     </div>
                   ) : (
@@ -728,11 +814,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                           accept="image/*"
                           onChange={handleCoverUpload}
                           disabled={uploadingCover}
-                          className="w-full text-xs text-zinc-550 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#0DA590]/10 file:text-[#0DA590] file:hover:bg-[#0DA590]/20 file:cursor-pointer disabled:opacity-50"
+                          className="w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#B8944F]/10 file:text-[#B8944F] hover:file:bg-[#B8944F]/20 cursor-pointer disabled:opacity-50"
                         />
                         {uploadingCover && (
                           <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-xs text-zinc-500">
-                            <Loader2 className="animate-spin h-3.5 w-3.5 mr-1 text-[#0DA590]" /> uploading...
+                            <Loader2 className="animate-spin h-3.5 w-3.5 mr-1 text-[#B8944F]" /> uploading...
                           </span>
                         )}
                       </div>
@@ -741,114 +827,163 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Destination Country/City</label>
-                <input
-                  type="text"
-                  name="destination"
-                  value={formData.destination}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-2.5 bg-white border rounded-xl text-[#1E3B39] placeholder-zinc-400 focus:outline-none focus:ring-2 ${isFieldEmpty("destination") ? "border-red-355 focus:ring-red-500/50 focus:border-red-500" : "border-zinc-200 focus:ring-[#0DA590]/50 focus:border-[#0DA590]"}`}
-                  placeholder="e.g. Bali, Indonesia"
-                />
+              {/* Destination Country/City (Searchable Select) */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Destination Country/City *
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="destination"
+                    list="destination-list"
+                    value={formData.destination}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Bali, Indonesia or Dubai, UAE"
+                    className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                  />
+                  <datalist id="destination-list">
+                    {masterData.cities.map((c) => (
+                      <option key={c.id} value={`${c.name}, ${c.country}`} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Departure City</label>
-                <input
-                  type="text"
-                  name="departureCity"
-                  value={formData.departureCity}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-2.5 bg-white border rounded-xl text-[#1E3B39] placeholder-zinc-400 focus:outline-none focus:ring-2 ${isFieldEmpty("departureCity") ? "border-red-350 focus:ring-red-500/50 focus:border-red-500" : "border-zinc-200 focus:ring-[#0DA590]/50 focus:border-[#0DA590]"}`}
-                  placeholder="e.g. Ahmedabad (AMD)"
-                />
+              {/* Departure City (India states/cities only) */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Departure City (India Hubs Only) *
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="departureCity"
+                    list="departure-list"
+                    value={formData.departureCity}
+                    onChange={handleInputChange}
+                    placeholder="e.g. Mumbai, Delhi, Ahmedabad, Bengaluru"
+                    className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                  />
+                  <datalist id="departure-list">
+                    {indianCities.map((c) => (
+                      <option key={c.id} value={`${c.name} (${c.state})`} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Start Date</label>
+              {/* Start Date & End Date */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Start Date *
+                </label>
                 <input
                   type="date"
                   name="startDate"
                   value={formData.startDate}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-2.5 bg-white border rounded-xl text-[#1E3B39] focus:outline-none focus:ring-2 ${isFieldEmpty("startDate") ? "border-red-350 focus:ring-red-500/50 focus:border-red-500" : "border-zinc-200 focus:ring-[#0DA590]/50 focus:border-[#0DA590]"}`}
+                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">End Date</label>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-zinc-700">
+                  End Date *
+                </label>
                 <input
                   type="date"
                   name="endDate"
                   value={formData.endDate}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-2.5 bg-white border rounded-xl text-[#1E3B39] focus:outline-none focus:ring-2 ${isFieldEmpty("endDate") ? "border-red-350 focus:ring-red-500/50 focus:border-red-500" : "border-zinc-200 focus:ring-[#0DA590]/50 focus:border-[#0DA590]"}`}
+                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
               </div>
 
+              {/* Auto-calculated Duration Days and Nights (Read-only / No manual entry) */}
               <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Duration Days</label>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                  Duration Days (Auto-Calculated)
+                </label>
+                <div className="px-4 py-2.5 bg-zinc-100/80 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] font-mono">
+                  {formData.durationDays} Days
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                  Duration Nights (Auto-Calculated)
+                </label>
+                <div className="px-4 py-2.5 bg-zinc-100/80 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] font-mono">
+                  {formData.durationNights} Nights
+                </div>
+              </div>
+
+              {/* Number of Travellers */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                  Number of Travellers *
+                </label>
                 <input
                   type="number"
-                  name="durationDays"
-                  value={formData.durationDays}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-[#1E3B39] focus:outline-none focus:ring-2 focus:ring-[#0DA590]"
                   min="1"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Duration Nights</label>
-                <input
-                  type="number"
-                  name="durationNights"
-                  value={formData.durationNights}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-[#1E3B39] focus:outline-none focus:ring-2 focus:ring-[#0DA590]"
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Number of Travellers</label>
-                <input
-                  type="number"
                   name="numTravellers"
                   value={formData.numTravellers}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-[#1E3B39] focus:outline-none focus:ring-2 focus:ring-[#0DA590]"
-                  min="1"
+                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] font-mono focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
               </div>
 
-              <div className="hidden">
-                {/* Reserved spacing / layout */}
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Consultant Name</label>
-                <input
-                  type="text"
-                  name="consultantName"
-                  value={formData.consultantName}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-2.5 bg-white border rounded-xl text-[#1E3B39] placeholder-zinc-400 focus:outline-none focus:ring-2 ${isFieldEmpty("consultantName") ? "border-red-350 focus:ring-red-500/50 focus:border-red-500" : "border-zinc-200 focus:ring-[#0DA590]/50 focus:border-[#0DA590]"}`}
-                  placeholder="e.g. Akshar Patel"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Consultant Contact Phone</label>
-                <input
-                  type="text"
-                  name="consultantPhone"
-                  value={formData.consultantPhone}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-2.5 bg-white border rounded-xl text-[#1E3B39] placeholder-zinc-400 focus:outline-none focus:ring-2 ${isFieldEmpty("consultantPhone") ? "border-red-350 focus:ring-red-500/50 focus:border-red-500" : "border-zinc-200 focus:ring-[#0DA590]/50 focus:border-[#0DA590]"}`}
-                  placeholder="e.g. +91 98765 43210"
-                />
+              {/* Consultant Name & Phone (Select from MasterConsultant) */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Consultant Name & Phone *
+                  </label>
+                  {masterData.consultants.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        const selected = masterData.consultants.find(
+                          (c) => c.name === e.target.value
+                        );
+                        if (selected) {
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            consultantName: selected.name,
+                            consultantPhone: selected.phone,
+                          }));
+                        }
+                      }}
+                      value=""
+                      className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/8 border border-[#B8944F]/30 rounded-lg px-2.5 py-1 outline-none cursor-pointer"
+                    >
+                      <option value="">⚡ Select Active Consultant...</option>
+                      {masterData.consultants.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name} ({c.phone})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    name="consultantName"
+                    value={formData.consultantName}
+                    onChange={handleInputChange}
+                    placeholder="Consultant Name"
+                    className="w-full px-3 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                  />
+                  <input
+                    type="text"
+                    name="consultantPhone"
+                    value={formData.consultantPhone}
+                    onChange={handleInputChange}
+                    placeholder="Phone / WhatsApp"
+                    className="w-full px-3 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] font-mono focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -857,127 +992,150 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       case 2:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#0DA590]">Step 2: Price Quotes & Financials</h2>
-            
-            {/* Price Quote Items builder */}
-            <div className="bg-zinc-50 border border-zinc-200/80 p-5 rounded-2xl">
-              <h3 className="text-md font-bold mb-4 text-[#1E3B39]">Price Inclusions Breakdown</h3>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end mb-4">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-zinc-500 mb-1">Pricing Label (e.g. Hotels, Flights, Ground Transfers)</label>
+            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
+              Step 2: Price Quotes & Financials
+            </h2>
+
+            {/* Price line items repeater */}
+            <div className="space-y-4">
+              <label className="block text-xs font-semibold text-zinc-700">
+                Plan Inclusions Cost Breakdown
+              </label>
+
+              {/* Add item bar with Master Pricing Label selector */}
+              <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] font-bold text-zinc-500 uppercase">
+                    Add Line Item
+                  </span>
+                  {masterData.pricingLabels.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setNewPriceLabel(e.target.value);
+                        }
+                      }}
+                      value=""
+                      className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2 py-0.5 outline-none cursor-pointer"
+                    >
+                      <option value="">⚡ Select from Master Pricing Labels...</option>
+                      {masterData.pricingLabels.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3">
                   <input
                     type="text"
                     value={newPriceLabel}
                     onChange={(e) => setNewPriceLabel(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-sm text-[#1E3B39] focus:outline-none focus:ring-2 focus:ring-[#0DA590]"
-                    placeholder="e.g. Premium Hotels & Stays"
+                    placeholder="e.g. 5-Star Beachfront Luxury Villa (4 Nights)"
+                    className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 mb-1">Amount (INR)</label>
-                  <div className="flex space-x-2">
+                  <div className="relative w-full sm:w-44">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
+                      ₹
+                    </span>
                     <input
                       type="number"
                       value={newPriceAmt}
                       onChange={(e) => setNewPriceAmt(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-sm text-[#1E3B39] focus:outline-none focus:ring-2 focus:ring-[#0DA590]"
-                      placeholder="e.g. 75000"
+                      placeholder="Amount (INR)"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                     />
-                    <button
-                      type="button"
-                      onClick={addPriceItem}
-                      className="p-2.5 bg-[#0DA590] hover:bg-[#0b8e7c] text-white rounded-xl shadow-sm transition-all cursor-pointer"
-                    >
-                      <Plus className="h-5 w-5" />
-                    </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={addPriceItem}
+                    className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    + Add Item
+                  </button>
                 </div>
               </div>
 
-              {formData.priceQuoteItems.length === 0 ? (
-                <p className="text-xs text-zinc-400 py-3 text-center">No price items added. Please add at least one.</p>
-              ) : (
-                <div className="border border-zinc-200 rounded-xl overflow-hidden mt-4 bg-white shadow-sm">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-zinc-50 text-zinc-650 border-b border-zinc-200">
-                      <tr>
-                        <th className="p-3">Label</th>
-                        <th className="p-3 text-right">Amount (INR)</th>
-                        <th className="p-3 text-center w-16">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-150 text-[#1E3B39]">
-                      {formData.priceQuoteItems.map((item: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-zinc-50/50">
-                          <td className="p-3 font-semibold">{item.label}</td>
-                          <td className="p-3 text-right font-bold text-[#1E3B39]">₹{item.amount.toLocaleString("en-IN")}</td>
-                          <td className="p-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => removePriceItem(idx)}
-                              className="text-red-500 hover:text-red-700 cursor-pointer"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {/* Items List */}
+              <div className="space-y-2">
+                {formData.priceQuoteItems.map((item: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-3 bg-white border border-zinc-200 rounded-lg text-xs"
+                  >
+                    <span className="font-semibold text-[#14213D]">{item.label}</span>
+                    <div className="flex items-center space-x-3">
+                      <span className="font-mono font-bold text-[#14213D]">
+                        ₹{Number(item.amount).toLocaleString("en-IN")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removePriceItem(idx)}
+                        className="text-zinc-400 hover:text-red-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {/* TCS Calculation summary */}
-            <div className="bg-zinc-50 border border-zinc-200/80 p-5 rounded-2xl space-y-4">
-              <h3 className="text-md font-bold text-[#1E3B39]">Automatic TCS & Financials Invoice</h3>
+            {/* Financial Summary Card (TCS Read-only) */}
+            <div className="bg-[#FAF8F5] border border-[#B8944F]/30 rounded-lg p-6 space-y-4 craft-card">
+              <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                Financial Totals & Statutory TCS
+              </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-b border-zinc-200 pb-4">
                 <div>
-                  <label className="block text-sm font-semibold text-zinc-700 mb-1.5">TCS Percentage (%)</label>
-                  <input
-                    type="number"
-                    value={formData.tripFinancials?.tcsPercentage}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setFormData((prev: any) => ({
-                        ...prev,
-                        tripFinancials: { ...prev.tripFinancials, tcsPercentage: val },
-                      }));
-                    }}
-                    className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-[#1E3B39] focus:outline-none focus:ring-2 focus:ring-[#0DA590]"
-                    min="0"
-                    max="100"
-                  />
+                  <span className="text-[11px] text-zinc-500 font-semibold block">
+                    Subtotal Cost
+                  </span>
+                  <p className="text-base font-black text-[#14213D] font-mono mt-0.5">
+                    ₹
+                    {formData.priceQuoteItems
+                      .reduce((acc: number, item: any) => acc + Number(item.amount || 0), 0)
+                      .toLocaleString("en-IN")}
+                  </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-zinc-500 mb-1.5">Computed TCS Amount</label>
-                  <div className="px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-zinc-650 font-bold shadow-sm">
-                    ₹{formData.tripFinancials?.tcsAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
+                  <span className="text-[11px] text-zinc-500 font-semibold block">
+                    TCS Gov Tax ({formData.tripFinancials.tcsPercentage}% Read-Only)
+                  </span>
+                  <p className="text-base font-black text-[#14213D] font-mono mt-0.5">
+                    ₹{formData.tripFinancials.tcsAmount?.toLocaleString("en-IN")}
+                  </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-zinc-500 mb-1.5">Grand Total (with TCS)</label>
-                  <div className="px-4 py-2.5 bg-[#0DA590]/10 border border-[#0DA590]/20 rounded-xl text-[#0DA590] font-black shadow-sm">
-                    ₹{formData.tripFinancials?.totalWithTcs.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
+                  <span className="text-[11px] text-[#B8944F] font-bold block">
+                    Grand Total Amount (with TCS)
+                  </span>
+                  <p className="text-xl font-black text-[#14213D] font-mono mt-0.5">
+                    ₹{formData.tripFinancials.totalWithTcs?.toLocaleString("en-IN")}
+                  </p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Additional Financial Notes</label>
-                <RichTextEditor
-                  value={formData.tripFinancials?.notes || ""}
-                  onChange={(val) => {
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Additional Financial Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.tripFinancials.notes || ""}
+                  onChange={(e) =>
                     setFormData((prev: any) => ({
                       ...prev,
-                      tripFinancials: { ...prev.tripFinancials, notes: val },
-                    }));
-                  }}
-                  placeholder="e.g. *TCS is refundable during tax returns. Flights are dynamic and calculated at time of payment."
+                      tripFinancials: { ...prev.tripFinancials, notes: e.target.value },
+                    }))
+                  }
+                  placeholder="Notes regarding tax credits, payment terms, or dynamic airfare exclusions."
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-700 focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
               </div>
             </div>
@@ -987,1054 +1145,1277 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       case 3:
         return (
           <div className="space-y-6">
-            <div className="border-b border-zinc-200 pb-2">
-              <h2 className="text-xl font-bold text-[#0DA590]">Step 3: Day-by-Day Itinerary Builder</h2>
+            <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
+              <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
+                Step 3: Day-by-Day Itinerary Builder
+              </h2>
+              <button
+                type="button"
+                onClick={addDay}
+                className="px-3.5 py-1.5 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center"
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Day
+              </button>
             </div>
 
-            {formData.itineraryDays.length === 0 ? (
-              <div className="py-12 border border-zinc-200 border-dashed rounded-2xl text-center bg-white shadow-sm">
-                <p className="text-zinc-400 text-sm mb-4">No days configured. Click "Add Day" below to start building.</p>
-                <button
-                  type="button"
-                  onClick={addDay}
-                  className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-[#0DA590] hover:bg-[#0b8e7c] text-xs font-bold text-white shadow-sm transition-all cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Add Day</span>
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {formData.itineraryDays.map((day: any, idx: number) => {
-                  const loveKey = `${idx}-customerLovedTips`;
-                  const watchKey = `${idx}-customerWatchOutTips`;
-                  const incKey = `${idx}-inclusions`;
-                  const excKey = `${idx}-exclusions`;
-
-                  return (
-                    <div 
-                      key={idx} 
-                      className="bg-zinc-50 border border-zinc-200/80 p-6 rounded-2xl space-y-4 relative shadow-sm"
-                    >
-                      {/* Day Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-zinc-200 pb-3 gap-2">
-                        <div className="flex items-center space-x-3">
-                          <span className="h-7 w-7 bg-[#0DA590] text-white rounded-full flex items-center justify-center font-bold text-sm shadow-sm">
-                            {day.dayNumber}
-                          </span>
-                          <h3 className="font-extrabold text-lg text-[#1E3B39]">Day {day.dayNumber}</h3>
-                        </div>
-
-                        {/* Order & Remove actions */}
-                        <div className="flex items-center space-x-1">
-                          <button
-                            type="button"
-                            onClick={() => moveDay(idx, "up")}
-                            disabled={idx === 0}
-                            className="p-1.5 bg-white border border-zinc-200 hover:bg-zinc-50 rounded text-[#1E3B39] disabled:opacity-30 shadow-sm cursor-pointer"
-                            title="Move Up"
-                          >
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveDay(idx, "down")}
-                            disabled={idx === formData.itineraryDays.length - 1}
-                            className="p-1.5 bg-white border border-zinc-200 hover:bg-zinc-50 rounded text-[#1E3B39] disabled:opacity-30 shadow-sm cursor-pointer"
-                            title="Move Down"
-                          >
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeDay(idx)}
-                            className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded text-red-600 ml-2 shadow-sm cursor-pointer"
-                            title="Delete Day"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+            <div className="space-y-6">
+              {formData.itineraryDays.length === 0 ? (
+                <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+                  No itinerary days added yet. Click &quot;Add Day&quot; to build your itinerary.
+                </div>
+              ) : (
+                formData.itineraryDays.map((day: any, dIdx: number) => (
+                  <div
+                    key={dIdx}
+                    className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card space-y-4"
+                  >
+                    <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                      <div className="flex items-center space-x-2">
+                        <span className="h-6 w-6 rounded-full bg-[#B8944F] text-white text-xs font-bold flex items-center justify-center">
+                          {day.dayNumber}
+                        </span>
+                        <span className="text-xs font-bold text-[#14213D]">
+                          Day {day.dayNumber} Itinerary
+                        </span>
                       </div>
 
-                      {/* Day fields */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-zinc-500 mb-1">City or Stay Location</label>
-                          <input
-                            type="text"
-                            value={day.cityOrStay}
-                            onChange={(e) => updateDayField(idx, "cityOrStay", e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none focus:ring-1 focus:ring-[#0DA590]"
-                            placeholder="e.g. Kuta / Ubud"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="block text-xs font-semibold text-zinc-500 mb-1">Day Theme/Title</label>
-                          <input
-                            type="text"
-                            value={day.title}
-                            onChange={(e) => updateDayField(idx, "title", e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none focus:ring-1 focus:ring-[#0DA590]"
-                            placeholder="e.g. Arrival & Traditional Kecak Dance"
-                          />
-                        </div>
-                      </div>
+                      <div className="flex items-center space-x-2">
+                        {/* Select from Activity Library Picker */}
+                        {masterData.activities.length > 0 && (
+                          <select
+                            onChange={(e) => {
+                              const act = masterData.activities.find(
+                                (a) => a.title === e.target.value
+                              );
+                              if (act) {
+                                setFormData((prev: any) => {
+                                  const updatedDays = [...prev.itineraryDays];
+                                  updatedDays[dIdx] = {
+                                    ...updatedDays[dIdx],
+                                    title: act.title,
+                                    durationHours: act.defaultDurationHours,
+                                    description: act.description,
+                                    inclusions: act.inclusions || [],
+                                    exclusions: act.exclusions || [],
+                                    customerLovedTips: act.loveTips || [],
+                                    customerWatchOutTips: act.watchOutTips || [],
+                                  };
+                                  return { ...prev, itineraryDays: updatedDays };
+                                });
+                              }
+                            }}
+                            value=""
+                            className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/10 border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
+                          >
+                            <option value="">⚡ Select from Activity Library...</option>
+                            {masterData.activities.map((a) => (
+                              <option key={a.id} value={a.title}>
+                                {a.title}
+                              </option>
+                            ))}
+                          </select>
+                        )}
 
+                        <button
+                          type="button"
+                          onClick={() => removeDay(dIdx)}
+                          className="text-zinc-400 hover:text-red-600 p-1 cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-zinc-500 mb-1">Duration (Hours - optional)</label>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          City / Stay Location *
+                        </label>
                         <input
-                          type="number"
-                          value={day.durationHours === null ? "" : day.durationHours}
-                          onChange={(e) => {
-                            const val = e.target.value === "" ? null : Number(e.target.value);
-                            updateDayField(idx, "durationHours", val);
-                          }}
-                          className="w-32 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none focus:ring-1 focus:ring-[#0DA590]"
-                          placeholder="e.g. 5"
+                          type="text"
+                          value={day.cityOrStay}
+                          onChange={(e) => updateDayField(dIdx, "cityOrStay", e.target.value)}
+                          placeholder="e.g. Seminyak, Ubud, Dubai"
+                          className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none"
                         />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          Day Theme / Title *
+                        </label>
+                        <input
+                          type="text"
+                          value={day.title}
+                          onChange={(e) => updateDayField(dIdx, "title", e.target.value)}
+                          placeholder="e.g. Uluwatu Cliff Sunset & Jimbaran Seafood Dinner"
+                          className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Day Description *
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={day.description}
+                        onChange={(e) => updateDayField(dIdx, "description", e.target.value)}
+                        placeholder="Detailed chronological plan of activities, sightseeing spots, and timings..."
+                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none leading-relaxed"
+                      />
+                    </div>
+
+                    {/* Inclusions & Exclusions */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          Inclusions
+                        </label>
+                        <div className="flex gap-1 mb-2">
+                          <input
+                            type="text"
+                            value={dayInputTags[`${dIdx}-inclusions`] || ""}
+                            onChange={(e) =>
+                              setDayInputTags((prev) => ({
+                                ...prev,
+                                [`${dIdx}-inclusions`]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddDayTag(dIdx, "inclusions");
+                              }
+                            }}
+                            placeholder="Add inclusion tag..."
+                            className="flex-1 px-2.5 py-1.5 border border-zinc-200 rounded text-xs outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddDayTag(dIdx, "inclusions")}
+                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-xs font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(day.inclusions || []).map((tag: string, tIdx: number) => (
+                            <span
+                              key={tIdx}
+                              className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDayTag(dIdx, "inclusions", tIdx)}
+                                className="ml-1 text-emerald-600"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-zinc-500 mb-1">Day Description</label>
-                        <RichTextEditor
-                          value={day.description}
-                          onChange={(val) => updateDayField(idx, "description", val)}
-                          placeholder="Detail the day's itinerary, sightseeing checkpoints, and driving paths."
-                        />
-                      </div>
-
-                      {/* Tag Inputs */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                        {/* Day Inclusions */}
-                        <div className="bg-white p-4 border border-zinc-200 rounded-xl space-y-2 shadow-sm">
-                          <label className="block text-xs font-bold text-emerald-600">Day Specific Inclusions</label>
-                          <div className="flex space-x-2">
-                            <input
-                              type="text"
-                              value={dayInputTags[incKey] || ""}
-                              onChange={(e) => setDayInputTags({ ...dayInputTags, [incKey]: e.target.value })}
-                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDayTag(idx, "inclusions"); } }}
-                              className="w-full px-2.5 py-1 bg-zinc-50 border border-zinc-200 rounded text-xs text-[#1E3B39]"
-                              placeholder="e.g. Private Cab pickup"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleAddDayTag(idx, "inclusions")}
-                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold cursor-pointer"
-                            >
-                              Add
-                            </button>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 pt-1.5">
-                            {day.inclusions?.map((tag: string, tIdx: number) => (
-                              <span key={tIdx} className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-sm bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                                {tag}
-                                <button type="button" onClick={() => handleRemoveDayTag(idx, "inclusions", tIdx)} className="ml-1 text-emerald-500 hover:text-emerald-700 cursor-pointer">
-                                  <X className="h-2.5 w-2.5" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          Exclusions
+                        </label>
+                        <div className="flex gap-1 mb-2">
+                          <input
+                            type="text"
+                            value={dayInputTags[`${dIdx}-exclusions`] || ""}
+                            onChange={(e) =>
+                              setDayInputTags((prev) => ({
+                                ...prev,
+                                [`${dIdx}-exclusions`]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddDayTag(dIdx, "exclusions");
+                              }
+                            }}
+                            placeholder="Add exclusion tag..."
+                            className="flex-1 px-2.5 py-1.5 border border-zinc-200 rounded text-xs outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddDayTag(dIdx, "exclusions")}
+                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-xs font-bold"
+                          >
+                            +
+                          </button>
                         </div>
-
-                        {/* Day Exclusions */}
-                        <div className="bg-white p-4 border border-zinc-200 rounded-xl space-y-2 shadow-sm">
-                          <label className="block text-xs font-bold text-red-600">Day Specific Exclusions</label>
-                          <div className="flex space-x-2">
-                            <input
-                              type="text"
-                              value={dayInputTags[excKey] || ""}
-                              onChange={(e) => setDayInputTags({ ...dayInputTags, [excKey]: e.target.value })}
-                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDayTag(idx, "exclusions"); } }}
-                              className="w-full px-2.5 py-1 bg-zinc-50 border border-zinc-200 rounded text-xs text-[#1E3B39]"
-                              placeholder="e.g. Lunch fees"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleAddDayTag(idx, "exclusions")}
-                              className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold cursor-pointer"
+                        <div className="flex flex-wrap gap-1">
+                          {(day.exclusions || []).map((tag: string, tIdx: number) => (
+                            <span
+                              key={tIdx}
+                              className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200"
                             >
-                              Add
-                            </button>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 pt-1.5">
-                            {day.exclusions?.map((tag: string, tIdx: number) => (
-                              <span key={tIdx} className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-sm bg-red-50 text-red-700 border border-red-200 font-medium">
-                                {tag}
-                                <button type="button" onClick={() => handleRemoveDayTag(idx, "exclusions", tIdx)} className="ml-1 text-red-500 hover:text-red-700 cursor-pointer">
-                                  <X className="h-2.5 w-2.5" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Loved tips */}
-                        <div className="bg-white p-4 border border-zinc-200 rounded-xl space-y-2 shadow-sm">
-                          <label className="block text-xs font-bold text-violet-600">What Customers Love Tips</label>
-                          <div className="flex space-x-2">
-                            <input
-                              type="text"
-                              value={dayInputTags[loveKey] || ""}
-                              onChange={(e) => setDayInputTags({ ...dayInputTags, [loveKey]: e.target.value })}
-                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDayTag(idx, "customerLovedTips"); } }}
-                              className="w-full px-2.5 py-1 bg-zinc-50 border border-zinc-200 rounded text-xs text-[#1E3B39]"
-                              placeholder="e.g. Sunrise view is spectacular"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleAddDayTag(idx, "customerLovedTips")}
-                              className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded text-xs font-bold cursor-pointer"
-                            >
-                              Add
-                            </button>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 pt-1.5">
-                            {day.customerLovedTips?.map((tag: string, tIdx: number) => (
-                              <span key={tIdx} className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-sm bg-violet-50 text-violet-750 border border-violet-200 font-medium">
-                                {tag}
-                                <button type="button" onClick={() => handleRemoveDayTag(idx, "customerLovedTips", tIdx)} className="ml-1 text-violet-500 hover:text-violet-750 cursor-pointer">
-                                  <X className="h-2.5 w-2.5" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Watch out tips */}
-                        <div className="bg-white p-4 border border-zinc-200 rounded-xl space-y-2 shadow-sm">
-                          <label className="block text-xs font-bold text-amber-600">Customer Watch-out Tips</label>
-                          <div className="flex space-x-2">
-                            <input
-                              type="text"
-                              value={dayInputTags[watchKey] || ""}
-                              onChange={(e) => setDayInputTags({ ...dayInputTags, [watchKey]: e.target.value })}
-                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDayTag(idx, "customerWatchOutTips"); } }}
-                              className="w-full px-2.5 py-1 bg-zinc-50 border border-zinc-200 rounded text-xs text-[#1E3B39]"
-                              placeholder="e.g. Watch out for monkey pickpockets"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleAddDayTag(idx, "customerWatchOutTips")}
-                              className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold cursor-pointer"
-                            >
-                              Add
-                            </button>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 pt-1.5">
-                            {day.customerWatchOutTips?.map((tag: string, tIdx: number) => (
-                              <span key={tIdx} className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-sm bg-amber-50 text-amber-750 border border-amber-200 font-medium">
-                                {tag}
-                                <button type="button" onClick={() => handleRemoveDayTag(idx, "customerWatchOutTips", tIdx)} className="ml-1 text-amber-500 hover:text-amber-700 cursor-pointer">
-                                  <X className="h-2.5 w-2.5" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDayTag(dIdx, "exclusions", tIdx)}
+                                className="ml-1 text-red-600"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-                {/* Add Day Button at the bottom of the list */}
-                <div className="flex justify-center pt-2">
-                  <button
-                    type="button"
-                    onClick={addDay}
-                    className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-[#0DA590] hover:bg-[#0b8e7c] text-xs font-bold text-white shadow-md shadow-[#0DA590]/15 hover:shadow-[#0DA590]/35 transition-all cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Add Itinerary Day</span>
-                  </button>
-                </div>
-              </div>
-            )}
+
+                    {/* Tips fields */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          ❤️ Love Tips (Traveler Highlights)
+                        </label>
+                        <div className="flex gap-1 mb-2">
+                          <input
+                            type="text"
+                            value={dayInputTags[`${dIdx}-customerLovedTips`] || ""}
+                            onChange={(e) =>
+                              setDayInputTags((prev) => ({
+                                ...prev,
+                                [`${dIdx}-customerLovedTips`]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddDayTag(dIdx, "customerLovedTips");
+                              }
+                            }}
+                            placeholder="Add highlight tip..."
+                            className="flex-1 px-2.5 py-1.5 border border-zinc-200 rounded text-xs outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddDayTag(dIdx, "customerLovedTips")}
+                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-xs font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(day.customerLovedTips || []).map((tag: string, tIdx: number) => (
+                            <span
+                              key={tIdx}
+                              className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-pink-50 text-pink-800 border border-pink-200"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRemoveDayTag(dIdx, "customerLovedTips", tIdx)
+                                }
+                                className="ml-1 text-pink-600"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          ⚠️ Watch-out Tips (Advisory & Rules)
+                        </label>
+                        <div className="flex gap-1 mb-2">
+                          <input
+                            type="text"
+                            value={dayInputTags[`${dIdx}-customerWatchOutTips`] || ""}
+                            onChange={(e) =>
+                              setDayInputTags((prev) => ({
+                                ...prev,
+                                [`${dIdx}-customerWatchOutTips`]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddDayTag(dIdx, "customerWatchOutTips");
+                              }
+                            }}
+                            placeholder="Add advisory warning..."
+                            className="flex-1 px-2.5 py-1.5 border border-zinc-200 rounded text-xs outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddDayTag(dIdx, "customerWatchOutTips")}
+                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-xs font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(day.customerWatchOutTips || []).map((tag: string, tIdx: number) => (
+                            <span
+                              key={tIdx}
+                              className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRemoveDayTag(dIdx, "customerWatchOutTips", tIdx)
+                                }
+                                className="ml-1 text-amber-600"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         );
 
       case 4:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#0DA590]">Step 4: Stays & Accommodations</h2>
-            
-            {/* Stay Creator Form */}
-            <div className="bg-zinc-50 border border-zinc-200/80 p-6 rounded-2xl space-y-4 shadow-sm">
-              <h3 className="text-md font-bold text-[#1E3B39]">Add Accommodations Stay</h3>
+            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
+              Step 4: Stays & Accommodations
+            </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Hotel Entry Form */}
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                  {editingAccIndex !== null ? "Edit Hotel Stay" : "Add Hotel Stay"}
+                </span>
+
+                {/* Master Hotel Selector */}
+                {masterData.hotels.length > 0 && (
+                  <select
+                    onChange={(e) => {
+                      const h = masterData.hotels.find((item) => item.name === e.target.value);
+                      if (h) {
+                        setScopedHotel(h);
+                        setNewAcc((prev) => ({
+                          ...prev,
+                          hotelName: h.name,
+                          location: h.city ? `${h.city.name}, ${h.city.country}` : prev.location,
+                          starRating: h.starRating || 4,
+                          ratingScore: h.guestScore || 4.8,
+                          ratingLabel: h.guestScoreLabel || "Very Good",
+                          roomType: h.roomTypes?.[0] || prev.roomType,
+                          mealPlan: h.mealPlans?.[0] || prev.mealPlan,
+                          facilities: h.facilities || [],
+                          nearbyAttractions: h.nearbyAttractions || [],
+                          nearbyRestaurants: h.nearbyRestaurants || [],
+                          photos: h.photos || [],
+                        }));
+                      }
+                    }}
+                    value=""
+                    className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
+                  >
+                    <option value="">⚡ Pre-fill from Master Hotel Catalog...</option>
+                    {masterData.hotels.map((h) => (
+                      <option key={h.id} value={h.name}>
+                        {h.name} ({h.city ? h.city.name : ""})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Hotel Location/City</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Hotel Location/City *
+                  </label>
                   <input
                     type="text"
                     value={newAcc.location}
                     onChange={(e) => setNewAcc({ ...newAcc, location: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
-                    placeholder="e.g. Ubud Stay"
+                    placeholder="e.g. Seminyak, Bali"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Hotel Name</label>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Hotel Name *
+                  </label>
                   <input
                     type="text"
                     value={newAcc.hotelName}
                     onChange={(e) => setNewAcc({ ...newAcc, hotelName: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
-                    placeholder="e.g. Maya Ubud Resort & Spa"
+                    placeholder="e.g. The Seminyak Beach Resort & Spa"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Check-in Date</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Check-in Date *
+                  </label>
                   <input
                     type="date"
                     value={newAcc.checkInDate}
                     onChange={(e) => setNewAcc({ ...newAcc, checkInDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Check-out Date</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Check-out Date *
+                  </label>
                   <input
                     type="date"
                     value={newAcc.checkOutDate}
                     onChange={(e) => setNewAcc({ ...newAcc, checkOutDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
+
+                {/* Scoped Room Type and Meal Plan */}
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Hotel Star Rating</label>
-                  <select
-                    value={newAcc.starRating}
-                    onChange={(e) => setNewAcc({ ...newAcc, starRating: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
-                  >
-                    <option value={5}>5-Star Luxury</option>
-                    <option value={4}>4-Star Premium</option>
-                    <option value={3}>3-Star Standard</option>
-                    <option value={2}>2-Star Budget</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Room Type</label>
-                  <input
-                    type="text"
-                    value={newAcc.roomType}
-                    onChange={(e) => setNewAcc({ ...newAcc, roomType: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
-                    placeholder="e.g. Deluxe Garden Pool Villa"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Meal Plan</label>
-                  <input
-                    type="text"
-                    value={newAcc.mealPlan}
-                    onChange={(e) => setNewAcc({ ...newAcc, mealPlan: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
-                    placeholder="e.g. CP (Breakfast Only)"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Guest Score & Label</label>
-                  <div className="flex space-x-2">
-                    <input
-                      type="number"
-                      value={newAcc.ratingScore || ""}
-                      onChange={(e) => setNewAcc({ ...newAcc, ratingScore: Number(e.target.value) })}
-                      className="w-1/2 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
-                      placeholder="e.g. 4.7"
-                      step="0.1"
-                      min="0"
-                      max="5"
-                    />
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Room Type *
+                  </label>
+                  {scopedHotel && scopedHotel.roomTypes?.length > 0 ? (
+                    <select
+                      value={newAcc.roomType}
+                      onChange={(e) => setNewAcc({ ...newAcc, roomType: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                    >
+                      <option value="">-- Select Available Room Type --</option>
+                      {scopedHotel.roomTypes.map((r: string, i: number) => (
+                        <option key={i} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
                     <input
                       type="text"
-                      value={newAcc.ratingLabel || ""}
-                      onChange={(e) => setNewAcc({ ...newAcc, ratingLabel: e.target.value })}
-                      className="w-1/2 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-[#1E3B39] focus:outline-none"
-                      placeholder="e.g. Superb"
+                      value={newAcc.roomType}
+                      onChange={(e) => setNewAcc({ ...newAcc, roomType: e.target.value })}
+                      placeholder="e.g. Deluxe Garden Villa with Private Pool"
+                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                     />
-                  </div>
+                  )}
                 </div>
-              </div>
 
-              {/* Photo uploader */}
-              <div className="border-t border-zinc-200 pt-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Local Image File Upload</label>
-                  <div className="relative">
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Meal Plan *
+                  </label>
+                  {scopedHotel && scopedHotel.mealPlans?.length > 0 ? (
+                    <select
+                      value={newAcc.mealPlan}
+                      onChange={(e) => setNewAcc({ ...newAcc, mealPlan: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                    >
+                      <option value="">-- Select Available Meal Plan --</option>
+                      {scopedHotel.mealPlans.map((m: string, i: number) => (
+                        <option key={i} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
                     <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoUpload}
-                      disabled={uploadingPhoto}
-                      className="w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#0DA590]/10 file:text-[#0DA590] file:hover:bg-[#0DA590]/20 file:cursor-pointer disabled:opacity-50"
+                      type="text"
+                      value={newAcc.mealPlan}
+                      onChange={(e) => setNewAcc({ ...newAcc, mealPlan: e.target.value })}
+                      placeholder="e.g. Daily Buffet Breakfast (CP)"
+                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                     />
-                    {uploadingPhoto && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-xs text-zinc-500">
-                        <Loader2 className="animate-spin h-3.5 w-3.5 mr-1 text-[#0DA590]" /> uploading...
-                      </span>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* Added photos grid */}
-              {newAcc.photos.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs text-zinc-400 font-medium">Added Photos ({newAcc.photos.length})</p>
-                  <div className="grid grid-cols-5 gap-2 bg-zinc-100 p-2 border border-zinc-200 rounded-xl">
-                    {newAcc.photos.map((url, pIdx) => (
-                      <div key={pIdx} className="relative aspect-video bg-zinc-100 rounded-md overflow-hidden group">
-                        <img src={url} alt="Stay Preview" className="h-full w-full object-cover" />
+              {/* Photos upload / URL */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Stay Photos (URLs)
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={newAccPhotoUrl}
+                    onChange={(e) => setNewAccPhotoUrl(e.target.value)}
+                    placeholder="Paste image URL..."
+                    className="flex-1 px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newAccPhotoUrl.trim()) {
+                        setNewAcc((prev) => ({
+                          ...prev,
+                          photos: [...prev.photos, newAccPhotoUrl.trim()],
+                        }));
+                        setNewAccPhotoUrl("");
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-zinc-200 hover:bg-zinc-300 rounded-lg text-xs font-bold"
+                  >
+                    + Add URL
+                  </button>
+                </div>
+                {newAcc.photos.length > 0 && (
+                  <div className="flex space-x-2 overflow-x-auto py-1">
+                    {newAcc.photos.map((p, idx) => (
+                      <div
+                        key={idx}
+                        className="relative h-16 w-24 rounded-lg overflow-hidden border border-zinc-200 shrink-0 group"
+                      >
+                        <img src={p} alt="Preview" className="h-full w-full object-cover" />
                         <button
                           type="button"
-                          onClick={() => setNewAcc((prev) => ({ ...prev, photos: prev.photos.filter((_, i) => i !== pIdx) }))}
-                          className="absolute inset-0 bg-red-650/90 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-xs font-bold"
+                          onClick={() =>
+                            setNewAcc((prev) => ({
+                              ...prev,
+                              photos: prev.photos.filter((_, i) => i !== idx),
+                            }))
+                          }
+                          className="absolute inset-0 bg-red-600/80 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold"
                         >
-                          Remove
+                          ×
                         </button>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* Facilities / Attractions / Restaurants builders */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-zinc-200 pt-4">
-                {/* Facilities */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 mb-1">Hotel Facilities</label>
-                  <div className="flex space-x-2 mb-2">
-                    <input
-                      type="text"
-                      value={newAccFacility}
-                      onChange={(e) => setNewAccFacility(e.target.value)}
-                      className="w-full px-2.5 py-1.5 bg-white border border-zinc-200 rounded-lg text-xs"
-                      placeholder="e.g. Free Wi-Fi"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (newAccFacility.trim()) {
-                          setNewAcc((prev) => ({ ...prev, facilities: [...prev.facilities, newAccFacility.trim()] }));
-                          setNewAccFacility("");
-                        }
-                      }}
-                      className="px-2 bg-zinc-800 text-white rounded-lg text-xs font-bold cursor-pointer"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {newAcc.facilities.map((fac, fIdx) => (
-                      <span key={fIdx} className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-zinc-200 text-zinc-700 border border-zinc-300">
-                        {fac}
-                        <button type="button" onClick={() => setNewAcc((prev) => ({ ...prev, facilities: prev.facilities.filter((_, i) => i !== fIdx) }))} className="ml-1 text-zinc-400 hover:text-zinc-650 cursor-pointer">×</button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Attractions */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 mb-1">Nearby Attractions</label>
-                  <div className="space-y-1.5 mb-2">
-                    <input
-                      type="text"
-                      value={newAccAttractionName}
-                      onChange={(e) => setNewAccAttractionName(e.target.value)}
-                      className="w-full px-2.5 py-1 bg-white border border-zinc-200 rounded text-xs"
-                      placeholder="e.g. Sacred Monkey Forest"
-                    />
-                    <div className="flex space-x-2">
-                      <input
-                        type="number"
-                        value={newAccAttractionDist}
-                        onChange={(e) => setNewAccAttractionDist(e.target.value)}
-                        className="w-full px-2.5 py-1 bg-white border border-zinc-200 rounded text-xs"
-                        placeholder="Dist (km)"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (newAccAttractionName.trim() && newAccAttractionDist) {
-                            setNewAcc((prev) => ({
-                              ...prev,
-                              nearbyAttractions: [...prev.nearbyAttractions, { name: newAccAttractionName.trim(), distanceKm: Number(newAccAttractionDist) }],
-                            }));
-                            setNewAccAttractionName("");
-                            setNewAccAttractionDist("");
-                          }
-                        }}
-                        className="px-2 bg-zinc-800 text-white rounded-xs text-xs font-bold cursor-pointer"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    {newAcc.nearbyAttractions.map((att, aIdx) => (
-                      <div key={aIdx} className="flex justify-between items-center text-[10px] bg-zinc-100 p-1 border border-zinc-200 rounded text-zinc-600">
-                        <span>{att.name} ({att.distanceKm} km)</span>
-                        <button type="button" onClick={() => setNewAcc((prev) => ({ ...prev, nearbyAttractions: prev.nearbyAttractions.filter((_, i) => i !== aIdx) }))} className="text-zinc-400 hover:text-zinc-650 cursor-pointer">×</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Restaurants */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 mb-1">Nearby Restaurants</label>
-                  <div className="space-y-1.5 mb-2">
-                    <input
-                      type="text"
-                      value={newAccRestName}
-                      onChange={(e) => setNewAccRestName(e.target.value)}
-                      className="w-full px-2.5 py-1 bg-white border border-zinc-200 rounded text-xs"
-                      placeholder="e.g. Queen's Tandoor"
-                    />
-                    <div className="flex space-x-2">
-                      <input
-                        type="text"
-                        value={newAccRestDist}
-                        onChange={(e) => setNewAccRestDist(e.target.value)}
-                        className="w-full px-2.5 py-1 bg-white border border-zinc-200 rounded text-xs"
-                        placeholder="Dist (e.g. 5m walk)"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (newAccRestName.trim() && newAccRestDist.trim()) {
-                            setNewAcc((prev) => ({
-                              ...prev,
-                              nearbyRestaurants: [...prev.nearbyRestaurants, { name: newAccRestName.trim(), distance: newAccRestDist.trim() }],
-                            }));
-                            setNewAccRestName("");
-                            setNewAccRestDist("");
-                          }
-                        }}
-                        className="px-2 bg-zinc-800 text-white rounded text-xs font-bold cursor-pointer"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    {newAcc.nearbyRestaurants.map((rest, rIdx) => (
-                      <div key={rIdx} className="flex justify-between items-center text-[10px] bg-zinc-100 p-1 border border-zinc-200 rounded text-zinc-600">
-                        <span>{rest.name} ({rest.distance})</span>
-                        <button type="button" onClick={() => setNewAcc((prev) => ({ ...prev, nearbyRestaurants: prev.nearbyRestaurants.filter((_, i) => i !== rIdx) }))} className="text-zinc-400 hover:text-zinc-650 cursor-pointer">×</button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* Submit Stay */}
-              <button
-                type="button"
-                onClick={addAcc}
-                className="w-full py-2.5 bg-[#0DA590] hover:bg-[#0b8e7c] text-white rounded-xl text-xs font-bold mt-4 shadow-sm transition-colors cursor-pointer"
-              >
-                {editingAccIndex !== null ? "Update Stay" : "Save Stay to Itinerary List"}
-              </button>
+              <div className="flex justify-end space-x-2 pt-2">
+                {editingAccIndex !== null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingAccIndex(null);
+                      setScopedHotel(null);
+                    }}
+                    className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={addAcc}
+                  className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  {editingAccIndex !== null ? "Update Stay" : "+ Add Stay to Trip"}
+                </button>
+              </div>
             </div>
 
-            {/* Configured stays list */}
-            {formData.accommodations.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-md font-bold text-zinc-700">Configured stays ({formData.accommodations.length})</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {formData.accommodations.map((acc: any, idx: number) => (
-                    <div key={idx} className="bg-white border border-zinc-200 p-4 rounded-xl flex justify-between items-start shadow-sm">
-                      <div>
-                        <p className="text-xs text-[#0DA590] font-bold">{acc.location}</p>
-                        <h4 className="font-extrabold text-[#1E3B39] text-sm">{acc.hotelName} ({acc.starRating}★)</h4>
-                        <p className="text-xs text-zinc-550">{acc.roomType} | {acc.mealPlan}</p>
-                        <p className="text-[10px] text-zinc-400 mt-1">Stays: {acc.checkInDate} to {acc.checkOutDate}</p>
-                      </div>
-                      <div className="flex space-x-1">
-                        <button
-                          type="button"
-                          onClick={() => startEditAcc(idx)}
-                          className="text-zinc-500 hover:text-zinc-700 p-1 cursor-pointer"
-                          title="Edit Stay"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeAcc(idx)}
-                          className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
-                          title="Remove Stay"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+            {/* Stays List */}
+            <div className="space-y-3">
+              {formData.accommodations.map((acc: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
+                >
+                  <div>
+                    <h4 className="font-bold text-[#14213D] text-sm">{acc.hotelName}</h4>
+                    <p className="text-zinc-500 mt-0.5">
+                      📍 {acc.location} &bull; {acc.roomType} ({acc.mealPlan})
+                    </p>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      📅 {acc.checkInDate} to {acc.checkOutDate} &bull; {acc.starRating}★
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditAcc(idx)}
+                      className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeAcc(idx)}
+                      className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         );
 
       case 5:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#0DA590]">Step 5: Flight Details</h2>
-            
-            {/* Flight segment creator */}
-            <div className="bg-zinc-50 border border-zinc-200/80 p-6 rounded-2xl space-y-4 shadow-sm">
-              <h3 className="text-md font-bold text-[#1E3B39]">Add Flight Detail Segment</h3>
+            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
+              Step 5: Flight Details
+            </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Flight Entry Form with Master Flight Route picker */}
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                  {editingFlightIndex !== null ? "Edit Flight Leg" : "Add Flight Leg"}
+                </span>
+
+                {/* Flight Route Picker */}
+                {masterData.flightRoutes.length > 0 && (
+                  <select
+                    onChange={(e) => {
+                      const route = masterData.flightRoutes.find(
+                        (r) => r.sector === e.target.value
+                      );
+                      if (route) {
+                        setNewFlight((prev) => ({
+                          ...prev,
+                          sector: route.sector,
+                          airline: route.airline,
+                          stops: route.typicalStops || 0,
+                          layoverInfo: route.typicalLayoverInfo || "",
+                          carryOnBaggageKg: route.cabinBaggageKg ?? 7,
+                          checkInBaggageKg: route.checkInBaggageKg ?? 20,
+                          cancellationPolicy: route.cancellationPolicy || "",
+                          flightNotes: route.flightNotes || "",
+                        }));
+                      }
+                    }}
+                    value=""
+                    className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
+                  >
+                    <option value="">⚡ Pre-fill from Master Flight Routes...</option>
+                    {masterData.flightRoutes.map((r) => (
+                      <option key={r.id} value={r.sector}>
+                        {r.sector} ({r.airline})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Sector (e.g. AMD to DPS)</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Sector * (e.g. BOM to DPS)
+                  </label>
                   <input
                     type="text"
                     value={newFlight.sector}
                     onChange={(e) => setNewFlight({ ...newFlight, sector: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. AMD to DPS"
+                    placeholder="e.g. BOM to DPS (Mumbai to Bali)"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Airline & Flight Code</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Airline & Flight Code *
+                  </label>
                   <input
                     type="text"
                     value={newFlight.airline}
                     onChange={(e) => setNewFlight({ ...newFlight, airline: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. VietJet Air VJ-896"
+                    placeholder="e.g. VietJet Air VJ-884"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Stops</label>
-                  <input
-                    type="number"
-                    value={newFlight.stops}
-                    onChange={(e) => setNewFlight({ ...newFlight, stops: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Departure Date & Time</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Departure Date & Time *
+                  </label>
                   <input
                     type="datetime-local"
                     value={newFlight.departureDateTime}
-                    onChange={(e) => setNewFlight({ ...newFlight, departureDateTime: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
+                    onChange={(e) =>
+                      setNewFlight({ ...newFlight, departureDateTime: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Arrival Date & Time</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Arrival Date & Time *
+                  </label>
                   <input
                     type="datetime-local"
                     value={newFlight.arrivalDateTime}
-                    onChange={(e) => setNewFlight({ ...newFlight, arrivalDateTime: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
+                    onChange={(e) => {
+                      const arrVal = e.target.value;
+                      let dur = newFlight.durationText;
+                      if (newFlight.departureDateTime && arrVal) {
+                        const dep = new Date(newFlight.departureDateTime).getTime();
+                        const arr = new Date(arrVal).getTime();
+                        const diffMs = arr - dep;
+                        if (diffMs > 0) {
+                          const hours = Math.floor(diffMs / (1000 * 60 * 60));
+                          const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                          dur = `${hours}h ${mins}m`;
+                        }
+                      }
+                      setNewFlight({ ...newFlight, arrivalDateTime: arrVal, durationText: dur });
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Total Duration</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Total Flight Duration
+                  </label>
                   <input
                     type="text"
                     value={newFlight.durationText}
-                    onChange={(e) => setNewFlight({ ...newFlight, durationText: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. 5h 45m"
+                    onChange={(e) =>
+                      setNewFlight({ ...newFlight, durationText: e.target.value })
+                    }
+                    placeholder="e.g. 5h 45m (auto-computed)"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none font-mono"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Layover Info (e.g. 2h in SGN)</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Stops & Layover Info
+                  </label>
                   <input
                     type="text"
                     value={newFlight.layoverInfo}
-                    onChange={(e) => setNewFlight({ ...newFlight, layoverInfo: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. 2 Hours in Singapore (SIN)"
+                    onChange={(e) =>
+                      setNewFlight({ ...newFlight, layoverInfo: e.target.value })
+                    }
+                    placeholder="e.g. Non-stop or 2h 15m layover at SGN"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Cabin baggage (kg)</label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                      Cabin Baggage (KG)
+                    </label>
+                    <input
+                      type="number"
+                      value={newFlight.carryOnBaggageKg}
+                      onChange={(e) =>
+                        setNewFlight({
+                          ...newFlight,
+                          carryOnBaggageKg: parseInt(e.target.value) || 7,
+                        })
+                      }
+                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                      Check-in Baggage (KG)
+                    </label>
+                    <input
+                      type="number"
+                      value={newFlight.checkInBaggageKg}
+                      onChange={(e) =>
+                        setNewFlight({
+                          ...newFlight,
+                          checkInBaggageKg: parseInt(e.target.value) || 20,
+                        })
+                      }
+                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Flight Notes & Cancellation Policy
+                  </label>
                   <input
-                    type="number"
-                    value={newFlight.carryOnBaggageKg === null ? "" : newFlight.carryOnBaggageKg}
-                    onChange={(e) => setNewFlight({ ...newFlight, carryOnBaggageKg: e.target.value === "" ? null : Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. 7"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Check-in baggage (kg)</label>
-                  <input
-                    type="number"
-                    value={newFlight.checkInBaggageKg === null ? "" : newFlight.checkInBaggageKg}
-                    onChange={(e) => setNewFlight({ ...newFlight, checkInBaggageKg: e.target.value === "" ? null : Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. 20"
+                    type="text"
+                    value={newFlight.flightNotes}
+                    onChange={(e) =>
+                      setNewFlight({ ...newFlight, flightNotes: e.target.value })
+                    }
+                    placeholder="e.g. Includes inflight hot meal. Non-refundable ticket."
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-500 mb-1">Cancellation/Refund Policy</label>
-                <RichTextEditor
-                  value={newFlight.cancellationPolicy || ""}
-                  onChange={(val) => setNewFlight({ ...newFlight, cancellationPolicy: val })}
-                  placeholder="e.g. Non-refundable. Date change allowed with fee."
-                />
+              <div className="flex justify-end space-x-2 pt-2">
+                {editingFlightIndex !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingFlightIndex(null)}
+                    className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={addFlight}
+                  className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  {editingFlightIndex !== null ? "Update Flight" : "+ Add Flight Schedule"}
+                </button>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-500 mb-1">Flight Notes</label>
-                <textarea
-                  value={newFlight.flightNotes}
-                  onChange={(e) => setNewFlight({ ...newFlight, flightNotes: e.target.value })}
-                  rows={2}
-                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none placeholder-zinc-400"
-                  placeholder="e.g. Please verify seat numbers 24 hours prior; food is included."
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={addFlight}
-                className="w-full py-2 bg-[#0DA590] hover:bg-[#0b8e7c] text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
-              >
-                {editingFlightIndex !== null ? "Update Flight Segment" : "Add Flight Segment"}
-              </button>
             </div>
 
-            {/* Flight list */}
-            {formData.flightDetails.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-md font-bold text-zinc-700">Scheduled Flight segments ({formData.flightDetails.length})</h3>
-                <div className="grid grid-cols-1 gap-4">
-                  {formData.flightDetails.map((f: any, idx: number) => (
-                    <div key={idx} className="bg-white border border-zinc-200 p-4 rounded-xl flex justify-between items-start shadow-sm">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-zinc-650 w-full">
-                        <div>
-                          <p className="text-zinc-400 font-bold uppercase">Sector</p>
-                          <p className="font-extrabold text-[#1E3B39] text-sm">{f.sector}</p>
-                          {f.flightNotes && <p className="text-[10px] text-zinc-500 mt-1 italic font-medium">Note: {f.flightNotes}</p>}
-                        </div>
-                        <div>
-                          <p className="text-zinc-400 font-bold uppercase">Airline</p>
-                          <p className="font-semibold text-zinc-700">{f.airline}</p>
-                        </div>
-                        <div>
-                          <p className="text-zinc-400 font-bold uppercase">Departs / Arrives</p>
-                          <p className="truncate text-zinc-600">{f.departureDateTime} &rarr; {f.arrivalDateTime}</p>
-                        </div>
-                        <div>
-                          <p className="text-zinc-400 font-bold uppercase">Baggage Limits</p>
-                          <p className="text-zinc-650">Cabin: {f.carryOnBaggageKg}kg | Cargo: {f.checkInBaggageKg}kg</p>
-                        </div>
-                      </div>
-                      <div className="flex space-x-1 ml-2">
-                        <button
-                          type="button"
-                          onClick={() => startEditFlight(idx)}
-                          className="text-zinc-500 hover:text-zinc-700 p-1 cursor-pointer"
-                          title="Edit Flight"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeFlight(idx)}
-                          className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
-                          title="Remove Flight"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+            {/* Flights list */}
+            <div className="space-y-3">
+              {formData.flightDetails.map((f: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
+                >
+                  <div>
+                    <h4 className="font-bold text-[#14213D] text-sm flex items-center">
+                      <Plane className="h-3.5 w-3.5 text-[#B8944F] mr-2" />
+                      {f.sector} ({f.airline})
+                    </h4>
+                    <p className="text-zinc-500 mt-0.5 font-mono text-[11px]">
+                      Dep: {f.departureDateTime} &bull; Arr: {f.arrivalDateTime}
+                    </p>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Baggage: {f.carryOnBaggageKg || 7}kg Cabin / {f.checkInBaggageKg || 20}kg Check-in
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditFlight(idx)}
+                      className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeFlight(idx)}
+                      className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         );
 
       case 6:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#0DA590]">Step 6: Optional Add-ons & Visa</h2>
-            
-            {/* Addon Form */}
-            <div className="bg-zinc-50 border border-zinc-200/80 p-6 rounded-2xl space-y-4 shadow-sm">
-              <h3 className="text-md font-bold text-[#1E3B39]">Add Optional Extra / Visa</h3>
+            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
+              Step 6: Optional Add-ons & Visa
+            </h2>
+
+            {/* Add-on Entry Form with Master AddOn picker */}
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                  {editingAddOnIndex !== null ? "Edit Add-on Service" : "Add Service / Visa Package"}
+                </span>
+
+                {/* Master Add-on Picker */}
+                {masterData.addOns.length > 0 && (
+                  <select
+                    onChange={(e) => {
+                      const addon = masterData.addOns.find((a) => a.name === e.target.value);
+                      if (addon) {
+                        setNewAddOn((prev) => ({
+                          ...prev,
+                          name: addon.name,
+                          visaType: addon.visaType || "",
+                          length: addon.validityLength || "",
+                          validity: addon.validityWindow || "",
+                          details: addon.detailsDescription || "",
+                          price: addon.defaultPrice || 0,
+                        }));
+                      }
+                    }}
+                    value=""
+                    className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
+                  >
+                    <option value="">⚡ Pre-fill from Master Add-ons...</option>
+                    {masterData.addOns.map((a) => (
+                      <option key={a.id} value={a.name}>
+                        {a.name} (₹{a.defaultPrice})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Add-on Name</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Add-on Name *
+                  </label>
                   <input
                     type="text"
                     value={newAddOn.name}
                     onChange={(e) => setNewAddOn({ ...newAddOn, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. Visa on Arrival (VoA)"
+                    placeholder="e.g. Indonesia Official E-VOA (Electronic Visa on Arrival)"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Visa Type (Optional)</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Visa Type
+                  </label>
                   <input
                     type="text"
                     value={newAddOn.visaType}
                     onChange={(e) => setNewAddOn({ ...newAddOn, visaType: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. Tourist E-VoA"
+                    placeholder="e.g. Tourist E-VOA 30 Days"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Validity length (Optional)</label>
-                  <input
-                    type="text"
-                    value={newAddOn.length}
-                    onChange={(e) => setNewAddOn({ ...newAddOn, length: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. 30 Days"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Validity window (Optional)</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Validity Length / Window
+                  </label>
                   <input
                     type="text"
                     value={newAddOn.validity}
                     onChange={(e) => setNewAddOn({ ...newAddOn, validity: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. Valid for 90 days from issue"
+                    placeholder="e.g. 90 Days from issue"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Add-on Price (INR)</label>
-                  <div className="flex space-x-2">
-                    <input
-                      type="number"
-                      value={newAddOn.price}
-                      onChange={(e) => setNewAddOn({ ...newAddOn, price: Number(e.target.value) })}
-                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                      placeholder="e.g. 3500"
-                    />
-                    <select
-                      value={newAddOn.priceType}
-                      onChange={(e) => setNewAddOn({ ...newAddOn, priceType: e.target.value })}
-                      className="bg-white border border-zinc-200 rounded-lg text-xs px-2 focus:outline-none"
-                    >
-                      <option value="per person">Per Person</option>
-                      <option value="per group">Per Group</option>
-                    </select>
-                  </div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Price (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    value={newAddOn.price}
+                    onChange={(e) =>
+                      setNewAddOn({ ...newAddOn, price: parseFloat(e.target.value) || 0 })
+                    }
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono font-bold text-[#14213D] outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Price Structure
+                  </label>
+                  <select
+                    value={newAddOn.priceType}
+                    onChange={(e) => setNewAddOn({ ...newAddOn, priceType: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                  >
+                    <option value="per person">per person</option>
+                    <option value="per group">per group</option>
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Details Description
+                  </label>
+                  <input
+                    type="text"
+                    value={newAddOn.details}
+                    onChange={(e) => setNewAddOn({ ...newAddOn, details: e.target.value })}
+                    placeholder="e.g. Clears immigration queues via dedicated e-gate barcode scanners."
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-500 mb-1">Details description</label>
-                <RichTextEditor
-                  value={newAddOn.details || ""}
-                  onChange={(val) => setNewAddOn({ ...newAddOn, details: val })}
-                  placeholder="Additional terms or features of this addon..."
-                />
+              <div className="flex justify-end space-x-2 pt-2">
+                {editingAddOnIndex !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingAddOnIndex(null)}
+                    className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={addAddOn}
+                  className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  {editingAddOnIndex !== null ? "Update Add-on" : "+ Add Service"}
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={addAddOn}
-                className="w-full py-2 bg-[#0DA590] hover:bg-[#0b8e7c] text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
-              >
-                {editingAddOnIndex !== null ? "Update Add-on" : "Add Add-on"}
-              </button>
             </div>
 
-            {/* Addon list */}
-            {formData.addOns.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-md font-bold text-zinc-705">Configured Add-ons ({formData.addOns.length})</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {formData.addOns.map((addon: any, idx: number) => (
-                    <div key={idx} className="bg-white border border-zinc-200 p-4 rounded-xl flex justify-between items-start shadow-sm">
-                      <div>
-                        <h4 className="font-bold text-[#1E3B39] text-sm">{addon.name}</h4>
-                        {addon.detailsJson?.visaType && <p className="text-xs text-zinc-500">Visa: {addon.detailsJson.visaType} ({addon.detailsJson.length})</p>}
-                        {addon.detailsJson?.details && <p className="text-xs text-zinc-400 mt-1">{addon.detailsJson.details}</p>}
-                        <p className="text-xs text-[#0DA590] font-bold mt-1.5">₹{addon.price.toLocaleString("en-IN")} {addon.priceType}</p>
-                      </div>
-                      <div className="flex space-x-1">
-                        <button
-                          type="button"
-                          onClick={() => startEditAddOn(idx)}
-                          className="text-zinc-500 hover:text-zinc-700 p-1 cursor-pointer"
-                          title="Edit Add-on"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeAddOn(idx)}
-                          className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
-                          title="Remove Add-on"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}`
+            {/* Addons List */}
+            <div className="space-y-3">
+              {formData.addOns.map((a: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
+                >
+                  <div>
+                    <h4 className="font-bold text-[#14213D] text-sm">{a.name}</h4>
+                    <p className="text-zinc-500 mt-0.5">
+                      ₹{a.price?.toLocaleString("en-IN")} {a.priceType}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditAddOn(idx)}
+                      className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeAddOn(idx)}
+                      className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         );
 
       case 7:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#0DA590]">Step 7: Restaurant & Club Suggestions</h2>
-            
-            {/* Dining builder */}
-            <div className="bg-zinc-50 border border-zinc-200/80 p-6 rounded-2xl space-y-4 shadow-sm">
-              <h3 className="text-md font-bold text-[#1E3B39]">Add Dining Recommendation</h3>
+            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
+              Step 7: Restaurant & Club Suggestions
+            </h2>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Restaurant Form with Master Restaurant Selector */}
+            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                  {editingRestIndex !== null ? "Edit Dining Recommendation" : "Add Dining Recommendation"}
+                </span>
+
+                {/* Master Restaurant Picker (filtered by destination city if matched) */}
+                {masterData.restaurants.length > 0 && (
+                  <select
+                    onChange={(e) => {
+                      const rest = masterData.restaurants.find((r) => r.name === e.target.value);
+                      if (rest) {
+                        setNewRest((prev) => ({
+                          ...prev,
+                          name: rest.name,
+                          location: rest.city ? `${rest.city.name}` : prev.location,
+                          cuisineType: rest.cuisineType,
+                          category: rest.categoryType || "Restaurant",
+                          rating: rest.starRating || 4.5,
+                          reviewCount: rest.reviewsCount || 150,
+                          isVeg: rest.offersPureVegJain,
+                        }));
+                      }
+                    }}
+                    value=""
+                    className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
+                  >
+                    <option value="">⚡ Select from Curated Dining Library...</option>
+                    {masterData.restaurants.map((r) => (
+                      <option key={r.id} value={r.name}>
+                        {r.name} ({r.cuisineType}) {r.city ? `- ${r.city.name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Location Area</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Location Area *
+                  </label>
                   <input
                     type="text"
                     value={newRest.location}
                     onChange={(e) => setNewRest({ ...newRest, location: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                    placeholder="e.g. Ubud Center"
+                    placeholder="e.g. Seminyak, Ubud, Downtown Dubai"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Restaurant Name</label>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Restaurant Name *
+                  </label>
                   <input
                     type="text"
                     value={newRest.name}
                     onChange={(e) => setNewRest({ ...newRest, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
                     placeholder="e.g. Queen's Tandoor Seminyak"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Cuisine Type</label>
-                  <select
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Cuisine Type
+                  </label>
+                  <input
+                    type="text"
                     value={newRest.cuisineType}
                     onChange={(e) => setNewRest({ ...newRest, cuisineType: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                  >
-                    <option value="Indian">Indian / Vegetarian</option>
-                    <option value="Local">Local Balinese / Indonesian</option>
-                    <option value="International">International / Italian / Cafe</option>
-                  </select>
+                    placeholder="e.g. North & South Indian, Italian"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                  />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Category Type</label>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Category Type
+                  </label>
                   <select
                     value={newRest.category}
                     onChange={(e) => setNewRest({ ...newRest, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
+                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                   >
-                    <option value="Restaurant">Fine Dining Restaurant</option>
-                    <option value="Beach Club">Beach Club / Day Bar</option>
-                    <option value="Night Club">Night Club / Dance Floor</option>
+                    <option value="Restaurant">Restaurant</option>
+                    <option value="Beach Club">Beach Club</option>
+                    <option value="Night Club">Night Club</option>
+                    <option value="Cafe">Cafe</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Star rating / Reviews Count</label>
-                  <div className="flex space-x-2">
-                    <input
-                      type="number"
-                      value={newRest.rating || ""}
-                      onChange={(e) => setNewRest({ ...newRest, rating: Number(e.target.value) })}
-                      className="w-1/2 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                      step="0.1"
-                      min="0"
-                      max="5"
-                    />
-                    <input
-                      type="number"
-                      value={newRest.reviewCount || ""}
-                      onChange={(e) => setNewRest({ ...newRest, reviewCount: Number(e.target.value) })}
-                      className="w-1/2 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none"
-                      placeholder="e.g. 500"
-                    />
-                  </div>
+
+                <div className="sm:col-span-2 flex items-center space-x-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="veg-jain-flag"
+                    checked={newRest.isVeg}
+                    onChange={(e) => setNewRest({ ...newRest, isVeg: e.target.checked })}
+                    className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F]"
+                  />
+                  <label htmlFor="veg-jain-flag" className="text-xs font-semibold text-zinc-700 cursor-pointer">
+                    Offers Dedicated Pure Veg / Jain Food Options
+                  </label>
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 bg-white p-3 border border-zinc-200 rounded-xl shadow-sm">
-                <input
-                  type="checkbox"
-                  id="isVeg"
-                  checked={newRest.isVeg}
-                  onChange={(e) => setNewRest({ ...newRest, isVeg: e.target.checked })}
-                  className="rounded border-zinc-305 text-[#0DA590] focus:ring-[#0DA590] h-4 w-4 bg-white"
-                />
-                <label htmlFor="isVeg" className="text-xs font-bold text-emerald-600">
-                  Offers Pure Veg / Jain Food Options
-                </label>
+              <div className="flex justify-end space-x-2 pt-2">
+                {editingRestIndex !== null && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingRestIndex(null)}
+                    className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={addRest}
+                  className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  {editingRestIndex !== null ? "Update Suggestion" : "+ Add Suggestion"}
+                </button>
               </div>
-
-              <button
-                type="button"
-                onClick={addRest}
-                className="w-full py-2 bg-[#0DA590] hover:bg-[#0b8e7c] text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
-              >
-                {editingRestIndex !== null ? "Update Suggestion" : "Add Suggestion"}
-              </button>
             </div>
 
-            {/* Dining lists */}
-            {formData.restaurantSuggestions.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-md font-bold text-zinc-700">Dining recommendations ({formData.restaurantSuggestions.length})</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {formData.restaurantSuggestions.map((rest: any, idx: number) => (
-                    <div key={idx} className="bg-white border border-zinc-200 p-4 rounded-xl flex justify-between items-start shadow-sm">
-                      <div>
-                        <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">{rest.category} | {rest.location}</p>
-                        <h4 className="font-bold text-[#1E3B39] text-sm">{rest.name}</h4>
-                        <p className="text-xs text-zinc-550">{rest.cuisineType} cuisine ({rest.rating}★ rating)</p>
-                        {rest.isVeg && <span className="inline-block mt-1 text-[9px] px-2 py-0.5 rounded bg-emerald-55 text-emerald-700 border border-emerald-200 font-bold">Pure Veg Options</span>}
-                      </div>
-                      <div className="flex space-x-1">
-                        <button
-                          type="button"
-                          onClick={() => startEditRest(idx)}
-                          className="text-zinc-500 hover:text-zinc-700 p-1 cursor-pointer"
-                          title="Edit Suggestion"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeRest(idx)}
-                          className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
-                          title="Remove Suggestion"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+            {/* Suggestions list */}
+            <div className="space-y-3">
+              {formData.restaurantSuggestions.map((r: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
+                >
+                  <div>
+                    <h4 className="font-bold text-[#14213D] text-sm">{r.name}</h4>
+                    <p className="text-zinc-500 mt-0.5">
+                      📍 {r.location} &bull; {r.category} ({r.cuisineType})
+                    </p>
+                    {r.isVeg && (
+                      <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                        Pure Veg / Jain Available
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditRest(idx)}
+                      className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeRest(idx)}
+                      className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         );
 
       case 8:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#0DA590]">Step 8: Master Policies & Guidelines</h2>
-            
+            <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
+              <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
+                Step 8: Master Policies & Guidelines
+              </h2>
+
+              {/* Master Policy Template Loader */}
+              {masterData.policyTemplates.length > 0 && (
+                <select
+                  onChange={(e) => {
+                    const template = masterData.policyTemplates.find(
+                      (p) => p.name === e.target.value
+                    );
+                    if (template) {
+                      setFormData((prev: any) => ({
+                        ...prev,
+                        tripTerms: {
+                          paymentPolicy: template.paymentPolicy,
+                          cancellationPolicy: template.cancellationPolicy,
+                          visaRules: template.visaRules,
+                          generalNotes: template.generalNotes,
+                        },
+                      }));
+                    }
+                  }}
+                  value=""
+                  className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/10 border border-[#B8944F]/30 rounded-lg px-3 py-1.5 outline-none cursor-pointer"
+                >
+                  <option value="">⚡ Load from Policy Preset...</option>
+                  {masterData.policyTemplates.map((p) => (
+                    <option key={p.id} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Payment Policy</label>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                  1. Payment Policy
+                </label>
                 <RichTextEditor
                   value={formData.tripTerms.paymentPolicy || ""}
                   onChange={(val) => {
@@ -2043,12 +2424,14 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                       tripTerms: { ...prev.tripTerms, paymentPolicy: val },
                     }));
                   }}
-                  placeholder="Specify standard booking fees, token payment requirements, and stage payment deadlines."
+                  placeholder="Specify standard booking deposit percentages, stage payment schedules, and final payment deadlines."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Cancellation Policy</label>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                  2. Cancellation Policy
+                </label>
                 <RichTextEditor
                   value={formData.tripTerms.cancellationPolicy || ""}
                   onChange={(val) => {
@@ -2062,7 +2445,9 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">Visa Rules & Travel Requirements</label>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                  3. Visa Rules & Entry Requirements
+                </label>
                 <RichTextEditor
                   value={formData.tripTerms.visaRules || ""}
                   onChange={(val) => {
@@ -2071,12 +2456,14 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                       tripTerms: { ...prev.tripTerms, visaRules: val },
                     }));
                   }}
-                  placeholder="Specify passport validity minimum duration, visa fees on arrival or online e-visa steps."
+                  placeholder="Specify passport validity minimum duration, visa fees on arrival, or online e-visa steps."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-zinc-700 mb-1.5">General Notes & Advisory Rules</label>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+                  4. General Notes & Advisory Guidelines
+                </label>
                 <RichTextEditor
                   value={formData.tripTerms.generalNotes || ""}
                   onChange={(val) => {
@@ -2098,70 +2485,83 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#FAF8F5] py-10 px-4 sm:px-6 lg:px-8 font-sans text-[#1E3B39]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(13,165,144,0.06),transparent_50%)] pointer-events-none" />
-
-      <div className="max-w-5xl mx-auto">
+    <div className="relative min-h-screen bg-[#FAF8F5] py-8 px-4 sm:px-6 lg:px-8 font-sans text-[#14213D]">
+      <div className="max-w-6xl mx-auto">
         {/* Nav Header */}
         <div className="flex items-center justify-between mb-8 pb-5 border-b border-zinc-200">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="flex items-center text-xs font-bold text-zinc-555 hover:text-[#1E3B39] transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="h-4 w-4 mr-1.5 text-[#0DA590]" /> Back to Console
-          </button>
-          <span className="text-sm font-black text-[#0DA590]">
-            {tripId ? "Edit Travel Plan" : "Create Master TripCraft"}
-          </span>
+          <div className="flex items-center space-x-3">
+            <Link
+              href="/"
+              className="flex items-center text-xs font-bold text-zinc-600 hover:text-[#14213D] transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="h-4 w-4 mr-1.5 text-[#B8944F]" /> Back to Workspace Console
+            </Link>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            {/* Manage Master Data Button (Spec Requirement) */}
+            <Link
+              href="/master-data"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-[#B8944F]/40 bg-white hover:bg-[#B8944F]/10 text-xs font-bold text-[#B8944F] transition-all shadow-2xs cursor-pointer"
+            >
+              <Database className="h-3.5 w-3.5" />
+              <span>Manage Master Data</span>
+            </Link>
+
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#14213D] text-[#FAF8F5]">
+              {tripId ? "Edit Travel Blueprint" : "Create Travel Blueprint"}
+            </span>
+          </div>
         </div>
 
-        {/* Form Validation Error Callout */}
+        {/* Validation Alert */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-xs font-bold">
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-bold">
             {error}
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Sidebar Step Indicators */}
+          {/* Sidebar Step Indicators (8 exact steps, brass active indicators) */}
           <div className="lg:col-span-1 space-y-2">
-            <div className="bg-white border border-zinc-200/80 rounded-2xl p-4 sticky top-6 space-y-1 shadow-sm">
-              <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold mb-3 px-1">BUILDING STEPS</p>
+            <div className="bg-white border border-[#B8944F]/20 rounded-lg p-4 sticky top-6 space-y-1 craft-card">
+              <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold mb-3 px-1">
+                BLUEPRINT STEPS
+              </p>
               {STEPS.map((step) => {
                 const Icon = step.icon;
                 const isActive = step.number === currentStep;
                 const isStep1IncompleteVal = step.number === 1 && isStep1Incomplete();
                 const isCompleted = step.number < currentStep && !isStep1IncompleteVal;
 
-                let buttonClasses = "text-zinc-450 hover:bg-zinc-50 cursor-pointer";
+                let buttonClasses = "text-zinc-500 hover:bg-zinc-50 cursor-pointer";
                 if (isActive) {
-                  buttonClasses = "bg-[#0DA590]/10 text-[#0DA590] font-bold border border-[#0DA590]/25 shadow-sm cursor-pointer";
+                  buttonClasses = "bg-[#B8944F]/15 text-[#B8944F] font-bold border-l-3 border-[#B8944F] cursor-pointer";
                 } else if (isStep1IncompleteVal) {
-                  buttonClasses = "text-red-500 hover:bg-red-50/50 border border-red-200/40 shadow-sm cursor-pointer";
+                  buttonClasses = "text-red-500 hover:bg-red-50/50 cursor-pointer";
                 } else if (isCompleted) {
-                  buttonClasses = "text-emerald-650 hover:bg-zinc-50 cursor-pointer";
+                  buttonClasses = "text-[#14213D] font-medium hover:bg-zinc-50 cursor-pointer";
                 }
 
                 let indicatorClasses = "bg-zinc-50 border-zinc-200 text-zinc-500";
                 if (isActive) {
-                  indicatorClasses = "bg-[#0DA590]/20 border-[#0DA590]/35 text-[#0DA590]";
+                  indicatorClasses = "bg-[#B8944F] border-[#B8944F] text-white";
                 } else if (isStep1IncompleteVal) {
                   indicatorClasses = "bg-red-50 border-red-300 text-red-600";
                 } else if (isCompleted) {
-                  indicatorClasses = "bg-emerald-50 border-emerald-200 text-emerald-600";
+                  indicatorClasses = "bg-zinc-100 border-zinc-300 text-zinc-700";
                 }
 
                 return (
                   <button
                     key={step.number}
                     type="button"
-                    onClick={() => {
-                      setCurrentStep(step.number);
-                    }}
-                    className={`w-full flex items-center space-x-3 p-2.5 rounded-xl text-left transition-all ${buttonClasses}`}
+                    onClick={() => setCurrentStep(step.number)}
+                    className={`w-full flex items-center space-x-3 p-2.5 rounded-md text-left transition-all ${buttonClasses}`}
                   >
-                    <div className={`h-6 w-6 rounded-lg flex items-center justify-center text-[10px] font-bold border ${indicatorClasses}`}>
+                    <div
+                      className={`h-6 w-6 rounded-md flex items-center justify-center text-[10px] font-bold border ${indicatorClasses}`}
+                    >
                       {isCompleted ? <Check className="h-3 w-3" /> : step.number}
                     </div>
                     <span className="text-xs truncate">{step.name}</span>
@@ -2173,54 +2573,49 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
 
           {/* Form Content container */}
           <div className="lg:col-span-3">
-            <div className="bg-white border border-zinc-200 rounded-3xl p-6 sm:p-8 shadow-xl">
+            <div className="bg-white border border-[#B8944F]/20 rounded-lg p-6 sm:p-8 craft-card shadow-sm">
               <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
                 {renderStepContent()}
 
-                {/* Navigation Buttons */}
-                {currentStep === 1 && isStep1Incomplete() && (
-                  <div className="text-red-500 text-xs font-bold text-right mb-4">
-                    ⚠️ Please fill in all required fields.
-                  </div>
-                )}
-
+                {/* Footer Navigation */}
                 <div className="flex items-center justify-between border-t border-zinc-200 pt-6 mt-8">
                   <button
                     type="button"
                     onClick={prevStep}
                     disabled={currentStep === 1}
-                    className="flex items-center px-4 py-2.5 rounded-xl border border-zinc-200 bg-white text-xs font-semibold text-zinc-500 hover:text-zinc-800 disabled:opacity-30 disabled:pointer-events-none shadow-sm transition-all cursor-pointer"
+                    className="flex items-center px-4 py-2.5 rounded-lg border border-zinc-200 bg-white text-xs font-semibold text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
                   >
-                    <ArrowLeft className="h-4 w-4 mr-1.5 text-[#0DA590]" /> Previous
+                    <ArrowLeft className="h-4 w-4 mr-1.5 text-[#B8944F]" /> Previous Step
                   </button>
 
                   <div className="flex items-center space-x-2">
-                    {currentStep === STEPS.length && tripId && (
+                    {/* Generate PDF Button stays as-is */}
+                    {tripId && (
                       <button
                         type="button"
                         onClick={handleExportPDF}
                         disabled={downloading}
-                        className="flex items-center px-4 py-2.5 rounded-xl border border-zinc-200 bg-white text-xs font-bold text-[#1E3B39] hover:text-[#0DA590] hover:border-[#0DA590]/30 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                        className="flex items-center px-4 py-2.5 rounded-lg border border-zinc-200 bg-white text-xs font-bold text-[#14213D] hover:border-[#B8944F] transition-all disabled:opacity-50 cursor-pointer"
                       >
                         {downloading ? (
                           <>
-                            <Loader2 className="h-4 w-4 animate-spin mr-1 text-[#0DA590]" />
-                            <span>Exporting...</span>
+                            <Loader2 className="h-4 w-4 animate-spin mr-1 text-[#B8944F]" />
+                            <span>Generating PDF...</span>
                           </>
                         ) : (
                           <>
-                            <FileDown className="h-4 w-4 mr-1 text-[#0DA590]" />
-                            <span>Export PDF</span>
+                            <FileDown className="h-4 w-4 mr-1 text-[#B8944F]" />
+                            <span>Generate PDF</span>
                           </>
                         )}
                       </button>
                     )}
-                    
+
                     {currentStep < STEPS.length ? (
                       <button
                         type="button"
                         onClick={nextStep}
-                        className="flex items-center px-5 py-2.5 rounded-xl bg-[#0DA590] hover:bg-[#0b8e7c] text-xs font-bold text-white shadow-sm transition-all cursor-pointer"
+                        className="flex items-center px-5 py-2.5 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-xs font-bold text-white transition-all cursor-pointer shadow-xs"
                       >
                         Next Step <ArrowRight className="h-4 w-4 ml-1.5" />
                       </button>
@@ -2229,15 +2624,15 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                         type="button"
                         onClick={handleSubmit}
                         disabled={loading}
-                        className="flex items-center px-6 py-2.5 rounded-xl bg-[#0DA590] hover:bg-[#0b8e7c] text-xs font-bold text-white shadow-md disabled:opacity-50 transition-all cursor-pointer"
+                        className="flex items-center px-6 py-2.5 rounded-lg bg-[#14213D] hover:bg-[#2B2E36] text-xs font-bold text-white shadow-sm disabled:opacity-50 transition-all cursor-pointer"
                       >
                         {loading ? (
                           <>
-                            <Loader2 className="animate-spin h-4 w-4 mr-1.5" /> Saving...
+                            <Loader2 className="animate-spin h-4 w-4 mr-1.5" /> Saving Blueprint...
                           </>
                         ) : (
                           <>
-                            <Save className="h-4 w-4 mr-1.5" /> Save Itinerary
+                            <Save className="h-4 w-4 mr-1.5 text-[#B8944F]" /> Save Blueprint
                           </>
                         )}
                       </button>

@@ -1,9 +1,20 @@
+/**
+ * ==============================================================================
+ * CONFIDENTIALITY & INTEGRITY WARNING:
+ * ------------------------------------------------------------------------------
+ * This PDF generation route is strictly for customer-facing travel proposals.
+ * UNDER NO CIRCUMSTANCES should Admin Cost Calculation models (e.g. MasterCostRate,
+ * TripCostCalculation, wholesale B2B internal costs, net profit, or margin percentages)
+ * ever be queried, included, or referenced in this document generator.
+ * ==============================================================================
+ */
+
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium";
 
-export const maxDuration = 60; // 60 seconds Vercel timeout limit
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function GET(
@@ -13,7 +24,7 @@ export async function GET(
   const { id } = await params;
 
   try {
-    // 1. Fetch trip and all relational entities
+    // 1. Fetch trip and its customer-facing entities (Never fetch internal costing)
     const trip = await db.trip.findUnique({
       where: { id },
       include: {
@@ -40,294 +51,314 @@ export async function GET(
       return new Response("Trip Not Found", { status: 404 });
     }
 
-    // 2. Build the print-optimized template elements
-    const coverImage = trip.coverImage || trip.accommodations[0]?.photos[0] || "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1200&q=80";
+    const coverImage =
+      trip.coverImage ||
+      trip.accommodations[0]?.photos[0] ||
+      "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1200&q=80";
 
-    // Build days list for Glance
-    const glanceRows = trip.itineraryDays.map((d: any) => `
-      <tr class="border-b border-stone-200">
-        <td class="py-2.5 font-bold text-[#FF176B] pr-2">Day ${d.dayNumber}</td>
+    // Summary glance table rows
+    const glanceRows = trip.itineraryDays
+      .map(
+        (d: any) => `
+      <tr class="border-b border-stone-200 break-avoid">
+        <td class="py-2.5 font-bold text-[#B8944F] pr-2 whitespace-nowrap">Day ${d.dayNumber}</td>
         <td class="py-2.5 text-stone-600 font-semibold pr-2">${d.cityOrStay}</td>
-        <td class="py-2.5 text-stone-750 font-bold">${d.title}</td>
+        <td class="py-2.5 text-stone-800 font-bold">${d.title}</td>
       </tr>
-    `).join("");
+    `
+      )
+      .join("");
 
-    // Build price lines
-    const priceQuoteSubtotal = trip.priceQuoteItems.reduce((acc: number, item: any) => acc + item.amount, 0);
-    const priceLines = trip.priceQuoteItems.map((item: any) => `
-      <div class="flex justify-between border-b border-stone-200 py-2 text-xs">
-        <span class="text-stone-500 font-medium">${item.label}</span>
-        <span class="font-bold text-[#1E3B39]">₹${item.amount.toLocaleString("en-IN")}</span>
+    // Price lines
+    const priceQuoteSubtotal = trip.priceQuoteItems.reduce(
+      (acc: number, item: any) => acc + item.amount,
+      0
+    );
+    const priceLines = trip.priceQuoteItems
+      .map(
+        (item: any) => `
+      <div class="flex justify-between border-b border-stone-150 py-2 text-xs">
+        <span class="text-stone-600 font-medium">${item.label}</span>
+        <span class="font-bold text-[#14213D]">₹${item.amount.toLocaleString("en-IN")}</span>
       </div>
-    `).join("");
+    `
+      )
+      .join("");
 
-    // Helper for formatting date time
     const formatDateTime = (dateStr: any) => {
-      return new Date(dateStr).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      try {
+        return new Date(dateStr).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      } catch (e) {
+        return dateStr;
+      }
     };
 
-    // Build Day Detailed Pages
-    const detailedDaysHtml = trip.itineraryDays.map((day: any) => {
-      const inclusionsList = (day.inclusions || []).map((inc: string) => `
-        <li class="flex items-start text-xs text-stone-600 mb-1">
-          <span class="text-emerald-500 mr-2 font-bold">&bull;</span> ${inc}
-        </li>
-      `).join("");
+    // Detailed Days HTML (Self-contained blocks with break-inside: avoid)
+    const detailedDaysHtml = trip.itineraryDays
+      .map((day: any) => {
+        const inclusionsList = (day.inclusions || [])
+          .map(
+            (inc: string) => `
+          <li class="flex items-start text-xs text-stone-600 mb-1">
+            <span class="text-emerald-600 mr-2 font-bold">&bull;</span> ${inc}
+          </li>
+        `
+          )
+          .join("");
 
-      const exclusionsList = (day.exclusions || []).map((exc: string) => `
-        <li class="flex items-start text-xs text-stone-600 mb-1">
-          <span class="text-red-500 mr-2 font-bold">&bull;</span> ${exc}
-        </li>
-      `).join("");
+        const exclusionsList = (day.exclusions || [])
+          .map(
+            (exc: string) => `
+          <li class="flex items-start text-xs text-stone-600 mb-1">
+            <span class="text-rose-500 mr-2 font-bold">&bull;</span> ${exc}
+          </li>
+        `
+          )
+          .join("");
 
-      const lovedTips = (day.customerLovedTips || []).map((tip: string) => `
-        <li class="flex items-start text-xs text-stone-700">
-          <span class="text-[#FF176B] mr-2 font-bold">&bull;</span> ${tip}
-        </li>
-      `).join("");
+        const lovedTips = (day.customerLovedTips || [])
+          .map(
+            (tip: string) => `
+          <li class="flex items-start text-xs text-stone-700">
+            <span class="text-pink-600 mr-1.5 font-bold">&bull;</span> ${tip}
+          </li>
+        `
+          )
+          .join("");
 
-      const watchOutTips = (day.customerWatchOutTips || []).map((tip: string) => `
-        <li class="flex items-start text-xs text-stone-700">
-          <span class="text-amber-600 mr-2 font-bold">&bull;</span> ${tip}
-        </li>
-      `).join("");
+        const watchOutTips = (day.customerWatchOutTips || [])
+          .map(
+            (tip: string) => `
+          <li class="flex items-start text-xs text-stone-700">
+            <span class="text-amber-600 mr-1.5 font-bold">&bull;</span> ${tip}
+          </li>
+        `
+          )
+          .join("");
 
-      return `
-        <div class="pdf-page">
-          <div>
-            <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-2 mb-6">
-              <span>${trip.title}</span>
-              <span>Itinerary Day ${day.dayNumber}</span>
+        return `
+        <div class="pdf-section break-avoid bg-white border border-stone-200 rounded-xl p-6 mb-6 shadow-xs">
+          <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-150 pb-2 mb-4">
+            <span class="font-bold text-[#14213D]">${trip.title}</span>
+            <span>Day ${day.dayNumber} Itinerary</span>
+          </div>
+
+          <div class="flex justify-between items-start border-b border-[#B8944F]/30 pb-3 mb-4">
+            <div class="flex items-center space-x-3">
+              <span class="h-8 w-8 bg-[#B8944F] text-white rounded-full flex items-center justify-center font-bold text-sm shrink-0">
+                ${day.dayNumber}
+              </span>
+              <div>
+                <h3 class="text-lg font-black text-[#14213D]">${day.title}</h3>
+                <p class="text-xs text-[#B8944F] font-bold">Stay / Region: ${day.cityOrStay}</p>
+              </div>
             </div>
+            ${
+              day.durationHours
+                ? `<span class="text-xs px-2.5 py-1 bg-stone-100 rounded-full font-bold border border-stone-200 shrink-0">Duration: ${day.durationHours}h</span>`
+                : ""
+            }
+          </div>
 
-            <div class="flex justify-between items-center border-b-2 border-[#0DA590] pb-4 mb-6">
-              <div class="flex items-center space-x-3">
-                <span class="h-9 w-9 bg-[#0DA590] text-white rounded-full flex items-center justify-center font-bold text-lg shadow-sm">
-                  ${day.dayNumber}
-                </span>
-                <div>
-                  <h3 class="text-xl font-extrabold text-[#1E3B39]">${day.title}</h3>
-                  <p class="text-xs text-[#0DA590] font-bold">Stay: ${day.cityOrStay}</p>
+          <div class="text-xs leading-relaxed text-stone-700 font-medium mb-4 whitespace-pre-line">
+            ${day.description}
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 pt-3 border-t border-stone-150">
+            <div>
+              <p class="text-[9px] text-stone-400 font-bold uppercase tracking-wider mb-1.5">Day Inclusions</p>
+              <ul class="list-none space-y-0.5">
+                ${inclusionsList || '<li class="text-stone-400 italic text-xs">Standard plan inclusions apply</li>'}
+              </ul>
+            </div>
+            <div>
+              <p class="text-[9px] text-stone-400 font-bold uppercase tracking-wider mb-1.5">Day Exclusions</p>
+              <ul class="list-none space-y-0.5">
+                ${exclusionsList || '<li class="text-stone-400 italic text-xs">Standard plan exclusions apply</li>'}
+              </ul>
+            </div>
+          </div>
+
+          ${
+            lovedTips || watchOutTips
+              ? `
+            <div class="grid grid-cols-2 gap-4 pt-4 mt-2 border-t border-stone-100">
+              ${
+                lovedTips
+                  ? `
+                <div class="bg-pink-50/60 border border-pink-200 p-3.5 rounded-lg">
+                  <h5 class="text-[11px] font-bold text-pink-700 mb-1.5 uppercase tracking-wide">❤️ What Travelers Love</h5>
+                  <ul class="space-y-1">${lovedTips}</ul>
                 </div>
-              </div>
-              ${day.durationHours ? `<span class="text-xs px-3 py-1 bg-stone-100 rounded-full font-bold border border-stone-200">Duration: ${day.durationHours} Hours</span>` : ""}
+              `
+                  : ""
+              }
+              ${
+                watchOutTips
+                  ? `
+                <div class="bg-amber-50/60 border border-amber-200 p-3.5 rounded-lg">
+                  <h5 class="text-[11px] font-bold text-amber-800 mb-1.5 uppercase tracking-wide">⚠️ Advisory Guidelines</h5>
+                  <ul class="space-y-1">${watchOutTips}</ul>
+                </div>
+              `
+                  : ""
+              }
             </div>
-
-            <div class="text-sm leading-relaxed text-stone-600 font-medium mb-6">
-              ${day.description}
-            </div>
-
-            <div class="grid grid-cols-2 gap-6 pt-4 border-t border-stone-150">
-              <div>
-                <p class="text-[10px] text-stone-400 font-bold uppercase mb-2">Day Inclusions</p>
-                <ul class="list-none space-y-0.5">
-                  ${inclusionsList || '<li class="text-stone-400 italic text-xs">Standard plan inclusions apply</li>'}
-                </ul>
-              </div>
-              <div>
-                <p class="text-[10px] text-stone-400 font-bold uppercase mb-2">Day Exclusions</p>
-                <ul class="list-none space-y-0.5">
-                  ${exclusionsList || '<li class="text-stone-400 italic text-xs">Standard plan exclusions apply</li>'}
-                </ul>
-              </div>
-            </div>
-
-            ${lovedTips || watchOutTips ? `
-              <div class="grid grid-cols-2 gap-4 pt-6">
-                ${lovedTips ? `
-                  <div class="bg-[#FF176B]/5 border border-[#FF176B]/20 p-4 rounded-xl">
-                    <h5 class="text-xs font-bold text-[#FF176B] mb-2 uppercase tracking-wide">❤️ What Travelers Love</h5>
-                    <ul class="space-y-1">${lovedTips}</ul>
-                  </div>
-                ` : ""}
-                ${watchOutTips ? `
-                  <div class="bg-amber-50/50 border border-amber-250 p-4 rounded-xl">
-                    <h5 class="text-xs font-bold text-amber-700 mb-2 uppercase tracking-wide">⚠️ Watch-out Guidelines</h5>
-                    <ul class="space-y-1">${watchOutTips}</ul>
-                  </div>
-                ` : ""}
-              </div>
-            ` : ""}
-          </div>
-
-          <div class="border-t border-stone-250 pt-2 flex justify-between items-center text-[9px] text-stone-400 font-medium">
-            <span>&copy; TripCraft. All rights reserved.</span>
-            <span>Confidential Travel Itinerary</span>
-          </div>
+          `
+              : ""
+          }
         </div>
       `;
-    }).join("");
+      })
+      .join("");
 
     // Accommodations
-    const accommodationsHtml = trip.accommodations.map((acc: any) => {
-      const starRow = Array.from({ length: acc.starRating }).map(() => `
-        <svg class="h-4 w-4 fill-amber-500 text-amber-500 inline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-      `).join("");
+    const accommodationsHtml = trip.accommodations
+      .map((acc: any) => {
+        const starRow = Array.from({ length: acc.starRating || 4 })
+          .map(
+            () =>
+              `<svg class="h-3.5 w-3.5 fill-amber-500 text-amber-500 inline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`
+          )
+          .join("");
 
-      const photoGrid = (acc.photos || []).slice(0, 4).map((pUrl: string) => `
-        <div class="aspect-video bg-stone-100 rounded-lg overflow-hidden">
-          <img src="${pUrl}" class="h-full w-full object-cover" />
-        </div>
-      `).join("");
+        const photoGrid = (acc.photos || [])
+          .slice(0, 3)
+          .map(
+            (pUrl: string) => `
+          <div class="aspect-video bg-stone-100 rounded-lg overflow-hidden border border-stone-200">
+            <img src="${pUrl}" class="h-full w-full object-cover" />
+          </div>
+        `
+          )
+          .join("");
 
-      const facilitiesTags = (acc.facilities || []).map((fac: string) => `
-        <span class="text-[10px] px-2.5 py-0.5 bg-stone-50 border border-stone-200 text-stone-600 rounded-full font-bold">${fac}</span>
-      `).join("");
+        const facilitiesTags = (acc.facilities || [])
+          .map(
+            (fac: string) => `
+          <span class="text-[9px] px-2 py-0.5 bg-stone-50 border border-stone-200 text-stone-600 rounded-full font-bold">${fac}</span>
+        `
+          )
+          .join("");
 
-      let attractions = [];
-      try { attractions = typeof acc.nearbyAttractions === "string" ? JSON.parse(acc.nearbyAttractions) : acc.nearbyAttractions; } catch(e) {}
-      const attractionsList = attractions.map((att: any) => `
-        <li class="truncate text-xs font-medium text-stone-600">&bull; ${att.name} (${att.distanceKm} km)</li>
-      `).join("");
-
-      let restaurants = [];
-      try { restaurants = typeof acc.nearbyRestaurants === "string" ? JSON.parse(acc.nearbyRestaurants) : acc.nearbyRestaurants; } catch(e) {}
-      const restaurantsList = restaurants.map((rest: any) => `
-        <li class="truncate text-xs font-medium text-stone-600">&bull; ${rest.name} (${rest.distance})</li>
-      `).join("");
-
-      return `
-        <div class="pdf-page">
-          <div>
-            <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-2 mb-6">
-              <span>${trip.title}</span>
-              <span>Accommodation stay</span>
-            </div>
-
-            <div class="border-b-2 border-[#0DA590] pb-4 mb-6">
-              <span class="text-[10px] font-bold text-[#FF176B] uppercase tracking-wider">${acc.location} Stay</span>
-              <h3 class="text-xl font-extrabold text-[#1E3B39] mt-1">${acc.hotelName}</h3>
+        return `
+        <div class="pdf-section break-avoid bg-white border border-stone-200 rounded-xl p-5 mb-5 shadow-xs">
+          <div class="flex justify-between items-start border-b border-[#B8944F]/30 pb-3 mb-4">
+            <div>
+              <span class="text-[9px] font-bold text-[#A6572E] uppercase tracking-wider">${acc.location} Stay</span>
+              <h3 class="text-base font-black text-[#14213D] mt-0.5">${acc.hotelName}</h3>
               <div class="flex items-center space-x-2 mt-1">
                 <div class="flex space-x-0.5">${starRow}</div>
-                ${acc.ratingScore ? `<span class="text-xs bg-[#0DA590]/10 border border-[#0DA590]/20 text-[#0DA590] px-2 py-0.5 rounded font-bold">${acc.ratingScore}★ (${acc.ratingLabel || "Guest rating"})</span>` : ""}
+                ${
+                  acc.ratingScore
+                    ? `<span class="text-[10px] bg-[#B8944F]/10 border border-[#B8944F]/20 text-[#B8944F] px-2 py-0.5 rounded font-bold">${acc.ratingScore}★ (${acc.ratingLabel || "Guest rating"})</span>`
+                    : ""
+                }
               </div>
             </div>
-
-            <div class="grid grid-cols-2 gap-6">
-              <div class="space-y-4">
-                <div class="grid grid-cols-2 gap-4 text-xs border-b border-stone-200 pb-3">
-                  <div>
-                    <p class="text-[10px] text-stone-400 font-bold uppercase">Check-In</p>
-                    <p class="font-bold text-[#1E3B39] mt-0.5">${new Date(acc.checkInDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
-                  </div>
-                  <div>
-                    <p class="text-[10px] text-stone-400 font-bold uppercase">Check-Out</p>
-                    <p class="font-bold text-[#1E3B39] mt-0.5">${new Date(acc.checkOutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
-                  </div>
-                  <div class="col-span-2">
-                    <p class="text-[10px] text-stone-400 font-bold uppercase">Room & Plan</p>
-                    <p class="font-bold text-[#1E3B39] mt-0.5">${acc.roomType} (${acc.mealPlan})</p>
-                  </div>
-                </div>
-
-                ${facilitiesTags ? `
-                  <div>
-                    <p class="text-[10px] text-stone-400 font-bold uppercase mb-2">Amenities</p>
-                    <div class="flex flex-wrap gap-1.5">${facilitiesTags}</div>
-                  </div>
-                ` : ""}
-
-                <div class="grid grid-cols-2 gap-4 text-xs pt-2 border-t border-stone-150">
-                  <div>
-                    <p class="text-[10px] text-stone-400 font-bold uppercase mb-1.5">Attractions</p>
-                    <ul class="list-none space-y-1">${attractionsList || '<li class="text-stone-400 italic">Not listed</li>'}</ul>
-                  </div>
-                  <div>
-                    <p class="text-[10px] text-stone-400 font-bold uppercase mb-1.5">Nearby Dining</p>
-                    <ul class="list-none space-y-1">${restaurantsList || '<li class="text-stone-400 italic">Not listed</li>'}</ul>
-                  </div>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-2 gap-2 content-start">
-                ${photoGrid || '<div class="col-span-2 py-10 bg-stone-50 border border-dashed text-center text-xs text-stone-400 rounded-xl">No photos uploaded</div>'}
-              </div>
+            <div class="text-right text-xs">
+              <span class="text-[9px] text-stone-400 font-bold uppercase block">Stay Dates</span>
+              <span class="font-bold text-[#14213D]">${new Date(acc.checkInDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${new Date(acc.checkOutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
             </div>
           </div>
 
-          <div class="border-t border-stone-250 pt-2 flex justify-between items-center text-[9px] text-stone-400 font-medium">
-            <span>&copy; TripCraft. All rights reserved.</span>
-            <span>Confidential Travel Itinerary</span>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-3">
+              <div class="text-xs">
+                <p class="text-[9px] text-stone-400 font-bold uppercase">Room & Plan</p>
+                <p class="font-bold text-[#14213D] mt-0.5">${acc.roomType} (${acc.mealPlan})</p>
+              </div>
+
+              ${
+                facilitiesTags
+                  ? `
+                <div>
+                  <p class="text-[9px] text-stone-400 font-bold uppercase mb-1">Amenities</p>
+                  <div class="flex flex-wrap gap-1">${facilitiesTags}</div>
+                </div>
+              `
+                  : ""
+              }
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 content-start">
+              ${photoGrid || '<div class="col-span-2 py-6 bg-stone-50 border border-dashed text-center text-xs text-stone-400 rounded-lg">No photos uploaded</div>'}
+            </div>
           </div>
         </div>
       `;
-    }).join("");
+      })
+      .join("");
 
     // Flights
-    const flightsRows = trip.flightDetails.map((f: any) => `
-      <tr class="border-b border-stone-200 text-xs">
-        <td class="p-3 font-extrabold text-[#1E3B39] align-top">
+    const flightsRows = trip.flightDetails
+      .map(
+        (f: any) => `
+      <tr class="border-b border-stone-200 text-xs break-avoid">
+        <td class="p-2.5 font-bold text-[#14213D] align-top">
           ${f.sector}
-          ${f.flightNotes ? `<div class="text-[9px] text-stone-500 mt-1 italic font-medium bg-stone-50 p-1 border border-stone-150 rounded">${f.flightNotes}</div>` : ""}
+          ${f.flightNotes ? `<div class="text-[9px] text-stone-500 mt-0.5 italic">${f.flightNotes}</div>` : ""}
         </td>
-        <td class="p-3 align-top">${f.airline}</td>
-        <td class="p-3 align-top">${formatDateTime(f.departureDateTime)}</td>
-        <td class="p-3 align-top">${formatDateTime(f.arrivalDateTime)}</td>
-        <td class="p-3 align-top">
-          <p class="font-bold">${f.durationText}</p>
-          <p class="text-[10px] text-stone-400">${f.stops === 0 ? "Non-stop" : `${f.stops} Stop(s)`} ${f.layoverInfo ? `(${f.layoverInfo})` : ""}</p>
+        <td class="p-2.5 align-top">${f.airline}</td>
+        <td class="p-2.5 align-top font-mono text-[11px]">${formatDateTime(f.departureDateTime)}</td>
+        <td class="p-2.5 align-top font-mono text-[11px]">${formatDateTime(f.arrivalDateTime)}</td>
+        <td class="p-2.5 align-top">
+          <p class="font-bold">${f.stops === 0 ? "Non-stop" : `${f.stops} Stop(s)`}</p>
+          ${f.layoverInfo ? `<p class="text-[9px] text-stone-400">${f.layoverInfo}</p>` : ""}
         </td>
-        <td class="p-3 text-right align-top">
-          <p class="font-bold">Cabin: ${f.carryOnBaggageKg || 7}kg</p>
-          <p class="text-[10px] text-stone-400">Cargo: ${f.checkInBaggageKg || 20}kg</p>
+        <td class="p-2.5 text-right align-top font-mono text-[11px]">
+          ${f.carryOnBaggageKg || 7}kg / ${f.checkInBaggageKg || 20}kg
         </td>
       </tr>
-    `).join("");
+    `
+      )
+      .join("");
 
     // Addons
-    const addonsRows = trip.addOns.map((addon: any) => {
-      let desc: any = {};
-      try { desc = typeof addon.detailsJson === "string" ? JSON.parse(addon.detailsJson) : addon.detailsJson; } catch(e) {}
-      return `
-        <tr class="border-b border-stone-200 text-xs">
-          <td class="p-3 font-extrabold text-[#1E3B39]">${addon.name}</td>
-          <td class="p-3">
+    const addonsRows = trip.addOns
+      .map((addon: any) => {
+        let desc: any = {};
+        try {
+          desc = typeof addon.detailsJson === "string" ? JSON.parse(addon.detailsJson) : addon.detailsJson;
+        } catch (e) {}
+        return `
+        <tr class="border-b border-stone-200 text-xs break-avoid">
+          <td class="p-2.5 font-bold text-[#14213D]">${addon.name}</td>
+          <td class="p-2.5">
             ${desc?.visaType ? `<p><span class="font-bold">Visa Type:</span> ${desc.visaType}</p>` : ""}
             ${desc?.length ? `<p><span class="font-bold">Length:</span> ${desc.length}</p>` : ""}
-            ${desc?.validity ? `<p><span class="font-bold">Validity:</span> ${desc.validity}</p>` : ""}
-            ${desc?.details ? `<p class="italic text-stone-500 mt-1">${desc.details}</p>` : ""}
+            ${desc?.details ? `<p class="italic text-stone-500 mt-0.5">${desc.details}</p>` : ""}
           </td>
-          <td class="p-3 text-right font-bold text-[#0DA590]">₹${addon.price.toLocaleString("en-IN")} ${addon.priceType}</td>
+          <td class="p-2.5 text-right font-bold text-[#14213D] font-mono">₹${addon.price.toLocaleString("en-IN")} ${addon.priceType}</td>
         </tr>
       `;
-    }).join("");
+      })
+      .join("");
 
-    // Dining grouped
-    const diningGrouped = trip.restaurantSuggestions.reduce((acc: any, rest: any) => {
-      const loc = rest.location;
-      if (!acc[loc]) acc[loc] = [];
-      acc[loc].push(rest);
-      return acc;
-    }, {});
-
-    const diningHtml = Object.keys(diningGrouped).map((locName) => {
-      const cards = diningGrouped[locName].map((rest: any) => `
-        <div class="bg-stone-50 border border-stone-200 p-4 rounded-xl flex justify-between items-center">
-          <div>
-            <h4 class="font-bold text-[#1E3B39] text-sm">${rest.name}</h4>
-            <p class="text-[10px] text-stone-400 font-bold uppercase mt-1">${rest.category} &bull; ${rest.cuisineType}</p>
-            ${rest.rating ? `<p class="text-[10px] text-amber-600 font-bold mt-0.5">★ ${rest.rating} (${rest.reviewCount || 100}+ reviews)</p>` : ""}
-          </div>
-          ${rest.isVeg ? `<span class="text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Veg Options</span>` : ""}
+    // Dining
+    const diningCards = trip.restaurantSuggestions
+      .map(
+        (rest: any) => `
+      <div class="bg-stone-50 border border-stone-200 p-3 rounded-xl break-avoid">
+        <h4 class="font-bold text-[#14213D] text-xs">${rest.name}</h4>
+        <p class="text-[10px] text-stone-500 mt-0.5">📍 ${rest.location} &bull; ${rest.category} (${rest.cuisineType})</p>
+        <div class="flex items-center justify-between mt-1.5">
+          ${rest.rating ? `<span class="text-[9px] text-amber-600 font-bold">★ ${rest.rating} (${rest.reviewCount || 100}+ reviews)</span>` : "<span></span>"}
+          ${rest.isVeg ? `<span class="text-[8px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full">Veg Options</span>` : ""}
         </div>
-      `).join("");
-
-      return `
-        <div class="space-y-3">
-          <h4 class="text-sm font-bold text-[#0DA590] border-b border-stone-150 pb-1.5">📍 Dining in ${locName}</h4>
-          <div class="grid grid-cols-2 gap-4">${cards}</div>
-        </div>
-      `;
-    }).join("");
+      </div>
+    `
+      )
+      .join("");
 
     const terms = trip.tripTerms;
 
-    // Compile entire branded document
+    // Compile dynamic, content-sized HTML layout
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="en">
@@ -336,33 +367,45 @@ export async function GET(
         <title>${trip.title}</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
-          @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800;900&display=swap');
+          @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;900&family=Inter:wght@400;500;600;700;800&display=swap');
+          
+          /* Explicit print page margins (Part D Specification) */
           @page {
             size: A4;
-            margin: 0mm;
+            margin: 12mm 15mm;
           }
+          
           body {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
             background-color: #FAF8F5;
-            color: #1E3B39;
+            color: #14213D;
             margin: 0;
             padding: 0;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
-          .pdf-page {
-            width: 210mm;
-            height: 297mm;
-            page-break-after: always;
-            box-sizing: border-box;
-            padding: 20mm;
-            position: relative;
-            background-color: #FAF8F5;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+
+          .font-fraunces {
+            font-family: 'Fraunces', Georgia, serif;
           }
+
+          /* Prevent content cut off inside cards & table rows (Part D) */
+          .break-avoid {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          /* Page break strictly after cover page and before terms (Part D) */
+          .page-break-after {
+            page-break-after: always;
+            break-after: page;
+          }
+
+          .page-break-before {
+            page-break-before: always;
+            break-before: page;
+          }
+
           .prose ul {
             list-style-type: disc !important;
             padding-left: 1.25rem !important;
@@ -380,7 +423,7 @@ export async function GET(
           }
           .prose strong {
             font-weight: 700 !important;
-            color: #1E3B39 !important;
+            color: #14213D !important;
           }
           .prose p {
             margin-bottom: 0.5rem !important;
@@ -389,275 +432,271 @@ export async function GET(
       </head>
       <body>
         
-        <!-- COVER PAGE -->
-        <div class="pdf-page bg-white" style="padding: 0;">
-          <div class="h-[155mm] w-full relative">
+        <!-- COVER PAGE (Page Break After) -->
+        <div class="page-break-after flex flex-col justify-between min-h-[250mm] bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm">
+          <div class="h-[140mm] w-full relative">
             <img src="${coverImage}" class="h-full w-full object-cover" />
-            <div class="absolute inset-0 bg-gradient-to-t from-[#1E3B39] via-[#1E3B39]/50 to-transparent"></div>
-            <div class="absolute top-[15mm] left-[20mm] right-[20mm] flex justify-between items-center">
-              <svg viewBox="0 0 250 85" class="h-14 w-auto filter brightness-0 invert" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M15 25 L45 35 L28 45 Z" fill="#FFFFFF" opacity="0.9" />
-                <path d="M45 35 L32 55 L28 45 Z" fill="#FFFFFF" opacity="0.9" />
-                <path d="M15 25 L28 45 L32 55 Z" fill="#FFFFFF" opacity="0.8" />
-                <circle cx="45" cy="35" r="2.5" fill="#FFFFFF" />
-                <text x="62" y="48" fill="#FFFFFF" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="26" letter-spacing="-0.5">Trip<tspan fill="#FFFFFF" opacity="0.8">Craft</tspan></text>
-              </svg>
-              <span class="text-[10px] font-extrabold px-3 py-1.5 bg-[#0DA590] text-white rounded-full uppercase tracking-wider">
-                Travel Proposal
+            <div class="absolute inset-0 bg-gradient-to-t from-[#14213D] via-[#14213D]/40 to-transparent"></div>
+            
+            <div class="absolute top-6 left-8 right-8 flex justify-between items-center">
+              <span class="text-2xl font-black text-white tracking-tight font-fraunces">TripCraft</span>
+              <span class="text-[10px] font-bold px-3 py-1.5 bg-[#B8944F] text-white rounded-full uppercase tracking-wider">
+                Custom Itinerary Proposal
               </span>
             </div>
             
-            <div class="absolute bottom-[15mm] left-[20mm] right-[20mm]">
-              <span class="text-[10px] font-bold text-[#0DA590] bg-[#0DA590]/10 border border-[#0DA590]/25 px-3 py-1 rounded-full uppercase tracking-wider">Custom Itinerary</span>
-              <h1 class="text-3xl font-black text-white tracking-tight leading-tight uppercase mt-3 drop-shadow-sm">
+            <div class="absolute bottom-6 left-8 right-8">
+              <span class="text-[10px] font-bold text-[#FAF8F5] bg-[#B8944F]/80 px-2.5 py-0.5 rounded uppercase tracking-wider">Verified Blueprint</span>
+              <h1 class="text-3xl font-black text-white tracking-tight leading-tight mt-2 font-fraunces">
                 ${trip.title}
               </h1>
-              <p class="text-xs text-stone-300 font-bold mt-1.5 drop-shadow-sm">Destination: ${trip.destination} (Ex-${trip.departureCity})</p>
+              <p class="text-xs text-stone-200 font-semibold mt-1">Destination: ${trip.destination} (Ex-${trip.departureCity})</p>
             </div>
           </div>
 
-          <div class="flex-1 px-[20mm] py-[15mm] flex flex-col justify-between">
-            <div class="grid grid-cols-2 gap-8 border-b border-stone-250 pb-8">
+          <div class="p-8 flex flex-col justify-between flex-1">
+            <div class="grid grid-cols-2 gap-6 border-b border-stone-200 pb-6">
               <div>
-                <p class="text-stone-400 font-bold uppercase text-[9px] tracking-wider">Dates of Travel</p>
-                <p class="font-extrabold text-[#1E3B39] text-base mt-1">
+                <p class="text-stone-400 font-bold uppercase text-[9px] tracking-wider">Travel Dates</p>
+                <p class="font-bold text-[#14213D] text-sm mt-0.5">
                   ${new Date(trip.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} to 
                   ${new Date(trip.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </p>
-                <p class="text-stone-500 font-semibold text-xs mt-1 bg-stone-100 inline-block px-2.5 py-1 rounded-md border border-stone-200">
-                  ${trip.durationDays} Days / ${trip.durationNights} Nights &bull; ${trip.numTravellers} Guests
+                <p class="text-stone-500 font-medium text-xs mt-1">
+                  ${trip.durationDays} Days / ${trip.durationNights} Nights &bull; ${trip.numTravellers} Travellers
                 </p>
               </div>
               <div>
-                <p class="text-stone-400 font-bold uppercase text-[9px] tracking-wider">Prepared By</p>
-                <p class="font-extrabold text-[#1E3B39] text-base mt-1">${trip.consultantName}</p>
-                <p class="text-stone-550 font-semibold text-xs mt-1">Phone: ${trip.consultantPhone}</p>
+                <p class="text-stone-400 font-bold uppercase text-[9px] tracking-wider">Travel Consultant</p>
+                <p class="font-bold text-[#14213D] text-sm mt-0.5">${trip.consultantName}</p>
+                <p class="text-stone-500 font-medium text-xs mt-1">Phone: ${trip.consultantPhone}</p>
               </div>
             </div>
 
-            <div class="flex justify-between items-center text-[10px] text-stone-400 font-medium">
+            <div class="flex justify-between items-center text-[9px] text-stone-400 font-medium pt-4">
               <p>&copy; TripCraft. All rights reserved.</p>
-              <p>Generated on ${new Date().toLocaleDateString()}</p>
+              <p>Proposal Date: ${new Date().toLocaleDateString()}</p>
             </div>
           </div>
         </div>
 
-        <!-- SUMMARY & INVOICE PAGE -->
-        <div class="pdf-page">
-          <div>
-            <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-2 mb-6">
-              <span>${trip.title}</span>
-              <span>Summary & Pricing</span>
-            </div>
+        <!-- PRICING & AT A GLANCE SUMMARY -->
+        <div class="break-avoid bg-white border border-stone-200 rounded-2xl p-6 mb-6 mt-6 shadow-xs">
+          <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-2 mb-4">
+            <span class="font-bold text-[#14213D]">${trip.title}</span>
+            <span>Summary & Price Quotation</span>
+          </div>
 
-            <h2 class="text-2xl font-black text-[#1E3B39] mb-4">
-              Summary & Price Quotation
-            </h2>
+          <h2 class="text-xl font-bold text-[#14213D] mb-4 font-fraunces">
+            Summary & Price Quotation
+          </h2>
 
-            <div class="grid grid-cols-2 gap-8 items-start">
-              <div class="bg-white border border-stone-200 p-6 rounded-2xl space-y-4 shadow-sm">
-                <h3 class="text-xs font-extrabold text-[#0DA590] uppercase tracking-wider">Plan Cost Inclusions</h3>
-                <div class="space-y-1.5">${priceLines}</div>
-                
-                <div class="pt-4 border-t border-stone-200 space-y-2 text-xs">
-                  <div class="flex justify-between font-semibold text-stone-400">
-                    <span>Subtotal Cost</span>
-                    <span>₹${priceQuoteSubtotal.toLocaleString("en-IN")}</span>
-                  </div>
-                  <div class="flex justify-between font-semibold text-stone-400">
-                    <span>TCS Gov Tax (${trip.tripFinancials?.tcsPercentage || 5}%)</span>
-                    <span>₹${trip.tripFinancials?.tcsAmount.toLocaleString("en-IN")}</span>
-                  </div>
-                  <div class="flex justify-between bg-[#0DA590]/5 p-2.5 rounded border border-[#0DA590]/15 font-bold text-sm text-[#0DA590]">
-                    <span>Total Amount (with TCS)</span>
-                    <span class="text-[#1E3B39]">₹${trip.tripFinancials?.totalWithTcs.toLocaleString("en-IN")}</span>
-                  </div>
-                  
-                  <div class="p-3 bg-amber-50/50 border border-amber-200 rounded-xl text-[10px] text-[#1E3B39]/90 leading-relaxed font-semibold mt-4">
-                    Government rules impose flat 2% TCS on overseas tour spends per financial year. You can claim this TCS credit when filing your income tax return. Your total amount including TCS is ₹${trip.tripFinancials?.totalWithTcs.toLocaleString("en-IN")}
-                  </div>
+          <div class="grid grid-cols-2 gap-6 items-start">
+            <div class="bg-[#FAF8F5] border border-stone-200 p-5 rounded-xl space-y-3">
+              <h3 class="text-xs font-bold text-[#B8944F] uppercase tracking-wider">Plan Cost Breakdown</h3>
+              <div class="space-y-1">${priceLines}</div>
+              
+              <div class="pt-3 border-t border-stone-200 space-y-1.5 text-xs">
+                <div class="flex justify-between font-semibold text-stone-500">
+                  <span>Subtotal Cost</span>
+                  <span class="font-mono">₹${priceQuoteSubtotal.toLocaleString("en-IN")}</span>
                 </div>
-
-                ${trip.tripFinancials?.notes ? `
-                  <div class="p-3 bg-stone-50 rounded border border-stone-150 text-[10px] text-stone-500 mt-2 leading-relaxed">
-                    <span class="font-bold text-stone-700 block mb-1">Financial Notes:</span>
-                    ${trip.tripFinancials.notes}
-                  </div>
-                ` : ""}
+                <div class="flex justify-between font-semibold text-stone-500">
+                  <span>TCS Gov Tax (${trip.tripFinancials?.tcsPercentage || 5}%)</span>
+                  <span class="font-mono">₹${trip.tripFinancials?.tcsAmount.toLocaleString("en-IN")}</span>
+                </div>
+                <div class="flex justify-between bg-[#B8944F]/10 p-2.5 rounded border border-[#B8944F]/20 font-bold text-sm text-[#14213D]">
+                  <span>Total Amount (with TCS)</span>
+                  <span class="font-mono">₹${trip.tripFinancials?.totalWithTcs.toLocaleString("en-IN")}</span>
+                </div>
               </div>
 
-              <div class="bg-white border border-stone-200 p-6 rounded-2xl shadow-sm">
-                <h3 class="text-xs font-extrabold text-[#0DA590] uppercase tracking-wider mb-3">Itinerary Glance</h3>
+              ${
+                trip.tripFinancials?.notes
+                  ? `
+                <div class="p-2.5 bg-white rounded border border-stone-200 text-[10px] text-stone-500 leading-relaxed">
+                  <span class="font-bold text-stone-700 block mb-0.5">Notes:</span>
+                  ${trip.tripFinancials.notes}
+                </div>
+              `
+                  : ""
+              }
+            </div>
+
+            <div class="bg-[#FAF8F5] border border-stone-200 p-5 rounded-xl">
+              <h3 class="text-xs font-bold text-[#B8944F] uppercase tracking-wider mb-2">Itinerary Glance</h3>
+              <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-stone-300 text-stone-400 font-bold uppercase text-[9px]">
+                    <th class="pb-1.5">Day</th>
+                    <th class="pb-1.5">Stay</th>
+                    <th class="pb-1.5">Day Highlight</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${glanceRows}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- DAY-BY-DAY DETAILED ITINERARY -->
+        <div class="mb-6">
+          <h2 class="text-xl font-bold text-[#14213D] mb-4 font-fraunces">
+            Day-by-Day Detailed Itinerary
+          </h2>
+          ${detailedDaysHtml}
+        </div>
+
+        <!-- ACCOMMODATIONS & FLIGHTS -->
+        ${
+          accommodationsHtml
+            ? `
+          <div class="mb-6">
+            <h2 class="text-xl font-bold text-[#14213D] mb-4 font-fraunces">
+              Stays & Accommodations
+            </h2>
+            ${accommodationsHtml}
+          </div>
+        `
+            : ""
+        }
+
+        ${
+          flightsRows || addonsRows
+            ? `
+          <div class="break-avoid bg-white border border-stone-200 rounded-2xl p-6 mb-6 shadow-xs">
+            ${
+              flightsRows
+                ? `
+              <div class="space-y-3">
+                <h3 class="text-base font-bold text-[#14213D] font-fraunces">
+                  ✈️ Flights & Transit Schedule
+                </h3>
                 <table class="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr class="border-b border-stone-300 text-stone-400 font-bold uppercase text-[9px]">
-                      <th class="pb-2">Day</th>
-                      <th class="pb-2">Stay/City</th>
-                      <th class="pb-2">Highlight Activity</th>
+                  <thead class="bg-stone-50 text-stone-500 font-bold border-b border-stone-200">
+                    <tr>
+                      <th class="p-2">Sector</th>
+                      <th class="p-2">Airline</th>
+                      <th class="p-2">Departure</th>
+                      <th class="p-2">Arrival</th>
+                      <th class="p-2">Stops</th>
+                      <th class="p-2 text-right">Baggage</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    ${glanceRows}
-                  </tbody>
+                  <tbody>${flightsRows}</tbody>
                 </table>
               </div>
-            </div>
-          </div>
+            `
+                : ""
+            }
 
-          <div class="border-t border-stone-250 pt-2 flex justify-between items-center text-[9px] text-stone-400 font-medium">
-            <span>&copy; TripCraft. All rights reserved.</span>
-            <span>Confidential Travel Itinerary</span>
-          </div>
-        </div>
-
-        <!-- DAY-BY-DAY DETAILED PAGES -->
-        ${detailedDaysHtml}
-
-        <!-- ACCOMMODATION STAYS -->
-        ${accommodationsHtml || ""}
-
-        <!-- FLIGHTS & SERVICES -->
-        ${flightsRows || addonsRows ? `
-          <div class="pdf-page">
-            <div>
-              <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-2 mb-6">
-                <span>${trip.title}</span>
-                <span>Transit & Services</span>
+            ${
+              addonsRows
+                ? `
+              <div class="space-y-3 pt-6 ${flightsRows ? "border-t border-stone-200" : ""}">
+                <h3 class="text-base font-bold text-[#14213D] font-fraunces">
+                  ➕ Included Add-ons & Visa Packages
+                </h3>
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead class="bg-stone-50 text-stone-500 font-bold border-b border-stone-200">
+                    <tr>
+                      <th class="p-2">Package Name</th>
+                      <th class="p-2">Validity Details</th>
+                      <th class="p-2 text-right">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>${addonsRows}</tbody>
+                </table>
               </div>
+            `
+                : ""
+            }
+          </div>
+        `
+            : ""
+        }
 
-              ${flightsRows ? `
-                <div class="space-y-4">
-                  <h2 class="text-xl font-black text-[#1E3B39]">
-                    ✈️ Flights & Transit Schedule
-                  </h2>
-                  <div class="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
-                    <table class="w-full text-left text-xs border-collapse">
-                      <thead class="bg-stone-50 text-stone-500 font-bold border-b border-stone-200">
-                        <tr>
-                          <th class="p-3">Sector</th>
-                          <th class="p-3">Airline</th>
-                          <th class="p-3">Departure</th>
-                          <th class="p-3">Arrival</th>
-                          <th class="p-3">Stops & Details</th>
-                          <th class="p-3 text-right">Baggage Limits</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${flightsRows}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ` : ""}
-
-              ${addonsRows ? `
-                <div class="space-y-4 pt-8">
-                  <h2 class="text-xl font-black text-[#1E3B39]">
-                    ➕ Included Add-ons & Visa Packages
-                  </h2>
-                  <div class="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
-                    <table class="w-full text-left text-xs border-collapse">
-                      <thead class="bg-stone-50 text-stone-500 font-bold border-b border-stone-200">
-                        <tr>
-                          <th class="p-3">Package / Addon</th>
-                          <th class="p-3">Details / Validity</th>
-                          <th class="p-3 text-right">Service Cost</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${addonsRows}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ` : ""}
-            </div>
-
-            <div class="border-t border-stone-250 pt-2 flex justify-between items-center text-[9px] text-stone-400 font-medium">
-              <span>&copy; TripCraft. All rights reserved.</span>
-              <span>Confidential Travel Itinerary</span>
+        <!-- DINING SUGGESTIONS -->
+        ${
+          diningCards
+            ? `
+          <div class="break-avoid bg-white border border-stone-200 rounded-2xl p-6 mb-6 shadow-xs">
+            <h3 class="text-base font-bold text-[#14213D] mb-3 font-fraunces">
+              🍴 Recommended Dining & Hotspots
+            </h3>
+            <div class="grid grid-cols-2 gap-3">
+              ${diningCards}
             </div>
           </div>
-        ` : ""}
+        `
+            : ""
+        }
 
-        <!-- DINING & SPOTS SUGGESTIONS -->
-        ${diningHtml ? `
-          <div class="pdf-page">
-            <div>
-              <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-2 mb-6">
-                <span>${trip.title}</span>
-                <span>Dining Suggestions</span>
-              </div>
-
-              <h2 class="text-xl font-black text-[#1E3B39] mb-2">
-                🍴 Recommended Dining & Hotspots
-              </h2>
-              <p class="text-xs text-stone-500 font-medium mb-6">Dining recommendations handpicked by our expert travel consultants.</p>
-              <div class="space-y-6">${diningHtml}</div>
+        <!-- MASTER POLICIES & TERMS (Page Break Before) -->
+        ${
+          terms
+            ? `
+          <div class="page-break-before bg-white border border-stone-200 rounded-2xl p-6 shadow-xs">
+            <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-2 mb-4">
+              <span class="font-bold text-[#14213D]">${trip.title}</span>
+              <span>Terms & Advisory Guidelines</span>
             </div>
 
-            <div class="border-t border-stone-250 pt-2 flex justify-between items-center text-[9px] text-stone-400 font-medium">
-              <span>&copy; TripCraft. All rights reserved.</span>
-              <span>Confidential Travel Itinerary</span>
-            </div>
-          </div>
-        ` : ""}
-
-        <!-- POLICY GUIDELINES -->
-        ${terms ? `
-          <div class="pdf-page">
-            <div>
-              <div class="flex justify-between items-center text-[9px] uppercase tracking-wider text-stone-400 border-b border-stone-200 pb-2 mb-6">
-                <span>${trip.title}</span>
-                <span>Terms & Guidelines</span>
+            <h2 class="text-xl font-bold text-[#14213D] mb-4 font-fraunces">
+              Master Policies & Guidelines
+            </h2>
+            
+            <div class="space-y-3.5 text-xs text-stone-700 font-medium prose max-w-none">
+              <div class="bg-stone-50 p-4 border border-stone-200 rounded-xl break-avoid">
+                <h4 class="font-bold text-[#14213D] text-xs mb-1">1. Payment Policy</h4>
+                <div>${terms.paymentPolicy}</div>
               </div>
-
-              <h2 class="text-xl font-black text-[#1E3B39] mb-6">
-                📄 Terms & Guidelines
-              </h2>
               
-              <div class="space-y-4 text-[10px] leading-relaxed text-stone-550 font-medium prose max-w-none">
-                <div class="bg-white p-4 border border-stone-200 rounded-xl shadow-sm">
-                  <h4 class="font-extrabold text-[#1E3B39] text-xs mb-1.5">1. Payment Policy</h4>
-                  <div>${terms.paymentPolicy}</div>
-                </div>
-                
-                <div class="bg-white p-4 border border-stone-200 rounded-xl shadow-sm">
-                  <h4 class="font-extrabold text-[#1E3B39] text-xs mb-1.5">2. Cancellation Policy</h4>
-                  <div>${terms.cancellationPolicy}</div>
-                </div>
+              <div class="bg-stone-50 p-4 border border-stone-200 rounded-xl break-avoid">
+                <h4 class="font-bold text-[#14213D] text-xs mb-1">2. Cancellation Policy</h4>
+                <div>${terms.cancellationPolicy}</div>
+              </div>
 
-                <div class="bg-white p-4 border border-stone-200 rounded-xl shadow-sm">
-                  <h4 class="font-extrabold text-[#1E3B39] text-xs mb-1.5">3. Entry Visa Rules</h4>
-                  <div>${terms.visaRules}</div>
-                </div>
+              <div class="bg-stone-50 p-4 border border-stone-200 rounded-xl break-avoid">
+                <h4 class="font-bold text-[#14213D] text-xs mb-1">3. Visa Rules & Entry Requirements</h4>
+                <div>${terms.visaRules}</div>
+              </div>
 
-                <div class="bg-white p-4 border border-stone-200 rounded-xl shadow-sm">
-                  <h4 class="font-extrabold text-[#1E3B39] text-xs mb-1.5">4. General Notes & Advice</h4>
-                  <div>${terms.generalNotes}</div>
-                </div>
+              <div class="bg-stone-50 p-4 border border-stone-200 rounded-xl break-avoid">
+                <h4 class="font-bold text-[#14213D] text-xs mb-1">4. General Notes & Advisory</h4>
+                <div>${terms.generalNotes}</div>
               </div>
             </div>
 
-            <div class="border-t border-stone-250 pt-2 flex justify-between items-center text-[9px] text-stone-400 font-medium">
-              <span>&copy; TripCraft. All rights reserved.</span>
-              <span>Confidential Travel Itinerary</span>
+            <div class="border-t border-stone-200 pt-3 mt-6 flex justify-between items-center text-[9px] text-stone-400 font-medium">
+              <span>&copy; TripCraft Workspace. All rights reserved.</span>
+              <span>Official Travel Quotation</span>
             </div>
           </div>
-        ` : ""}
+        `
+            : ""
+        }
 
       </body>
       </html>
     `;
 
-    // 3. Launch headless browser via Puppeteer Core + Sparticuz Chromium for serverless limits
+    // 3. Launch Puppeteer
     let browser;
     try {
       let options = {};
-      if (process.env.NODE_ENV === "development" || process.env.IS_LOCAL === "true" || process.platform === "win32") {
+      if (
+        process.env.NODE_ENV === "development" ||
+        process.env.IS_LOCAL === "true" ||
+        process.platform === "win32"
+      ) {
         options = {
           args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-          executablePath: process.env.CHROME_PATH || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          executablePath:
+            process.env.CHROME_PATH ||
+            "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
           headless: true,
         };
       } else {
@@ -668,35 +707,30 @@ export async function GET(
           headless: (chromium as any).headless,
         };
       }
-      console.log("Launching Puppeteer Core browser with options:", JSON.stringify(options));
       browser = await puppeteer.launch(options);
-      console.log("Puppeteer Core browser launched successfully.");
     } catch (err: any) {
-      console.error("CRITICAL Puppeteer launch error:", err);
+      console.error("Puppeteer launch error:", err);
       throw new Error(`Puppeteer failed to launch: ${err.message}`);
     }
 
     const page = await browser.newPage();
-
-    // Set viewport & content
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     await page.setContent(htmlContent, { waitUntil: "networkidle0" as any });
 
-    // Export A4 PDF with 0 margins to allow full bleed styling
+    // Export A4 PDF with explicit print margins (Part D)
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: {
-        top: "0mm",
-        bottom: "0mm",
-        left: "0mm",
-        right: "0mm",
+        top: "12mm",
+        bottom: "12mm",
+        left: "15mm",
+        right: "15mm",
       },
     });
 
     await browser.close();
 
-    // 4. Return as response attachment
     return new Response(Buffer.from(pdfBuffer), {
       status: 200,
       headers: {

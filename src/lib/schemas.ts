@@ -53,7 +53,11 @@ export const flightDetailSchema = z.object({
   airline: z.string().min(1, "Airline is required"),
   departureDateTime: z.string().or(z.date()),
   arrivalDateTime: z.string().or(z.date()),
-  durationText: z.string().min(1, "Duration text is required (e.g. 5h 45m)"),
+  durationText: z
+    .string()
+    .optional()
+    .nullable()
+    .transform((val) => (val && val.trim() ? val.trim() : "Direct")),
   stops: z.number().int().min(0).default(0),
   layoverInfo: z.string().optional().nullable(),
   carryOnBaggageKg: z.number().int().min(0).optional().nullable(),

@@ -30,6 +30,7 @@ model Trip {
   addOns                AddOn[]
   restaurantSuggestions RestaurantSuggestion[]
   tripTerms             TripTerms?
+  costCalculation       TripCostCalculation?
 }
 
 model PriceQuoteItem {
@@ -87,20 +88,20 @@ model Accommodation {
 }
 
 model FlightDetail {
-  id                   String   @id @default(uuid())
-  tripId               String
-  trip                 Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  sector               String
-  airline              String
-  departureDateTime    DateTime
-  arrivalDateTime      DateTime
-  durationText         String
-  stops                Int      @default(0)
-  layoverInfo          String?
-  carryOnBaggageKg     Int?
-  checkInBaggageKg     Int?
-  cancellationPolicy   String?
-  flightNotes          String?
+  id                 String   @id @default(uuid())
+  tripId             String
+  trip               Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  sector             String
+  airline            String
+  departureDateTime  DateTime
+  arrivalDateTime    DateTime
+  durationText       String
+  stops              Int      @default(0)
+  layoverInfo        String?
+  carryOnBaggageKg   Int?
+  checkInBaggageKg   Int?
+  cancellationPolicy String?
+  flightNotes        String?
 }
 
 model AddOn {
@@ -134,4 +135,176 @@ model TripTerms {
   cancellationPolicy String
   visaRules          String
   generalNotes       String
+}
+
+// ==========================================
+// MASTER DATA MODELS
+// ==========================================
+
+model MasterCity {
+  id          String                  @id @default(uuid())
+  name        String
+  state       String
+  country     String
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @default(now()) @updatedAt
+  activities  MasterActivity[]
+  hotels      MasterHotel[]
+  restaurants MasterRestaurant[]
+  banners     MasterBannerImage[]
+
+  @@unique([name, country])
+}
+
+model MasterConsultant {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model MasterTaxSetting {
+  id                   String   @id @default(uuid())
+  currentTcsPercentage Float    @default(5.0)
+  effectiveFrom        DateTime @default(now())
+  notes                String?
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now()) @updatedAt
+}
+
+model MasterPricingLabel {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model MasterActivity {
+  id                   String      @id @default(uuid())
+  title                String
+  suggestedCityId      String?
+  suggestedCity        MasterCity? @relation(fields: [suggestedCityId], references: [id], onDelete: SetNull)
+  defaultDurationHours Float?
+  description          String
+  inclusions           String[]
+  exclusions           String[]
+  loveTips             String[]
+  watchOutTips         String[]
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @default(now()) @updatedAt
+}
+
+model MasterHotel {
+  id                String      @id @default(uuid())
+  name              String
+  cityId            String?
+  city              MasterCity? @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  starRating        Int         @default(4)
+  roomTypes         String[]
+  mealPlans         String[]
+  guestScore        Float?
+  guestScoreLabel   String?
+  facilities        String[]
+  nearbyAttractions Json        @default("[]") // [{name: string, distanceKm: number}]
+  nearbyRestaurants Json        @default("[]") // [{name: string, distance: string}]
+  photos            String[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @default(now()) @updatedAt
+}
+
+model MasterFlightRoute {
+  id                 String   @id @default(uuid())
+  sector             String
+  airline            String
+  flightCodeDefault  String?
+  typicalStops       Int      @default(0)
+  typicalLayoverInfo String?
+  cabinBaggageKg     Int?     @default(7)
+  checkInBaggageKg   Int?     @default(20)
+  cancellationPolicy String?
+  flightNotes        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+}
+
+model MasterAddOn {
+  id                 String   @id @default(uuid())
+  name               String
+  type               String   @default("Visa") // Visa, Transfer, Activity, Insurance, SIM
+  visaType           String?
+  validityLength     String?
+  validityWindow     String?
+  defaultPrice       Float    @default(0)
+  detailsDescription String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+}
+
+model MasterRestaurant {
+  id                String      @id @default(uuid())
+  name              String
+  cityId            String?
+  city              MasterCity? @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  cuisineType       String
+  categoryType      String      @default("Restaurant") // Restaurant, Beach Club, Night Club, Cafe
+  starRating        Float?      @default(4.5)
+  reviewsCount      Int?        @default(100)
+  offersPureVegJain Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @default(now()) @updatedAt
+}
+
+model MasterPolicyTemplate {
+  id                 String   @id @default(uuid())
+  name               String   @unique
+  paymentPolicy      String
+  cancellationPolicy String
+  visaRules          String
+  generalNotes       String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+}
+
+model MasterTitleTemplate {
+  id        String   @id @default(uuid())
+  title     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model MasterBannerImage {
+  id                String      @id @default(uuid())
+  imageUrl          String
+  destinationCityId String?
+  destinationCity   MasterCity? @relation(fields: [destinationCityId], references: [id], onDelete: SetNull)
+  label             String
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @default(now()) @updatedAt
+}
+
+model MasterCostRate {
+  id          String   @id @default(uuid())
+  category    String   // Hotel, Flight, Activity, Guide, Transport, Visa, Misc
+  label       String
+  defaultRate Float
+  unit        String   // per night, per person, per group, per vehicle
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+model TripCostCalculation {
+  id               String   @id @default(uuid())
+  tripId           String   @unique
+  trip             Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  customerRevenue  Float    @default(0)
+  internalCost     Float    @default(0)
+  netProfit        Float    @default(0)
+  marginPercentage Float    @default(0)
+  lineItems        Json     @default("[]") // [{ id, category, label, rate, quantity, unit, totalCost, notes }]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
 }
