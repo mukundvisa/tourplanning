@@ -13,6 +13,10 @@ import {
   Calendar, 
   MapPin, 
   Plane, 
+  Bus,
+  Train,
+  Car,
+  Clock,
   Coffee, 
   Utensils, 
   FileText, 
@@ -27,10 +31,12 @@ import {
   Sparkles,
   ExternalLink,
   ChevronDown,
+  Eye,
 } from "lucide-react";
 import { createTrip, updateTrip } from "@/actions/trips";
 import { getAllMasterDataForSelectors } from "@/actions/master-data";
 import { RichTextEditor } from "./RichTextEditor";
+import { downloadTripPdf } from "@/lib/download-pdf";
 
 interface TripFormWizardProps {
   initialData?: any;
@@ -122,13 +128,22 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
         ...f,
         departureDateTime: f.departureDateTime ? new Date(f.departureDateTime).toISOString().slice(0, 16) : "",
         arrivalDateTime: f.arrivalDateTime ? new Date(f.arrivalDateTime).toISOString().slice(0, 16) : "",
+        type: f.type || "Flight",
+        travelTime: f.travelTime || "",
+        isStartingTransfer: f.isStartingTransfer || false,
+        isPackageIncluded: f.isPackageIncluded || false,
       }));
 
+      if (!data.pricingTitle) data.pricingTitle = "";
+      if (!data.transportationArrangement) data.transportationArrangement = "Planner";
+      if (!data.startingTransferDetails) data.startingTransferDetails = "";
+      if (!data.packageTransportationDetails) data.packageTransportationDetails = "";
       return data;
     }
 
     return {
       title: "",
+      pricingTitle: "",
       destination: "",
       departureCity: "",
       startDate: "",
@@ -157,6 +172,9 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
         visaRules: "",
         generalNotes: "",
       },
+      transportationArrangement: "Planner",
+      startingTransferDetails: "",
+      packageTransportationDetails: "",
     };
   });
 
@@ -178,25 +196,29 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     }
   }, [formData.startDate, formData.endDate]);
 
-  // Recalculate TCS and Total Amount whenever Price Items or TCS % changes
+  // Recalculate TCS and Total Amount whenever Price Items, TCS %, or Number of Travellers changes
   useEffect(() => {
-    const subtotal = (formData.priceQuoteItems || []).reduce(
+    const numTravellers = Number(formData.numTravellers || 1);
+    const perPersonSubtotal = (formData.priceQuoteItems || []).reduce(
       (acc: number, item: any) => acc + Number(item.amount || 0),
       0
     );
     const tcsPct = Number(formData.tripFinancials?.tcsPercentage ?? 5.0);
-    const tcsAmount = subtotal * (tcsPct / 100);
-    const total = subtotal + tcsAmount;
+    const perPersonTcs = perPersonSubtotal * (tcsPct / 100);
+    const perPersonTotal = perPersonSubtotal + perPersonTcs;
+
+    const totalTcsAmount = perPersonTcs * numTravellers;
+    const finalTotal = perPersonTotal * numTravellers;
 
     setFormData((prev: any) => ({
       ...prev,
       tripFinancials: {
         ...prev.tripFinancials,
-        tcsAmount: Math.round(tcsAmount * 100) / 100,
-        totalWithTcs: Math.round(total * 100) / 100,
+        tcsAmount: Math.round(totalTcsAmount * 100) / 100,
+        totalWithTcs: Math.round(finalTotal * 100) / 100,
       },
     }));
-  }, [formData.priceQuoteItems, formData.tripFinancials?.tcsPercentage]);
+  }, [formData.priceQuoteItems, formData.tripFinancials?.tcsPercentage, formData.numTravellers]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -239,23 +261,10 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     if (!tripId) return;
     setDownloading(true);
     try {
-      const res = await fetch(`/api/pdf/${tripId}`);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Unknown server error");
-      }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Itinerary-${formData.title.replace(/[^a-zA-Z0-9]/g, "-")}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await downloadTripPdf(tripId, formData.title);
     } catch (err: any) {
       console.error("PDF download failed:", err);
-      alert(`Export PDF Failed: ${err.message || "Could not launch PDF generator."}`);
+      alert(`Export PDF Failed: ${err.message || "Could not generate PDF."}`);
     } finally {
       setDownloading(false);
     }
@@ -267,15 +276,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   };
 
   const isStep1Incomplete = () => {
-    return (
-      !formData.title || !formData.title.trim() ||
-      !formData.destination || !formData.destination.trim() ||
-      !formData.departureCity || !formData.departureCity.trim() ||
-      !formData.startDate ||
-      !formData.endDate ||
-      !formData.consultantName || !formData.consultantName.trim() ||
-      !formData.consultantPhone || !formData.consultantPhone.trim()
-    );
+    return false;
   };
 
   const nextStep = () => {
@@ -500,6 +501,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     checkInBaggageKg: 20,
     cancellationPolicy: "",
     flightNotes: "",
+    type: "Flight",
+    travelTime: "12:00 PM",
+    flightCodeDefault: "",
+    isStartingTransfer: false,
+    isPackageIncluded: false,
   });
 
   const startEditFlight = (idx: number) => {
@@ -516,18 +522,23 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       checkInBaggageKg: f.checkInBaggageKg ?? 20,
       cancellationPolicy: f.cancellationPolicy || "",
       flightNotes: f.flightNotes || "",
+      type: f.type || "Flight",
+      travelTime: f.travelTime || "12:00 PM",
+      flightCodeDefault: f.flightCodeDefault || "",
+      isStartingTransfer: f.isStartingTransfer || false,
+      isPackageIncluded: f.isPackageIncluded || false,
     });
     setEditingFlightIndex(idx);
   };
 
   const addFlight = () => {
-    if (!newFlight.sector || !newFlight.airline || !newFlight.departureDateTime || !newFlight.arrivalDateTime) {
-      alert("Flight Sector, Airline, and Timings are required.");
+    if (!newFlight.sector || !newFlight.airline) {
+      alert("Sector and Carrier/Provider Name are required.");
       return;
     }
 
     let calculatedDuration = newFlight.durationText;
-    if (!calculatedDuration || !calculatedDuration.trim()) {
+    if ((!calculatedDuration || !calculatedDuration.trim()) && newFlight.departureDateTime && newFlight.arrivalDateTime) {
       try {
         const dep = new Date(newFlight.departureDateTime).getTime();
         const arr = new Date(newFlight.arrivalDateTime).getTime();
@@ -542,6 +553,8 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       } catch (e) {
         calculatedDuration = "Direct";
       }
+    } else if (!calculatedDuration) {
+      calculatedDuration = "Direct";
     }
 
     const flightToSave = {
@@ -571,6 +584,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       checkInBaggageKg: 20,
       cancellationPolicy: "",
       flightNotes: "",
+      type: "Flight",
+      travelTime: "12:00 PM",
+      flightCodeDefault: "",
+      isStartingTransfer: false,
+      isPackageIncluded: false,
     });
   };
 
@@ -737,12 +755,139 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                   </label>
                   {masterData.titleTemplates.length > 0 && (
                     <select
+                      value={formData.pricingTitle || ""}
                       onChange={(e) => {
-                        if (e.target.value) {
-                          setFormData((prev: any) => ({ ...prev, title: e.target.value }));
+                        const selectedTitle = e.target.value;
+                        if (selectedTitle) {
+                          const template = masterData.titleTemplates.find((t) => t.title === selectedTitle);
+                          if (template) {
+                            // 1. Fetch matching pricing labels
+                            const matchingPricing = masterData.pricingLabels.filter(
+                              (p) => p.titleTemplateId === template.id
+                            );
+                            const priceItems = matchingPricing.map((p, idx) => ({
+                              label: p.name,
+                              amount: p.price,
+                              sortOrder: idx,
+                            }));
+
+                            // 2. Fetch matching master activities
+                            const matchingActivities = masterData.activities.filter(
+                              (a) => a.titleTemplateId === template.id
+                            );
+                            const itineraryDays = matchingActivities.map((act, idx) => ({
+                              dayNumber: idx + 1,
+                              cityOrStay: act.suggestedCity?.name || "",
+                              title: act.title,
+                              durationHours: act.defaultDurationHours,
+                              description: act.description,
+                              inclusions: act.inclusions || [],
+                              exclusions: act.exclusions || [],
+                              customerLovedTips: act.loveTips || [],
+                              customerWatchOutTips: act.watchOutTips || [],
+                              sortOrder: idx + 1,
+                            }));
+
+                            // 3. Fetch matching master hotels
+                            const matchingHotels = masterData.hotels.filter(
+                              (h) => h.titleTemplateId === template.id
+                            );
+                            const accommodations = matchingHotels.map((h) => ({
+                              location: h.city?.name || "",
+                              checkInDate: "",
+                              checkOutDate: "",
+                              hotelName: h.name,
+                              starRating: h.starRating,
+                              roomType: h.roomTypes[0] || "Standard Room",
+                              mealPlan: h.mealPlans[0] || "CP",
+                              ratingScore: h.guestScore,
+                              ratingLabel: h.guestScoreLabel,
+                              facilities: h.facilities || [],
+                              nearbyAttractions: h.nearbyAttractions || [],
+                              nearbyRestaurants: h.nearbyRestaurants || [],
+                              photos: h.photos || [],
+                            }));
+
+                            // 4. Fetch matching master restaurants
+                            const matchingRestaurants = masterData.restaurants.filter(
+                              (r) => r.titleTemplateId === template.id
+                            );
+                            const restaurantSuggestions = matchingRestaurants.map((r) => ({
+                              location: r.city?.name || "",
+                              cuisineType: r.cuisineType,
+                              name: r.name,
+                              rating: r.starRating,
+                              reviewCount: r.reviewsCount,
+                              isVeg: r.offersPureVegJain,
+                              category: r.categoryType || "Restaurant",
+                            }));
+
+                            // 5. Fetch matching master add-ons
+                            const matchingAddOns = masterData.addOns.filter(
+                              (a: any) => a.titleTemplateId === template.id
+                            );
+                            const addOns = matchingAddOns.map((a: any) => ({
+                              name: a.name,
+                              price: a.defaultPrice,
+                              priceType: "per person",
+                              detailsJson: {
+                                visaType: a.visaType || "",
+                                length: a.validityLength || "",
+                                validity: a.validityWindow || "",
+                                details: a.detailsDescription || "",
+                              },
+                            }));
+
+                            // 6. Fetch matching master policy
+                            const matchedPolicy = masterData.policyTemplates.find(
+                              (p: any) => p.titleTemplateId === template.id
+                            );
+                            const tripTerms = matchedPolicy ? {
+                              paymentPolicy: matchedPolicy.paymentPolicy || "",
+                              cancellationPolicy: matchedPolicy.cancellationPolicy || "",
+                              visaRules: matchedPolicy.visaRules || "",
+                              generalNotes: matchedPolicy.generalNotes || "",
+                            } : {
+                              paymentPolicy: "",
+                              cancellationPolicy: "",
+                              visaRules: "",
+                              generalNotes: "",
+                            };
+
+                            // Update form state
+                            setFormData((prev: any) => ({
+                              ...prev,
+                              title: selectedTitle,
+                              pricingTitle: selectedTitle,
+                              priceQuoteItems: priceItems,
+                              itineraryDays: itineraryDays,
+                              accommodations: accommodations,
+                              restaurantSuggestions: restaurantSuggestions,
+                              addOns: addOns,
+                              tripTerms: tripTerms,
+                            }));
+                          } else {
+                            setFormData((prev: any) => ({ ...prev, title: selectedTitle }));
+                          }
+                        } else {
+                          setFormData((prev: any) => ({
+                            ...prev,
+                            title: "",
+                            pricingTitle: "",
+                            priceQuoteItems: [],
+                            itineraryDays: [],
+                            accommodations: [],
+                            restaurantSuggestions: [],
+                            addOns: [],
+                            tripTerms: {
+                              paymentPolicy: "",
+                              cancellationPolicy: "",
+                              visaRules: "",
+                              generalNotes: "",
+                            },
+                          }));
                         }
                       }}
-                      value=""
                       className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/8 border border-[#B8944F]/30 rounded-lg px-2.5 py-1 outline-none cursor-pointer"
                     >
                       <option value="">⚡ Load from Title Templates...</option>
@@ -996,6 +1141,51 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
               Step 2: Price Quotes & Financials
             </h2>
 
+            {/* Pricing Title Selection Dropdown */}
+            <div className="bg-[#B8944F]/5 border border-[#B8944F]/20 rounded-lg p-4 space-y-2">
+              <label className="block text-xs font-bold text-zinc-700">
+                Select Pricing Title Template (Auto-fills pricing details)
+              </label>
+              <select
+                value={formData.pricingTitle || ""}
+                onChange={(e) => {
+                  const selectedTitle = e.target.value;
+                  setFormData((prev: any) => {
+                    const template = masterData.titleTemplates.find((t) => t.title === selectedTitle);
+                    let items = [...prev.priceQuoteItems];
+                    if (template) {
+                      const matchingLabels = masterData.pricingLabels.filter(
+                        (p) => p.titleTemplateId === template.id
+                      );
+                      items = matchingLabels.map((lbl, idx) => ({
+                        label: lbl.name,
+                        amount: lbl.price,
+                        sortOrder: idx,
+                      }));
+                    } else if (!selectedTitle) {
+                      items = [];
+                    }
+                    return {
+                      ...prev,
+                      pricingTitle: selectedTitle || null,
+                      priceQuoteItems: items,
+                    };
+                  });
+                }}
+                className="w-full px-3.5 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+              >
+                <option value="">-- No Pricing Title Template --</option>
+                {masterData.titleTemplates.map((t) => (
+                  <option key={t.id} value={t.title}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-zinc-400">
+                Selecting a pricing title will automatically load its corresponding pricing labels and per-person prices from the Master Data Hub.
+              </p>
+            </div>
+
             {/* Price line items repeater */}
             <div className="space-y-4">
               <label className="block text-xs font-semibold text-zinc-700">
@@ -1018,7 +1208,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                       value=""
                       className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2 py-0.5 outline-none cursor-pointer"
                     >
-                      <option value="">⚡ Select from Master Pricing Labels...</option>
+                      <option value="">⚡ Select from Master Pricing...</option>
                       {masterData.pricingLabels.map((p) => (
                         <option key={p.id} value={p.name}>
                           {p.name}
@@ -1089,33 +1279,62 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                 Financial Totals & Statutory TCS
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-b border-zinc-200 pb-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 border-b border-zinc-200 pb-4">
                 <div>
                   <span className="text-[11px] text-zinc-500 font-semibold block">
-                    Subtotal Cost
+                    Per-Person Price
                   </span>
-                  <p className="text-base font-black text-[#14213D] font-mono mt-0.5">
+                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
                     ₹
-                    {formData.priceQuoteItems
-                      .reduce((acc: number, item: any) => acc + Number(item.amount || 0), 0)
-                      .toLocaleString("en-IN")}
+                    {(() => {
+                      const perPersonSubtotal = (formData.priceQuoteItems || []).reduce(
+                        (acc: number, item: any) => acc + Number(item.amount || 0),
+                        0
+                      );
+                      return perPersonSubtotal.toLocaleString("en-IN");
+                    })()}
                   </p>
                 </div>
 
                 <div>
                   <span className="text-[11px] text-zinc-500 font-semibold block">
-                    TCS Gov Tax ({formData.tripFinancials.tcsPercentage}% Read-Only)
+                    Travellers
                   </span>
-                  <p className="text-base font-black text-[#14213D] font-mono mt-0.5">
+                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
+                    {formData.numTravellers || 1}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-zinc-500 font-semibold block">
+                    Total Base Price
+                  </span>
+                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
+                    ₹
+                    {(() => {
+                      const perPersonSubtotal = (formData.priceQuoteItems || []).reduce(
+                        (acc: number, item: any) => acc + Number(item.amount || 0),
+                        0
+                      );
+                      return (perPersonSubtotal * Number(formData.numTravellers || 1)).toLocaleString("en-IN");
+                    })()}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-zinc-500 font-semibold block">
+                    Total TCS ({formData.tripFinancials.tcsPercentage}%)
+                  </span>
+                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
                     ₹{formData.tripFinancials.tcsAmount?.toLocaleString("en-IN")}
                   </p>
                 </div>
 
-                <div>
+                <div className="col-span-2 md:col-span-1">
                   <span className="text-[11px] text-[#B8944F] font-bold block">
-                    Grand Total Amount (with TCS)
+                    Grand Total
                   </span>
-                  <p className="text-xl font-black text-[#14213D] font-mono mt-0.5">
+                  <p className="text-base font-black text-[#14213D] font-mono mt-0.5">
                     ₹{formData.tripFinancials.totalWithTcs?.toLocaleString("en-IN")}
                   </p>
                 </div>
@@ -1758,262 +1977,424 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         );
 
-      case 5:
+      case 5: {
+        const TRANSPORT_TYPES = ["Flight", "Train", "Bus", "Car", "Sedan", "SUV", "Other"];
+        const getTransportIcon = (type: string) => {
+          switch (type) {
+            case "Flight":
+              return <Plane className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+            case "Train":
+              return <Train className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+            case "Bus":
+              return <Bus className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+            case "Car":
+            case "Sedan":
+            case "SUV":
+              return <Car className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+            default:
+              return <Car className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+          }
+        };
+
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 5: Flight Details
+            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces flex items-center justify-between">
+              <span>Step 5: Transportation & Transit arrangements</span>
+              <span className="text-xs bg-[#B8944F]/10 text-[#B8944F] font-bold px-2 py-1 rounded">
+                Master Catalog Linked
+              </span>
             </h2>
 
-            {/* Flight Entry Form with Master Flight Route picker */}
-            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                  {editingFlightIndex !== null ? "Edit Flight Leg" : "Add Flight Leg"}
-                </span>
-
-                {/* Flight Route Picker */}
-                {masterData.flightRoutes.length > 0 && (
-                  <select
-                    onChange={(e) => {
-                      const route = masterData.flightRoutes.find(
-                        (r) => r.sector === e.target.value
-                      );
-                      if (route) {
-                        setNewFlight((prev) => ({
-                          ...prev,
-                          sector: route.sector,
-                          airline: route.airline,
-                          stops: route.typicalStops || 0,
-                          layoverInfo: route.typicalLayoverInfo || "",
-                          carryOnBaggageKg: route.cabinBaggageKg ?? 7,
-                          checkInBaggageKg: route.checkInBaggageKg ?? 20,
-                          cancellationPolicy: route.cancellationPolicy || "",
-                          flightNotes: route.flightNotes || "",
-                        }));
-                      }
-                    }}
-                    value=""
-                    className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
-                  >
-                    <option value="">⚡ Pre-fill from Master Flight Routes...</option>
-                    {masterData.flightRoutes.map((r) => (
-                      <option key={r.id} value={r.sector}>
-                        {r.sector} ({r.airline})
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Sector * (e.g. BOM to DPS)
-                  </label>
-                  <input
-                    type="text"
-                    value={newFlight.sector}
-                    onChange={(e) => setNewFlight({ ...newFlight, sector: e.target.value })}
-                    placeholder="e.g. BOM to DPS (Mumbai to Bali)"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Airline & Flight Code *
-                  </label>
-                  <input
-                    type="text"
-                    value={newFlight.airline}
-                    onChange={(e) => setNewFlight({ ...newFlight, airline: e.target.value })}
-                    placeholder="e.g. VietJet Air VJ-884"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Departure Date & Time *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={newFlight.departureDateTime}
-                    onChange={(e) =>
-                      setNewFlight({ ...newFlight, departureDateTime: e.target.value })
-                    }
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Arrival Date & Time *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={newFlight.arrivalDateTime}
-                    onChange={(e) => {
-                      const arrVal = e.target.value;
-                      let dur = newFlight.durationText;
-                      if (newFlight.departureDateTime && arrVal) {
-                        const dep = new Date(newFlight.departureDateTime).getTime();
-                        const arr = new Date(arrVal).getTime();
-                        const diffMs = arr - dep;
-                        if (diffMs > 0) {
-                          const hours = Math.floor(diffMs / (1000 * 60 * 60));
-                          const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-                          dur = `${hours}h ${mins}m`;
-                        }
-                      }
-                      setNewFlight({ ...newFlight, arrivalDateTime: arrVal, durationText: dur });
-                    }}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Total Flight Duration
-                  </label>
-                  <input
-                    type="text"
-                    value={newFlight.durationText}
-                    onChange={(e) =>
-                      setNewFlight({ ...newFlight, durationText: e.target.value })
-                    }
-                    placeholder="e.g. 5h 45m (auto-computed)"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Stops & Layover Info
-                  </label>
-                  <input
-                    type="text"
-                    value={newFlight.layoverInfo}
-                    onChange={(e) =>
-                      setNewFlight({ ...newFlight, layoverInfo: e.target.value })
-                    }
-                    placeholder="e.g. Non-stop or 2h 15m layover at SGN"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                      Cabin Baggage (KG)
-                    </label>
-                    <input
-                      type="number"
-                      value={newFlight.carryOnBaggageKg}
-                      onChange={(e) =>
-                        setNewFlight({
-                          ...newFlight,
-                          carryOnBaggageKg: parseInt(e.target.value) || 7,
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                      Check-in Baggage (KG)
-                    </label>
-                    <input
-                      type="number"
-                      value={newFlight.checkInBaggageKg}
-                      onChange={(e) =>
-                        setNewFlight({
-                          ...newFlight,
-                          checkInBaggageKg: parseInt(e.target.value) || 20,
-                        })
-                      }
-                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Flight Notes & Cancellation Policy
-                  </label>
-                  <input
-                    type="text"
-                    value={newFlight.flightNotes}
-                    onChange={(e) =>
-                      setNewFlight({ ...newFlight, flightNotes: e.target.value })
-                    }
-                    placeholder="e.g. Includes inflight hot meal. Non-refundable ticket."
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2">
-                {editingFlightIndex !== null && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingFlightIndex(null)}
-                    className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                )}
+            {/* Arrangement Selector */}
+            <div className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card space-y-4">
+              <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider">
+                Transportation Arrangement Type
+              </label>
+              <div className="grid grid-cols-2 gap-4">
                 <button
                   type="button"
-                  onClick={addFlight}
-                  className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  onClick={() => setFormData({ ...formData, transportationArrangement: "Own" })}
+                  className={`p-4 rounded-lg border text-left transition-all ${
+                    formData.transportationArrangement === "Own"
+                      ? "border-[#B8944F] bg-[#B8944F]/5 text-[#14213D] shadow-sm font-bold"
+                      : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+                  }`}
                 >
-                  {editingFlightIndex !== null ? "Update Flight" : "+ Add Flight Schedule"}
+                  <div className="text-xs uppercase tracking-wider font-bold mb-1">Own Transportation</div>
+                  <div className="text-[11px] font-normal text-zinc-400">Traveller will arrange their own transit.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, transportationArrangement: "Planner" })}
+                  className={`p-4 rounded-lg border text-left transition-all ${
+                    formData.transportationArrangement === "Planner"
+                      ? "border-[#B8944F] bg-[#B8944F]/5 text-[#14213D] shadow-sm font-bold"
+                      : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+                  }`}
+                >
+                  <div className="text-xs uppercase tracking-wider font-bold mb-1">Trip Planner Arrangement</div>
+                  <div className="text-[11px] font-normal text-zinc-400">Arranged by trip planner using catalog options.</div>
                 </button>
               </div>
             </div>
 
-            {/* Flights list */}
-            <div className="space-y-3">
-              {formData.flightDetails.map((f: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
-                >
-                  <div>
-                    <h4 className="font-bold text-[#14213D] text-sm flex items-center">
-                      <Plane className="h-3.5 w-3.5 text-[#B8944F] mr-2" />
-                      {f.sector} ({f.airline})
-                    </h4>
-                    <p className="text-zinc-500 mt-0.5 font-mono text-[11px]">
-                      Dep: {f.departureDateTime} &bull; Arr: {f.arrivalDateTime}
-                    </p>
-                    <p className="text-[11px] text-zinc-400 mt-0.5">
-                      Baggage: {f.carryOnBaggageKg || 7}kg Cabin / {f.checkInBaggageKg || 20}kg Check-in
-                    </p>
+            {/* Starting Point Transfer Section */}
+            <div className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-[#14213D]">Starting Point Hub Transfer</h3>
+                <p className="text-[11px] text-zinc-500">Arrange travel to reach the starting point of the main tour (e.g. Vadodara → Ahmedabad)</p>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Transfer Route Details (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={formData.startingTransferDetails || ""}
+                  onChange={(e) => setFormData({ ...formData, startingTransferDetails: e.target.value })}
+                  placeholder="e.g. Vadodara to Ahmedabad by Sedan (starts 2 hours prior)"
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Package Level Route Display */}
+            <div className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-[#14213D]">Package-Level Included Transportation</h3>
+                <p className="text-[11px] text-zinc-500">Specify transit included directly in the main package (e.g. Ahmedabad → Udaipur by Sedan)</p>
+              </div>
+              <div className="sm:col-span-2">
+                <input
+                  type="text"
+                  value={formData.packageTransportationDetails || ""}
+                  onChange={(e) => setFormData({ ...formData, packageTransportationDetails: e.target.value })}
+                  placeholder="e.g. Ahmedabad to Udaipur - AC Sedan included in package"
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none"
+                />
+              </div>
+            </div>
+
+            {formData.transportationArrangement === "Planner" && (
+              <>
+                {/* Detail Transit Route Items */}
+                <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                    <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                      {editingFlightIndex !== null ? "Edit Transit Leg" : "Add Transportation / Flight Leg"}
+                    </span>
+
+                    {/* Generalized Route selector */}
+                    {masterData.flightRoutes.length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          const route = masterData.flightRoutes.find((r) => r.id === e.target.value);
+                          if (route) {
+                            setNewFlight((prev) => ({
+                              ...prev,
+                              sector: route.sector,
+                              airline: route.airline,
+                              flightCodeDefault: route.flightCodeDefault || "",
+                              stops: route.typicalStops || 0,
+                              layoverInfo: route.typicalLayoverInfo || "",
+                              carryOnBaggageKg: route.cabinBaggageKg ?? 7,
+                              checkInBaggageKg: route.checkInBaggageKg ?? 20,
+                              cancellationPolicy: route.cancellationPolicy || "",
+                              flightNotes: route.flightNotes || "",
+                              type: route.type || "Flight",
+                              travelTime: route.travelTime || "12:00 PM",
+                            }));
+                          }
+                        }}
+                        value=""
+                        className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
+                      >
+                        <option value="">⚡ Pre-fill from Master Routes Catalog...</option>
+                        {masterData.flightRoutes.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            [{r.type || "Flight"}] {r.sector} &bull; {r.airline} &bull; {r.travelTime || "Anytime"}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
-                  <div className="flex items-center space-x-2">
+
+                  {/* Timing Matcher Suggestion */}
+                  {newFlight.sector && (
+                    <div className="bg-white border border-[#B8944F]/20 rounded-lg p-3 text-xs space-y-2">
+                      <div className="font-bold text-[#14213D] flex items-center justify-between">
+                        <span>💡 Timing-Matched Master Suggestions for "{newFlight.sector}":</span>
+                        {newFlight.travelTime && (
+                          <span className="text-[10px] bg-[#B8944F]/10 text-[#B8944F] px-1.5 py-0.5 rounded font-mono">
+                            Target Time: {newFlight.travelTime}
+                          </span>
+                        )}
+                      </div>
+                      {(() => {
+                        const matched = masterData.flightRoutes.filter(
+                          (r) => r.sector.toLowerCase().includes(newFlight.sector.toLowerCase())
+                        );
+                        if (matched.length === 0) {
+                          return <p className="text-[10px] text-zinc-400">No timing suggestions found in Master Catalog.</p>;
+                        }
+                        return (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {matched.map((r) => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                onClick={() => {
+                                  setNewFlight((prev) => ({
+                                    ...prev,
+                                    sector: r.sector,
+                                    airline: r.airline,
+                                    flightCodeDefault: r.flightCodeDefault || "",
+                                    stops: r.typicalStops || 0,
+                                    layoverInfo: r.typicalLayoverInfo || "",
+                                    carryOnBaggageKg: r.cabinBaggageKg ?? 7,
+                                    checkInBaggageKg: r.checkInBaggageKg ?? 20,
+                                    cancellationPolicy: r.cancellationPolicy || "",
+                                    flightNotes: r.flightNotes || "",
+                                    type: r.type || "Flight",
+                                    travelTime: r.travelTime || "12:00 PM",
+                                  }));
+                                }}
+                                className="bg-zinc-50 hover:bg-[#B8944F]/10 border border-zinc-200 hover:border-[#B8944F] rounded p-2 text-left text-[11px] transition-all cursor-pointer flex flex-col"
+                              >
+                                <span className="font-bold text-zinc-700">[{r.type}] {r.airline}</span>
+                                <span className="text-[10px] text-[#B8944F] font-semibold mt-0.5">🕒 Time: {r.travelTime || "Any"}</span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Transportation Type *
+                      </label>
+                      <select
+                        value={newFlight.type}
+                        onChange={(e) => setNewFlight({ ...newFlight, type: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+                      >
+                        {TRANSPORT_TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Preferred Travel Timing (e.g. 08:00 PM)
+                      </label>
+                      <input
+                        type="text"
+                        value={newFlight.travelTime}
+                        onChange={(e) => setNewFlight({ ...newFlight, travelTime: e.target.value })}
+                        placeholder="e.g. 08:00 PM"
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Sector * (e.g. Vadodara to Ahmedabad)
+                      </label>
+                      <input
+                        type="text"
+                        value={newFlight.sector}
+                        onChange={(e) => setNewFlight({ ...newFlight, sector: e.target.value })}
+                        placeholder="e.g. Ahmedabad to Udaipur"
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Carrier / Provider Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={newFlight.airline}
+                        onChange={(e) => setNewFlight({ ...newFlight, airline: e.target.value })}
+                        placeholder="e.g. Indigo, Indian Railways, Private Vendor"
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Route Code / Flight Number / Plate
+                      </label>
+                      <input
+                        type="text"
+                        value={newFlight.flightCodeDefault || ""}
+                        onChange={(e) => setNewFlight({ ...newFlight, flightCodeDefault: e.target.value })}
+                        placeholder="e.g. Train-12952, Indigo PNR"
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Transit Details / Layovers
+                      </label>
+                      <input
+                        type="text"
+                        value={newFlight.layoverInfo}
+                        onChange={(e) => setNewFlight({ ...newFlight, layoverInfo: e.target.value })}
+                        placeholder="e.g. Non-stop, or Layover at BOM"
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Departure Date & Time
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={newFlight.departureDateTime}
+                        onChange={(e) => setNewFlight({ ...newFlight, departureDateTime: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Arrival Date & Time
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={newFlight.arrivalDateTime}
+                        onChange={(e) => setNewFlight({ ...newFlight, arrivalDateTime: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+
+                    <div className="col-span-2 flex flex-wrap gap-4 pt-2">
+                      <label className="flex items-center space-x-2 text-xs font-semibold text-zinc-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newFlight.isStartingTransfer}
+                          onChange={(e) => setNewFlight({ ...newFlight, isStartingTransfer: e.target.checked })}
+                          className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F]"
+                        />
+                        <span>Starting point hub transfer (e.g. Vadodara → Ahmedabad)</span>
+                      </label>
+
+                      <label className="flex items-center space-x-2 text-xs font-semibold text-zinc-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={newFlight.isPackageIncluded}
+                          onChange={(e) => setNewFlight({ ...newFlight, isPackageIncluded: e.target.checked })}
+                          className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F]"
+                        />
+                        <span>Package Included Transportation</span>
+                      </label>
+                    </div>
+
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Route Advisory Notes & Policies
+                      </label>
+                      <input
+                        type="text"
+                        value={newFlight.flightNotes}
+                        onChange={(e) => setNewFlight({ ...newFlight, flightNotes: e.target.value })}
+                        placeholder="e.g. Includes private AC vehicle, road toll charges and driver allowance."
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-2 pt-2">
+                    {editingFlightIndex !== null && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingFlightIndex(null)}
+                        className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
+                      >
+                        Cancel
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => startEditFlight(idx)}
-                      className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                      onClick={addFlight}
+                      className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
                     >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeFlight(idx)}
-                      className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" />
+                      {editingFlightIndex !== null ? "Update Arrangement" : "+ Add Transit Option to Plan"}
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                {/* List */}
+                <div className="space-y-3">
+                  {formData.flightDetails.map((f: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
+                    >
+                      <div>
+                        <h4 className="font-bold text-[#14213D] text-sm flex items-center">
+                          {getTransportIcon(f.type || "Flight")}
+                          <span>{f.sector} ({f.airline})</span>
+                          {f.isStartingTransfer && (
+                            <span className="ml-2 bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.2 rounded text-[9px] font-bold">
+                              Starting Transfer
+                            </span>
+                          )}
+                          {f.isPackageIncluded && (
+                            <span className="ml-2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded text-[9px] font-bold">
+                              Package Included
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-zinc-500 mt-0.5 font-semibold text-[11px] flex items-center">
+                          <Clock className="h-3 w-3 mr-1 text-[#B8944F]" />
+                          Preferred Travel Time: {f.travelTime || "Anytime"} &bull; Type: <span className="capitalize ml-1 text-[#14213D]">{f.type || "Flight"}</span>
+                        </p>
+                        {(f.departureDateTime || f.arrivalDateTime) && (
+                          <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
+                            📅 Dep: {f.departureDateTime || "N/A"} &bull; Arr: {f.arrivalDateTime || "N/A"}
+                          </p>
+                        )}
+                        {f.flightNotes && (
+                          <p className="text-[11px] text-zinc-400 mt-0.5 italic">
+                            Notes: {f.flightNotes}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => startEditFlight(idx)}
+                          className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeFlight(idx)}
+                          className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         );
+      }
 
       case 6:
         return (
@@ -2499,13 +2880,26 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
 
           <div className="flex items-center space-x-3">
+            {/* View Day-Wise Trip Summary if editing existing trip */}
+            {tripId && (
+              <Link
+                href={`/admin/summary/${tripId}`}
+                target="_blank"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-[#B8944F]/40 bg-white hover:bg-[#B8944F]/10 text-xs font-bold text-[#B8944F] transition-all shadow-2xs cursor-pointer"
+                title="Open Day-Wise Trip Summary"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span>Trip Summary</span>
+              </Link>
+            )}
+
             {/* Manage Master Data Button (Spec Requirement) */}
             <Link
               href="/master-data"
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-[#B8944F]/40 bg-white hover:bg-[#B8944F]/10 text-xs font-bold text-[#B8944F] transition-all shadow-2xs cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-bold text-zinc-700 transition-all shadow-2xs cursor-pointer"
             >
-              <Database className="h-3.5 w-3.5" />
-              <span>Manage Master Data</span>
+              <Database className="h-3.5 w-3.5 text-zinc-500" />
+              <span>Master Data</span>
             </Link>
 
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#14213D] text-[#FAF8F5]">

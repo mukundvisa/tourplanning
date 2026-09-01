@@ -18,11 +18,26 @@ interface AddOnItem {
   validityWindow: string | null;
   defaultPrice: number;
   detailsDescription: string | null;
+  titleTemplateId: string | null;
 }
 
-export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
+interface TitleTemplateItem {
+  id: string;
+  title: string;
+}
+
+export function AddOnsTab({
+  initialData,
+  titleTemplates,
+}: {
+  initialData: AddOnItem[];
+  titleTemplates: TitleTemplateItem[];
+}) {
   const router = useRouter();
   const [data, setData] = useState<AddOnItem[]>(initialData);
+  const [selectedTitleId, setSelectedTitleId] = useState<string>(() => {
+    return titleTemplates[0]?.id || "";
+  });
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<AddOnItem | null>(null);
@@ -35,12 +50,14 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
     validityWindow: "",
     defaultPrice: "3500",
     detailsDescription: "",
+    titleTemplateId: "",
   });
 
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = data.filter(
+  const filteredByTemplate = data.filter((a) => a.titleTemplateId === selectedTitleId);
+  const filtered = filteredByTemplate.filter(
     (a) =>
       a.name.toLowerCase().includes(search.toLowerCase()) ||
       (a.visaType && a.visaType.toLowerCase().includes(search.toLowerCase())) ||
@@ -48,6 +65,10 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
   );
 
   const openCreate = () => {
+    if (!selectedTitleId) {
+      alert("Please select a Title Template first.");
+      return;
+    }
     setEditingItem(null);
     setFormData({
       name: "",
@@ -57,6 +78,7 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
       validityWindow: "90 Days from issue",
       defaultPrice: "3500",
       detailsDescription: "Fast-track electronic visa processing.",
+      titleTemplateId: selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -71,6 +93,7 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
       validityWindow: item.validityWindow || "",
       defaultPrice: item.defaultPrice?.toString() || "0",
       detailsDescription: item.detailsDescription || "",
+      titleTemplateId: item.titleTemplateId || selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -88,6 +111,7 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
         validityWindow: formData.validityWindow || undefined,
         defaultPrice: parseFloat(formData.defaultPrice) || 0,
         detailsDescription: formData.detailsDescription || undefined,
+        titleTemplateId: formData.titleTemplateId || undefined,
       };
 
       if (editingItem) {
@@ -132,6 +156,8 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
     }
   };
 
+  const selectedTemplate = titleTemplates.find((t) => t.id === selectedTitleId);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -145,45 +171,73 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
         </div>
         <button
           onClick={openCreate}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          disabled={!selectedTitleId}
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="h-4 w-4" />
           <span>Add Master Add-on</span>
         </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-        <input
-          type="text"
-          placeholder="Search add-ons by package name or visa type..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
-        />
+      {/* Template Selection Dropdown */}
+      <div className="bg-white border border-[#B8944F]/10 rounded-lg p-4 craft-card space-y-3">
+        <label className="block text-xs font-bold text-zinc-700">
+          Select Title Template to Configure Add-ons:
+        </label>
+        <select
+          value={selectedTitleId}
+          onChange={(e) => setSelectedTitleId(e.target.value)}
+          className="w-full max-w-md px-3.5 py-2.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:bg-white focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+        >
+          <option value="">-- Choose a Title Template --</option>
+          {titleTemplates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.title}
+            </option>
+          ))}
+        </select>
+        {selectedTemplate && (
+          <p className="text-[11px] text-zinc-500 font-semibold flex items-center mt-1">
+            <Ticket className="h-3.5 w-3.5 text-[#B8944F] mr-1" />
+            Configuring add-ons for: <span className="text-[#14213D] ml-1">"{selectedTemplate.title}"</span>
+          </p>
+        )}
       </div>
 
-      <div className="bg-white border border-[#B8944F]/20 rounded-lg overflow-hidden craft-card">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-[#FAF8F5] border-b border-zinc-200 text-zinc-600 font-semibold">
-              <tr>
-                <th className="py-3 px-4">Add-on / Visa Package</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4">Validity Details</th>
-                <th className="py-3 px-4">Default Price</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-zinc-400 text-xs">
-                    No add-ons found.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((item) => (
+      {selectedTitleId ? (
+        <>
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Search add-ons by package name or visa type..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+            />
+          </div>
+
+          <div className="bg-white border border-[#B8944F]/20 rounded-lg overflow-hidden craft-card">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#FAF8F5] border-b border-zinc-200 text-zinc-600 font-semibold">
+                  <tr>
+                    <th className="py-3 px-4">Add-on / Visa Package</th>
+                    <th className="py-3 px-4">Category</th>
+                    <th className="py-3 px-4">Validity Details</th>
+                    <th className="py-3 px-4">Default Price</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-zinc-400 text-xs">
+                        No add-ons found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((item) => (
                   <tr key={item.id} className="hover:bg-zinc-50/70 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#14213D]">
                       <div className="flex items-center">
@@ -242,6 +296,12 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
           </table>
         </div>
       </div>
+      </>
+      ) : (
+        <div className="bg-zinc-50 border border-dashed border-zinc-200 rounded-xl p-8 text-center text-zinc-400 text-xs font-medium">
+          Please select a Title Template from the dropdown above to configure its associated Add-ons.
+        </div>
+      )}
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 overflow-y-auto">
@@ -260,6 +320,25 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Associated Title Template *
+                  </label>
+                  <select
+                    required
+                    value={formData.titleTemplateId}
+                    onChange={(e) => setFormData({ ...formData, titleTemplateId: e.target.value })}
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
+                  >
+                    <option value="">-- Select Template --</option>
+                    {titleTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
                     Add-on / Service Name *

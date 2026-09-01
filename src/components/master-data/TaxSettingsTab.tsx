@@ -191,8 +191,10 @@ export function TaxSettingsTab({ initialData }: { initialData: TaxSettingItem[] 
                   <td className="py-2.5 px-4 font-bold text-[#14213D]">
                     {h.currentTcsPercentage}%
                   </td>
-                  <td className="py-2.5 px-4 text-zinc-500 line-clamp-1 max-w-xs">
-                    {h.notes || "—"}
+                  <td className="py-2.5 px-4 text-zinc-500 max-w-xs">
+                    <div className="line-clamp-1" title={h.notes || undefined}>
+                      {h.notes || "—"}
+                    </div>
                   </td>
                   <td className="py-2.5 px-4 text-right">
                     {h.isActive ? (

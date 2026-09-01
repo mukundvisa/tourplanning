@@ -28,11 +28,12 @@ async function main() {
     "Fast-Track Visa Processing Fees",
   ];
   for (const name of pricingLabels) {
-    await prisma.masterPricingLabel.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    });
+    const existing = await prisma.masterPricingLabel.findFirst({ where: { name } });
+    if (!existing) {
+      await prisma.masterPricingLabel.create({
+        data: { name, price: 0 },
+      });
+    }
   }
 
   // 3. Master Consultants

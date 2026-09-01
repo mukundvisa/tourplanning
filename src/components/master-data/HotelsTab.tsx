@@ -19,6 +19,7 @@ interface HotelItem {
   nearbyAttractions: any;
   nearbyRestaurants: any;
   photos: string[];
+  titleTemplateId: string | null;
 }
 
 interface CityOption {
@@ -27,15 +28,25 @@ interface CityOption {
   country: string;
 }
 
+interface TitleTemplateItem {
+  id: string;
+  title: string;
+}
+
 export function HotelsTab({
   initialData,
   cities,
+  titleTemplates,
 }: {
   initialData: HotelItem[];
   cities: CityOption[];
+  titleTemplates: TitleTemplateItem[];
 }) {
   const router = useRouter();
   const [data, setData] = useState<HotelItem[]>(initialData);
+  const [selectedTitleId, setSelectedTitleId] = useState<string>(() => {
+    return titleTemplates[0]?.id || "";
+  });
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<HotelItem | null>(null);
@@ -53,6 +64,7 @@ export function HotelsTab({
     nearbyAttractions: [] as { name: string; distanceKm: number }[],
     nearbyRestaurants: [] as { name: string; distance: string }[],
     photos: [] as string[],
+    titleTemplateId: "",
   });
 
   const [roomInput, setRoomInput] = useState("");
@@ -68,13 +80,18 @@ export function HotelsTab({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = data.filter(
+  const filteredByTemplate = data.filter((h) => h.titleTemplateId === selectedTitleId);
+  const filtered = filteredByTemplate.filter(
     (h) =>
       h.name.toLowerCase().includes(search.toLowerCase()) ||
       (h.city && h.city.name.toLowerCase().includes(search.toLowerCase()))
   );
 
   const openCreate = () => {
+    if (!selectedTitleId) {
+      alert("Please select a Title Template first.");
+      return;
+    }
     setEditingItem(null);
     setFormData({
       name: "",
@@ -88,6 +105,7 @@ export function HotelsTab({
       nearbyAttractions: [],
       nearbyRestaurants: [],
       photos: [],
+      titleTemplateId: selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -113,6 +131,7 @@ export function HotelsTab({
       nearbyAttractions: attractions,
       nearbyRestaurants: restaurants,
       photos: item.photos || [],
+      titleTemplateId: item.titleTemplateId || selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -140,7 +159,7 @@ export function HotelsTab({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name) return;
+    if (!formData.name || !formData.titleTemplateId) return;
     setSaving(true);
     try {
       const payload = {
@@ -155,6 +174,7 @@ export function HotelsTab({
         nearbyAttractions: formData.nearbyAttractions,
         nearbyRestaurants: formData.nearbyRestaurants,
         photos: formData.photos,
+        titleTemplateId: formData.titleTemplateId,
       };
 
       if (editingItem) {
@@ -205,6 +225,8 @@ export function HotelsTab({
     }
   };
 
+  const selectedTemplate = titleTemplates.find((t) => t.id === selectedTitleId);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -213,36 +235,64 @@ export function HotelsTab({
             Hotels & Resorts Inventory
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Catalogue of verified partner properties, star ratings, scoped room categories, and photos
+            Manage verfied properties and accommodations associated with proposal Title Templates.
           </p>
         </div>
         <button
           onClick={openCreate}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          disabled={!selectedTitleId}
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="h-4 w-4" />
           <span>Add Master Hotel</span>
         </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-        <input
-          type="text"
-          placeholder="Search hotels by property name or destination city..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
-        />
+      {/* Template Selection Dropdown */}
+      <div className="bg-white border border-[#B8944F]/10 rounded-lg p-4 craft-card space-y-3">
+        <label className="block text-xs font-bold text-zinc-700">
+          Select Title Template to Configure Hotels:
+        </label>
+        <select
+          value={selectedTitleId}
+          onChange={(e) => setSelectedTitleId(e.target.value)}
+          className="w-full max-w-md px-3.5 py-2.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:bg-white focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+        >
+          <option value="">-- Choose a Title Template --</option>
+          {titleTemplates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.title}
+            </option>
+          ))}
+        </select>
+        {selectedTemplate && (
+          <p className="text-[11px] text-zinc-500 font-semibold flex items-center mt-1">
+            <BedDouble className="h-3.5 w-3.5 text-[#B8944F] mr-1" />
+            Configuring hotels for: <span className="text-[#14213D] ml-1">"{selectedTemplate.title}"</span>
+          </p>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filtered.length === 0 ? (
-          <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
-            No hotels found.
+      {selectedTitleId ? (
+        <>
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Search hotels by property name or destination city..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+            />
           </div>
-        ) : (
-          filtered.map((hotel) => (
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {filtered.length === 0 ? (
+              <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+                No hotels found configured for this template.
+              </div>
+            ) : (
+              filtered.map((hotel) => (
             <div
               key={hotel.id}
               className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card flex flex-col justify-between space-y-4 hover:shadow-md transition-all"
@@ -332,6 +382,12 @@ export function HotelsTab({
           ))
         )}
       </div>
+    </>
+  ) : (
+    <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+      Please select a Title Template from the dropdown above to manage its hotels.
+    </div>
+  )}
 
       {/* Modal */}
       {modalOpen && (
@@ -351,6 +407,27 @@ export function HotelsTab({
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Associate with Title Template *
+                  </label>
+                  <select
+                    required
+                    value={formData.titleTemplateId}
+                    onChange={(e) =>
+                      setFormData({ ...formData, titleTemplateId: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
+                  >
+                    <option value="">-- Choose a Title Template --</option>
+                    {titleTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
                     Hotel Property Name *

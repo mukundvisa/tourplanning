@@ -8,6 +8,7 @@ import {
   deleteMasterPolicyTemplate,
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { RichTextEditor } from "../RichTextEditor";
 
 interface PolicyTemplateItem {
   id: string;
@@ -16,11 +17,26 @@ interface PolicyTemplateItem {
   cancellationPolicy: string;
   visaRules: string;
   generalNotes: string;
+  titleTemplateId: string | null;
 }
 
-export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplateItem[] }) {
+interface TitleTemplateItem {
+  id: string;
+  title: string;
+}
+
+export function PolicyTemplatesTab({
+  initialData,
+  titleTemplates,
+}: {
+  initialData: PolicyTemplateItem[];
+  titleTemplates: TitleTemplateItem[];
+}) {
   const router = useRouter();
   const [data, setData] = useState<PolicyTemplateItem[]>(initialData);
+  const [selectedTitleId, setSelectedTitleId] = useState<string>(() => {
+    return titleTemplates[0]?.id || "";
+  });
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PolicyTemplateItem | null>(null);
@@ -31,16 +47,22 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
     cancellationPolicy: "",
     visaRules: "",
     generalNotes: "",
+    titleTemplateId: "",
   });
 
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = data.filter((p) =>
+  const filteredByTemplate = data.filter((p) => p.titleTemplateId === selectedTitleId);
+  const filtered = filteredByTemplate.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const openCreate = () => {
+    if (!selectedTitleId) {
+      alert("Please select a Title Template first.");
+      return;
+    }
     setEditingItem(null);
     setFormData({
       name: "",
@@ -48,6 +70,7 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
       cancellationPolicy: "<p>Free cancellation up to 30 days prior. 50% penalty between 29 to 15 days. 100% within 14 days.</p>",
       visaRules: "<p>Passport must hold 6 months validity from date of return.</p>",
       generalNotes: "<p>Standard hotel check-in 14:00 and check-out 11:00.</p>",
+      titleTemplateId: selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -60,6 +83,7 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
       cancellationPolicy: item.cancellationPolicy,
       visaRules: item.visaRules,
       generalNotes: item.generalNotes,
+      titleTemplateId: item.titleTemplateId || selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -111,6 +135,8 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
     }
   };
 
+  const selectedTemplate = titleTemplates.find((t) => t.id === selectedTitleId);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -124,83 +150,117 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
         </div>
         <button
           onClick={openCreate}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          disabled={!selectedTitleId}
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="h-4 w-4" />
           <span>Add Policy Template</span>
         </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-        <input
-          type="text"
-          placeholder="Search policy presets..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filtered.length === 0 ? (
-          <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
-            No policy templates found.
-          </div>
-        ) : (
-          filtered.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card flex flex-col justify-between space-y-4 hover:shadow-md transition-all"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <h3 className="text-sm font-bold text-[#14213D] flex items-center">
-                    <FileText className="h-4 w-4 text-[#B8944F] mr-2 shrink-0" />
-                    {item.name}
-                  </h3>
-                  <div className="flex items-center space-x-1 shrink-0">
-                    <button
-                      onClick={() => openEdit(item)}
-                      className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id, item.name)}
-                      disabled={deletingId === item.id}
-                      className="p-1 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
-                    >
-                      {deletingId === item.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2 text-[11px] text-zinc-600 border-t border-zinc-100 pt-3">
-                  <div>
-                    <span className="font-semibold text-[#14213D]">1. Payment: </span>
-                    <div
-                      className="line-clamp-2 text-zinc-500 mt-0.5"
-                      dangerouslySetInnerHTML={{ __html: item.paymentPolicy }}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-semibold text-[#14213D]">2. Cancellation: </span>
-                    <div
-                      className="line-clamp-2 text-zinc-500 mt-0.5"
-                      dangerouslySetInnerHTML={{ __html: item.cancellationPolicy }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))
+      {/* Template Selection Dropdown */}
+      <div className="bg-white border border-[#B8944F]/10 rounded-lg p-4 craft-card space-y-3">
+        <label className="block text-xs font-bold text-zinc-700">
+          Select Title Template to Configure Policies:
+        </label>
+        <select
+          value={selectedTitleId}
+          onChange={(e) => setSelectedTitleId(e.target.value)}
+          className="w-full max-w-md px-3.5 py-2.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:bg-white focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+        >
+          <option value="">-- Choose a Title Template --</option>
+          {titleTemplates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.title}
+            </option>
+          ))}
+        </select>
+        {selectedTemplate && (
+          <p className="text-[11px] text-zinc-500 font-semibold flex items-center mt-1">
+            <FileText className="h-3.5 w-3.5 text-[#B8944F] mr-1" />
+            Configuring policies for: <span className="text-[#14213D] ml-1">"{selectedTemplate.title}"</span>
+          </p>
         )}
       </div>
+
+      {selectedTitleId ? (
+        <>
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Search policy presets..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {filtered.length === 0 ? (
+              <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+                No policy templates found.
+              </div>
+            ) : (
+              filtered.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card flex flex-col justify-between space-y-4 hover:shadow-md transition-all"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <h3 className="text-sm font-bold text-[#14213D] flex items-center">
+                        <FileText className="h-4 w-4 text-[#B8944F] mr-2 shrink-0" />
+                        {item.name}
+                      </h3>
+                      <div className="flex items-center space-x-1 shrink-0">
+                        <button
+                          onClick={() => openEdit(item)}
+                          className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id, item.name)}
+                          disabled={deletingId === item.id}
+                          className="p-1 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
+                        >
+                          {deletingId === item.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-[11px] text-zinc-650 border-t border-zinc-100 pt-3">
+                      <div>
+                        <span className="font-semibold text-[#14213D]">1. Payment: </span>
+                        <div
+                          className="line-clamp-2 text-zinc-500 mt-0.5"
+                          dangerouslySetInnerHTML={{ __html: item.paymentPolicy }}
+                        />
+                      </div>
+                      <div>
+                        <span className="font-semibold text-[#14213D]">2. Cancellation: </span>
+                        <div
+                          className="line-clamp-2 text-zinc-500 mt-0.5"
+                          dangerouslySetInnerHTML={{ __html: item.cancellationPolicy }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="bg-zinc-50 border border-dashed border-zinc-200 rounded-xl p-8 text-center text-zinc-400 text-xs font-medium">
+          Please select a Title Template from the dropdown above to configure its associated Policies.
+        </div>
+      )}
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 overflow-y-auto">
@@ -220,6 +280,25 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Associated Title Template *
+                </label>
+                <select
+                  required
+                  value={formData.titleTemplateId}
+                  onChange={(e) => setFormData({ ...formData, titleTemplateId: e.target.value })}
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Select Template --</option>
+                  {titleTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   Preset Template Name *
                 </label>
                 <input
@@ -234,15 +313,14 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Payment Policy (HTML / Plain text)
+                  Payment Policy
                 </label>
-                <textarea
-                  rows={3}
+                <RichTextEditor
                   value={formData.paymentPolicy}
-                  onChange={(e) =>
-                    setFormData({ ...formData, paymentPolicy: e.target.value })
+                  onChange={(val) =>
+                    setFormData({ ...formData, paymentPolicy: val })
                   }
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none font-mono"
+                  placeholder="Payment milestones, deposit requirements, and final balance details..."
                 />
               </div>
 
@@ -250,13 +328,12 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   Cancellation Policy
                 </label>
-                <textarea
-                  rows={3}
+                <RichTextEditor
                   value={formData.cancellationPolicy}
-                  onChange={(e) =>
-                    setFormData({ ...formData, cancellationPolicy: e.target.value })
+                  onChange={(val) =>
+                    setFormData({ ...formData, cancellationPolicy: val })
                   }
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none font-mono"
+                  placeholder="Refund rules, cut-off dates, and cancellation charges..."
                 />
               </div>
 
@@ -264,13 +341,12 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   Visa & Passport Rules
                 </label>
-                <textarea
-                  rows={3}
+                <RichTextEditor
                   value={formData.visaRules}
-                  onChange={(e) =>
-                    setFormData({ ...formData, visaRules: e.target.value })
+                  onChange={(val) =>
+                    setFormData({ ...formData, visaRules: val })
                   }
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none font-mono"
+                  placeholder="Passport validity, visa requirements, travel insurance mandates..."
                 />
               </div>
 
@@ -278,13 +354,12 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   General Notes & Advisory
                 </label>
-                <textarea
-                  rows={3}
+                <RichTextEditor
                   value={formData.generalNotes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, generalNotes: e.target.value })
+                  onChange={(val) =>
+                    setFormData({ ...formData, generalNotes: val })
                   }
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none font-mono"
+                  placeholder="Hotel check-in timings, luggage advisories, ground guidelines..."
                 />
               </div>
 

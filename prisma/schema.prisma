@@ -10,6 +10,7 @@ generator client {
 model Trip {
   id                    String                 @id @default(uuid())
   title                 String
+  pricingTitle          String?
   destination           String
   departureCity         String
   startDate             DateTime
@@ -31,6 +32,9 @@ model Trip {
   restaurantSuggestions RestaurantSuggestion[]
   tripTerms             TripTerms?
   costCalculation       TripCostCalculation?
+  transportationArrangement String @default("Planner")
+  startingTransferDetails String?
+  packageTransportationDetails String?
 }
 
 model PriceQuoteItem {
@@ -59,7 +63,7 @@ model ItineraryDay {
   dayNumber            Int
   cityOrStay           String
   title                String
-  durationHours        Float?
+  durationHours        String?
   description          String
   inclusions           String[]
   exclusions           String[]
@@ -102,6 +106,10 @@ model FlightDetail {
   checkInBaggageKg   Int?
   cancellationPolicy String?
   flightNotes        String?
+  type               String   @default("Flight")
+  travelTime         String?
+  isStartingTransfer Boolean  @default(false)
+  isPackageIncluded  Boolean  @default(false)
 }
 
 model AddOn {
@@ -176,10 +184,13 @@ model MasterTaxSetting {
 }
 
 model MasterPricingLabel {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id              String               @id @default(uuid())
+  name            String
+  price           Float                @default(0)
+  titleTemplateId String?
+  titleTemplate   MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: Cascade)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @default(now()) @updatedAt
 }
 
 model MasterActivity {
@@ -187,12 +198,14 @@ model MasterActivity {
   title                String
   suggestedCityId      String?
   suggestedCity        MasterCity? @relation(fields: [suggestedCityId], references: [id], onDelete: SetNull)
-  defaultDurationHours Float?
+  defaultDurationHours String?
   description          String
   inclusions           String[]
   exclusions           String[]
   loveTips             String[]
   watchOutTips         String[]
+  titleTemplateId      String?
+  titleTemplate        MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @default(now()) @updatedAt
 }
@@ -211,6 +224,8 @@ model MasterHotel {
   nearbyAttractions Json        @default("[]") // [{name: string, distanceKm: number}]
   nearbyRestaurants Json        @default("[]") // [{name: string, distance: string}]
   photos            String[]
+  titleTemplateId   String?
+  titleTemplate     MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @default(now()) @updatedAt
 }
@@ -226,6 +241,10 @@ model MasterFlightRoute {
   checkInBaggageKg   Int?     @default(20)
   cancellationPolicy String?
   flightNotes        String?
+  type               String   @default("Flight")
+  travelTime         String?
+  titleTemplateId    String?
+  titleTemplate      MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @default(now()) @updatedAt
 }
@@ -239,6 +258,8 @@ model MasterAddOn {
   validityWindow     String?
   defaultPrice       Float    @default(0)
   detailsDescription String?
+  titleTemplateId    String?
+  titleTemplate      MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @default(now()) @updatedAt
 }
@@ -253,6 +274,8 @@ model MasterRestaurant {
   starRating        Float?      @default(4.5)
   reviewsCount      Int?        @default(100)
   offersPureVegJain Boolean     @default(false)
+  titleTemplateId   String?
+  titleTemplate     MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @default(now()) @updatedAt
 }
@@ -264,15 +287,24 @@ model MasterPolicyTemplate {
   cancellationPolicy String
   visaRules          String
   generalNotes       String
+  titleTemplateId    String?
+  titleTemplate      MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @default(now()) @updatedAt
 }
 
 model MasterTitleTemplate {
-  id        String   @id @default(uuid())
-  title     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id            String               @id @default(uuid())
+  title         String               @unique
+  pricingLabels MasterPricingLabel[]
+  activities    MasterActivity[]
+  hotels        MasterHotel[]
+  restaurants   MasterRestaurant[]
+  flightRoutes  MasterFlightRoute[]
+  addOns        MasterAddOn[]
+  policies      MasterPolicyTemplate[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @default(now()) @updatedAt
 }
 
 model MasterBannerImage {

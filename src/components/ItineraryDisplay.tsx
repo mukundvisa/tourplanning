@@ -267,7 +267,11 @@ export function ItineraryDisplay({ trip }: ItineraryDisplayProps) {
                   {day.title}
                 </p>
                 {day.durationHours && (
-                  <p className="text-[10px] text-zinc-400 mt-1 font-medium">{day.durationHours} Hours duration</p>
+                  <p className="text-[10px] text-zinc-400 mt-1 font-medium">
+                    {String(day.durationHours).toLowerCase().includes("hour") || String(day.durationHours).toLowerCase().includes("day")
+                      ? `${day.durationHours} duration`
+                      : `${day.durationHours} Hours duration`}
+                  </p>
                 )}
               </button>
             ))}
@@ -317,7 +321,9 @@ export function ItineraryDisplay({ trip }: ItineraryDisplayProps) {
                   </div>
                   {currentDay.durationHours && (
                     <span className="text-xs px-2.5 py-1 rounded-full bg-[#FAF8F5] text-zinc-500 border border-zinc-200 font-semibold shadow-sm">
-                      Duration: {currentDay.durationHours} hrs
+                      {String(currentDay.durationHours).toLowerCase().includes("hour") || String(currentDay.durationHours).toLowerCase().includes("day")
+                        ? currentDay.durationHours
+                        : `Duration: ${currentDay.durationHours} hrs`}
                     </span>
                   )}
                 </div>

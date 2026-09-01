@@ -4,6 +4,12 @@ import { db } from "@/lib/db";
 import { tripSchema, TripSchemaType } from "@/lib/schemas";
 import { revalidatePath } from "next/cache";
 
+function safeDate(val: any) {
+  if (!val) return new Date();
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
 /**
  * Create a new Trip with all nested relational items in a single transaction.
  */
@@ -15,16 +21,20 @@ export async function createTrip(payload: TripSchemaType) {
     const trip = await db.trip.create({
       data: {
         title: data.title,
+        pricingTitle: data.pricingTitle,
         destination: data.destination,
         departureCity: data.departureCity,
-        startDate: new Date(data.startDate),
-        endDate: new Date(data.endDate),
+        startDate: safeDate(data.startDate),
+        endDate: safeDate(data.endDate),
         durationDays: data.durationDays,
         durationNights: data.durationNights,
         numTravellers: data.numTravellers,
         consultantName: data.consultantName,
         consultantPhone: data.consultantPhone,
         coverImage: data.coverImage,
+        transportationArrangement: data.transportationArrangement || "Planner",
+        startingTransferDetails: data.startingTransferDetails || null,
+        packageTransportationDetails: data.packageTransportationDetails || null,
         priceQuoteItems: {
           create: data.priceQuoteItems.map((item) => ({
             label: item.label,
@@ -57,8 +67,8 @@ export async function createTrip(payload: TripSchemaType) {
         accommodations: {
           create: data.accommodations.map((acc) => ({
             location: acc.location,
-            checkInDate: new Date(acc.checkInDate),
-            checkOutDate: new Date(acc.checkOutDate),
+            checkInDate: safeDate(acc.checkInDate),
+            checkOutDate: safeDate(acc.checkOutDate),
             hotelName: acc.hotelName,
             starRating: acc.starRating,
             roomType: acc.roomType,
@@ -75,8 +85,8 @@ export async function createTrip(payload: TripSchemaType) {
           create: data.flightDetails.map((flight) => ({
             sector: flight.sector,
             airline: flight.airline,
-            departureDateTime: new Date(flight.departureDateTime),
-            arrivalDateTime: new Date(flight.arrivalDateTime),
+            departureDateTime: safeDate(flight.departureDateTime),
+            arrivalDateTime: safeDate(flight.arrivalDateTime),
             durationText: flight.durationText,
             stops: flight.stops,
             layoverInfo: flight.layoverInfo,
@@ -84,6 +94,10 @@ export async function createTrip(payload: TripSchemaType) {
             checkInBaggageKg: flight.checkInBaggageKg,
             cancellationPolicy: flight.cancellationPolicy,
             flightNotes: flight.flightNotes,
+            type: flight.type || "Flight",
+            travelTime: flight.travelTime || null,
+            isStartingTransfer: Boolean(flight.isStartingTransfer),
+            isPackageIncluded: Boolean(flight.isPackageIncluded),
           })),
         },
         addOns: {
@@ -156,16 +170,20 @@ export async function updateTrip(tripId: string, payload: TripSchemaType) {
         where: { id: tripId },
         data: {
           title: data.title,
+          pricingTitle: data.pricingTitle,
           destination: data.destination,
           departureCity: data.departureCity,
-          startDate: new Date(data.startDate),
-          endDate: new Date(data.endDate),
+          startDate: safeDate(data.startDate),
+          endDate: safeDate(data.endDate),
           durationDays: data.durationDays,
           durationNights: data.durationNights,
           numTravellers: data.numTravellers,
           consultantName: data.consultantName,
           consultantPhone: data.consultantPhone,
           coverImage: data.coverImage,
+          transportationArrangement: data.transportationArrangement || "Planner",
+          startingTransferDetails: data.startingTransferDetails || null,
+          packageTransportationDetails: data.packageTransportationDetails || null,
           priceQuoteItems: {
             create: data.priceQuoteItems.map((item) => ({
               label: item.label,
@@ -198,8 +216,8 @@ export async function updateTrip(tripId: string, payload: TripSchemaType) {
           accommodations: {
             create: data.accommodations.map((acc) => ({
               location: acc.location,
-              checkInDate: new Date(acc.checkInDate),
-              checkOutDate: new Date(acc.checkOutDate),
+              checkInDate: safeDate(acc.checkInDate),
+              checkOutDate: safeDate(acc.checkOutDate),
               hotelName: acc.hotelName,
               starRating: acc.starRating,
               roomType: acc.roomType,
@@ -216,8 +234,8 @@ export async function updateTrip(tripId: string, payload: TripSchemaType) {
             create: data.flightDetails.map((flight) => ({
               sector: flight.sector,
               airline: flight.airline,
-              departureDateTime: new Date(flight.departureDateTime),
-              arrivalDateTime: new Date(flight.arrivalDateTime),
+              departureDateTime: safeDate(flight.departureDateTime),
+              arrivalDateTime: safeDate(flight.arrivalDateTime),
               durationText: flight.durationText,
               stops: flight.stops,
               layoverInfo: flight.layoverInfo,
@@ -225,6 +243,10 @@ export async function updateTrip(tripId: string, payload: TripSchemaType) {
               checkInBaggageKg: flight.checkInBaggageKg,
               cancellationPolicy: flight.cancellationPolicy,
               flightNotes: flight.flightNotes,
+              type: flight.type || "Flight",
+              travelTime: flight.travelTime || null,
+              isStartingTransfer: Boolean(flight.isStartingTransfer),
+              isPackageIncluded: Boolean(flight.isPackageIncluded),
             })),
           },
           addOns: {
@@ -295,3 +317,43 @@ export async function deleteTrip(tripId: string) {
     return { success: false, error: error.message || "An unexpected error occurred" };
   }
 }
+
+/**
+ * Fetch a complete trip with all relations for Day-wise Trip Summary & previews.
+ */
+export async function getTripDetails(tripId: string) {
+  try {
+    const trip = await db.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        priceQuoteItems: {
+          orderBy: { sortOrder: "asc" },
+        },
+        tripFinancials: true,
+        itineraryDays: {
+          orderBy: { dayNumber: "asc" },
+        },
+        accommodations: {
+          orderBy: { checkInDate: "asc" },
+        },
+        flightDetails: {
+          orderBy: { departureDateTime: "asc" },
+        },
+        addOns: true,
+        restaurantSuggestions: true,
+        tripTerms: true,
+        costCalculation: true,
+      },
+    });
+
+    if (!trip) {
+      return { success: false, error: "Trip not found" };
+    }
+
+    return { success: true, data: JSON.parse(JSON.stringify(trip)) };
+  } catch (error: any) {
+    console.error("Error in getTripDetails Action:", error);
+    return { success: false, error: error.message || "Failed to load trip details" };
+  }
+}
+

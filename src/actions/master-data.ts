@@ -290,10 +290,14 @@ export async function getMasterPricingLabels() {
   }
 }
 
-export async function createMasterPricingLabel(name: string) {
+export async function createMasterPricingLabel(name: string, price: number = 0, titleTemplateId: string | null = null) {
   try {
     const data = await db.masterPricingLabel.create({
-      data: { name: name.trim() },
+      data: {
+        name: name.trim(),
+        price: Number(price),
+        titleTemplateId: titleTemplateId || null,
+      },
     });
     revalidatePath("/master-data");
     return { success: true, data };
@@ -302,11 +306,14 @@ export async function createMasterPricingLabel(name: string) {
   }
 }
 
-export async function updateMasterPricingLabel(id: string, name: string) {
+export async function updateMasterPricingLabel(id: string, name: string, price: number = 0) {
   try {
     const data = await db.masterPricingLabel.update({
       where: { id },
-      data: { name: name.trim() },
+      data: {
+        name: name.trim(),
+        price: Number(price),
+      },
     });
     revalidatePath("/master-data");
     return { success: true, data };
@@ -343,24 +350,26 @@ export async function getMasterActivities() {
 export async function createMasterActivity(formData: {
   title: string;
   suggestedCityId?: string;
-  defaultDurationHours?: number;
+  defaultDurationHours?: string;
   description: string;
   inclusions: string[];
   exclusions: string[];
   loveTips: string[];
   watchOutTips: string[];
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterActivity.create({
       data: {
         title: formData.title.trim(),
         suggestedCityId: formData.suggestedCityId || null,
-        defaultDurationHours: formData.defaultDurationHours ? Number(formData.defaultDurationHours) : null,
+        defaultDurationHours: formData.defaultDurationHours?.trim() || null,
         description: formData.description.trim(),
         inclusions: formData.inclusions || [],
         exclusions: formData.exclusions || [],
         loveTips: formData.loveTips || [],
         watchOutTips: formData.watchOutTips || [],
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -373,12 +382,13 @@ export async function createMasterActivity(formData: {
 export async function updateMasterActivity(id: string, formData: {
   title: string;
   suggestedCityId?: string;
-  defaultDurationHours?: number;
+  defaultDurationHours?: string;
   description: string;
   inclusions: string[];
   exclusions: string[];
   loveTips: string[];
   watchOutTips: string[];
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterActivity.update({
@@ -386,12 +396,13 @@ export async function updateMasterActivity(id: string, formData: {
       data: {
         title: formData.title.trim(),
         suggestedCityId: formData.suggestedCityId || null,
-        defaultDurationHours: formData.defaultDurationHours ? Number(formData.defaultDurationHours) : null,
+        defaultDurationHours: formData.defaultDurationHours?.trim() || null,
         description: formData.description.trim(),
         inclusions: formData.inclusions || [],
         exclusions: formData.exclusions || [],
         loveTips: formData.loveTips || [],
         watchOutTips: formData.watchOutTips || [],
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -438,6 +449,7 @@ export async function createMasterHotel(formData: {
   nearbyAttractions: any;
   nearbyRestaurants: any;
   photos: string[];
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterHotel.create({
@@ -453,6 +465,7 @@ export async function createMasterHotel(formData: {
         nearbyAttractions: formData.nearbyAttractions || [],
         nearbyRestaurants: formData.nearbyRestaurants || [],
         photos: formData.photos || [],
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -474,6 +487,7 @@ export async function updateMasterHotel(id: string, formData: {
   nearbyAttractions: any;
   nearbyRestaurants: any;
   photos: string[];
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterHotel.update({
@@ -490,6 +504,7 @@ export async function updateMasterHotel(id: string, formData: {
         nearbyAttractions: formData.nearbyAttractions || [],
         nearbyRestaurants: formData.nearbyRestaurants || [],
         photos: formData.photos || [],
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -522,7 +537,6 @@ export async function getMasterFlightRoutes() {
     return { success: false, error: err.message };
   }
 }
-
 export async function createMasterFlightRoute(formData: {
   sector: string;
   airline: string;
@@ -533,6 +547,9 @@ export async function createMasterFlightRoute(formData: {
   checkInBaggageKg?: number;
   cancellationPolicy?: string;
   flightNotes?: string;
+  type?: string;
+  travelTime?: string;
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterFlightRoute.create({
@@ -546,6 +563,9 @@ export async function createMasterFlightRoute(formData: {
         checkInBaggageKg: formData.checkInBaggageKg ? Number(formData.checkInBaggageKg) : 20,
         cancellationPolicy: formData.cancellationPolicy?.trim() || null,
         flightNotes: formData.flightNotes?.trim() || null,
+        type: formData.type || "Flight",
+        travelTime: formData.travelTime || null,
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -565,6 +585,9 @@ export async function updateMasterFlightRoute(id: string, formData: {
   checkInBaggageKg?: number;
   cancellationPolicy?: string;
   flightNotes?: string;
+  type?: string;
+  travelTime?: string;
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterFlightRoute.update({
@@ -579,6 +602,9 @@ export async function updateMasterFlightRoute(id: string, formData: {
         checkInBaggageKg: formData.checkInBaggageKg ? Number(formData.checkInBaggageKg) : 20,
         cancellationPolicy: formData.cancellationPolicy?.trim() || null,
         flightNotes: formData.flightNotes?.trim() || null,
+        type: formData.type || "Flight",
+        travelTime: formData.travelTime || null,
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -620,6 +646,7 @@ export async function createMasterAddOn(formData: {
   validityWindow?: string;
   defaultPrice: number;
   detailsDescription?: string;
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterAddOn.create({
@@ -631,6 +658,7 @@ export async function createMasterAddOn(formData: {
         validityWindow: formData.validityWindow?.trim() || null,
         defaultPrice: Number(formData.defaultPrice || 0),
         detailsDescription: formData.detailsDescription?.trim() || null,
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -648,6 +676,7 @@ export async function updateMasterAddOn(id: string, formData: {
   validityWindow?: string;
   defaultPrice: number;
   detailsDescription?: string;
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterAddOn.update({
@@ -660,6 +689,7 @@ export async function updateMasterAddOn(id: string, formData: {
         validityWindow: formData.validityWindow?.trim() || null,
         defaultPrice: Number(formData.defaultPrice || 0),
         detailsDescription: formData.detailsDescription?.trim() || null,
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -702,6 +732,7 @@ export async function createMasterRestaurant(formData: {
   starRating?: number;
   reviewsCount?: number;
   offersPureVegJain: boolean;
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterRestaurant.create({
@@ -713,6 +744,7 @@ export async function createMasterRestaurant(formData: {
         starRating: formData.starRating ? Number(formData.starRating) : 4.5,
         reviewsCount: formData.reviewsCount ? Number(formData.reviewsCount) : 100,
         offersPureVegJain: Boolean(formData.offersPureVegJain),
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -730,6 +762,7 @@ export async function updateMasterRestaurant(id: string, formData: {
   starRating?: number;
   reviewsCount?: number;
   offersPureVegJain: boolean;
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterRestaurant.update({
@@ -742,6 +775,7 @@ export async function updateMasterRestaurant(id: string, formData: {
         starRating: formData.starRating ? Number(formData.starRating) : 4.5,
         reviewsCount: formData.reviewsCount ? Number(formData.reviewsCount) : 100,
         offersPureVegJain: Boolean(formData.offersPureVegJain),
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -781,6 +815,7 @@ export async function createMasterPolicyTemplate(formData: {
   cancellationPolicy: string;
   visaRules: string;
   generalNotes: string;
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterPolicyTemplate.create({
@@ -790,6 +825,7 @@ export async function createMasterPolicyTemplate(formData: {
         cancellationPolicy: formData.cancellationPolicy,
         visaRules: formData.visaRules,
         generalNotes: formData.generalNotes,
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -805,6 +841,7 @@ export async function updateMasterPolicyTemplate(id: string, formData: {
   cancellationPolicy: string;
   visaRules: string;
   generalNotes: string;
+  titleTemplateId?: string;
 }) {
   try {
     const data = await db.masterPolicyTemplate.update({
@@ -815,6 +852,7 @@ export async function updateMasterPolicyTemplate(id: string, formData: {
         cancellationPolicy: formData.cancellationPolicy,
         visaRules: formData.visaRules,
         generalNotes: formData.generalNotes,
+        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, Plane, Luggage, X, Loader2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Plane, Luggage, X, Loader2, Bus, Train, Car, Clock } from "lucide-react";
 import {
   createMasterFlightRoute,
   updateMasterFlightRoute,
@@ -20,12 +20,24 @@ interface FlightRouteItem {
   checkInBaggageKg: number | null;
   cancellationPolicy: string | null;
   flightNotes: string | null;
+  type: string;
+  travelTime: string | null;
+  titleTemplateId: string | null;
 }
 
-export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[] }) {
+const TRANSPORT_TYPES = ["Flight", "Train", "Bus", "Car", "Sedan", "SUV", "Other"];
+
+export function FlightRoutesTab({
+  initialData,
+  titleTemplates = [],
+}: {
+  initialData: FlightRouteItem[];
+  titleTemplates?: any[];
+}) {
   const router = useRouter();
   const [data, setData] = useState<FlightRouteItem[]>(initialData);
   const [search, setSearch] = useState("");
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState("All");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<FlightRouteItem | null>(null);
 
@@ -39,17 +51,23 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
     checkInBaggageKg: "20",
     cancellationPolicy: "",
     flightNotes: "",
+    type: "Flight",
+    travelTime: "12:00 PM",
+    titleTemplateId: "",
   });
 
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = data.filter(
-    (f) =>
+  const filtered = data.filter((f) => {
+    const matchesSearch =
       f.sector.toLowerCase().includes(search.toLowerCase()) ||
       f.airline.toLowerCase().includes(search.toLowerCase()) ||
-      (f.flightNotes && f.flightNotes.toLowerCase().includes(search.toLowerCase()))
-  );
+      (f.flightNotes && f.flightNotes.toLowerCase().includes(search.toLowerCase()));
+    
+    const matchesType = selectedTypeFilter === "All" || (f.type || "Flight") === selectedTypeFilter;
+    return matchesSearch && matchesType;
+  });
 
   const openCreate = () => {
     setEditingItem(null);
@@ -58,11 +76,14 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
       airline: "",
       flightCodeDefault: "",
       typicalStops: 0,
-      typicalLayoverInfo: "Non-stop direct flight",
+      typicalLayoverInfo: "Non-stop direct transit",
       cabinBaggageKg: "7",
       checkInBaggageKg: "20",
-      cancellationPolicy: "Airline penalty fee applies for changes/cancellations.",
-      flightNotes: "Includes complimentary inflight snacks and seat selection.",
+      cancellationPolicy: "Standard cancellation rules apply.",
+      flightNotes: "",
+      type: selectedTypeFilter !== "All" ? selectedTypeFilter : "Flight",
+      travelTime: "08:00 PM",
+      titleTemplateId: "",
     });
     setModalOpen(true);
   };
@@ -79,6 +100,9 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
       checkInBaggageKg: item.checkInBaggageKg?.toString() || "20",
       cancellationPolicy: item.cancellationPolicy || "",
       flightNotes: item.flightNotes || "",
+      type: item.type || "Flight",
+      travelTime: item.travelTime || "12:00 PM",
+      titleTemplateId: item.titleTemplateId || "",
     });
     setModalOpen(true);
   };
@@ -98,27 +122,30 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
         checkInBaggageKg: parseInt(formData.checkInBaggageKg) || 20,
         cancellationPolicy: formData.cancellationPolicy || undefined,
         flightNotes: formData.flightNotes || undefined,
+        type: formData.type,
+        travelTime: formData.travelTime || undefined,
+        titleTemplateId: formData.titleTemplateId || undefined,
       };
 
       if (editingItem) {
         const res = await updateMasterFlightRoute(editingItem.id, payload);
         if (res.success && res.data) {
           setData((prev) =>
-            prev.map((f) => (f.id === editingItem.id ? res.data! : f))
+            prev.map((f) => (f.id === editingItem.id ? (res.data! as any) : f))
           );
           setModalOpen(false);
           router.refresh();
         } else {
-          alert(res.error || "Failed to update flight route");
+          alert(res.error || "Failed to update transportation route");
         }
       } else {
         const res = await createMasterFlightRoute(payload);
         if (res.success && res.data) {
-          setData((prev) => [res.data!, ...prev]);
+          setData((prev) => [(res.data! as any), ...prev]);
           setModalOpen(false);
           router.refresh();
         } else {
-          alert(res.error || "Failed to create flight route");
+          alert(res.error || "Failed to create transportation route");
         }
       }
     } finally {
@@ -127,7 +154,7 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
   };
 
   const handleDelete = async (id: string, sector: string) => {
-    if (!confirm(`Are you sure you want to delete flight route "${sector}"?`)) return;
+    if (!confirm(`Are you sure you want to delete route "${sector}"?`)) return;
     setDeletingId(id);
     try {
       const res = await deleteMasterFlightRoute(id);
@@ -135,10 +162,27 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
         setData((prev) => prev.filter((f) => f.id !== id));
         router.refresh();
       } else {
-        alert(res.error || "Failed to delete flight route");
+        alert(res.error || "Failed to delete route");
       }
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const getTransportIcon = (type: string) => {
+    switch (type) {
+      case "Flight":
+        return <Plane className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+      case "Train":
+        return <Train className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+      case "Bus":
+        return <Bus className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+      case "Car":
+      case "Sedan":
+      case "SUV":
+        return <Car className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+      default:
+        return <Car className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
     }
   };
 
@@ -147,10 +191,10 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Aviation & Flight Routes
+            Transportation & Routes Catalog
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Pre-fills stops, baggage allowances, cancellation terms, and notes in Step 5 of the Trip Blueprint
+            Configure Flights, Trains, Buses, and Cars with preferred travel timings for automatic proposal suggestions.
           </p>
         </div>
         <button
@@ -158,15 +202,42 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
           className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
         >
           <Plus className="h-4 w-4" />
-          <span>Add Flight Route</span>
+          <span>Add Route Option</span>
         </button>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap gap-2 pb-1">
+        <button
+          onClick={() => setSelectedTypeFilter("All")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            selectedTypeFilter === "All"
+              ? "bg-[#B8944F] text-white shadow-sm"
+              : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+          }`}
+        >
+          All
+        </button>
+        {TRANSPORT_TYPES.map((type) => (
+          <button
+            key={type}
+            onClick={() => setSelectedTypeFilter(type)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              selectedTypeFilter === type
+                ? "bg-[#B8944F] text-white shadow-sm"
+                : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+            }`}
+          >
+            {type}
+          </button>
+        ))}
       </div>
 
       <div className="relative">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
         <input
           type="text"
-          placeholder="Search by route sector, airline name, or flight terms..."
+          placeholder="Search routes by sector, provider, or notes..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
@@ -178,10 +249,10 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
           <table className="w-full text-left text-xs">
             <thead className="bg-[#FAF8F5] border-b border-zinc-200 text-zinc-600 font-semibold">
               <tr>
-                <th className="py-3 px-4">Flight Sector</th>
-                <th className="py-3 px-4">Airline</th>
-                <th className="py-3 px-4">Stops & Transit</th>
-                <th className="py-3 px-4">Baggage Allowances</th>
+                <th className="py-3 px-4">Type & Sector</th>
+                <th className="py-3 px-4">Carrier / Provider</th>
+                <th className="py-3 px-4">Travel Time & Transit</th>
+                <th className="py-3 px-4">Allowances / Layovers</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -189,36 +260,45 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-zinc-400 text-xs">
-                    No flight routes found.
+                    No transportation options found matching your filters.
                   </td>
                 </tr>
               ) : (
                 filtered.map((route) => (
                   <tr key={route.id} className="hover:bg-zinc-50/70 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#14213D] flex items-center">
-                      <Plane className="h-3.5 w-3.5 text-[#B8944F] mr-2" />
-                      {route.sector}
+                      {getTransportIcon(route.type || "Flight")}
+                      <div className="flex flex-col">
+                        <span>{route.sector}</span>
+                        <span className="text-[10px] text-zinc-400 font-normal capitalize">Type: {route.type || "Flight"}</span>
+                      </div>
                     </td>
                     <td className="py-3 px-4 font-semibold text-zinc-700">
                       {route.airline} {route.flightCodeDefault ? `(${route.flightCodeDefault})` : ""}
                     </td>
                     <td className="py-3 px-4 text-zinc-600">
-                      <span className="font-semibold text-[#14213D]">
+                      <div className="flex items-center space-x-1.5 font-bold text-[#B8944F]">
+                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                        <span>{route.travelTime || "Any Time"}</span>
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-0.5">
                         {route.typicalStops === 0 ? "Non-stop" : `${route.typicalStops} Stop(s)`}
-                      </span>
-                      {route.typicalLayoverInfo && (
-                        <p className="text-[10px] text-zinc-400 mt-0.5">{route.typicalLayoverInfo}</p>
-                      )}
+                        {route.typicalLayoverInfo ? ` • ${route.typicalLayoverInfo}` : ""}
+                      </p>
                     </td>
                     <td className="py-3 px-4 text-zinc-600">
-                      <div className="flex items-center space-x-2 text-[11px]">
-                        <span className="bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
-                          Cabin: {route.cabinBaggageKg || 7}kg
-                        </span>
-                        <span className="bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
-                          Cargo: {route.checkInBaggageKg || 20}kg
-                        </span>
-                      </div>
+                      {(route.type === "Flight" || !route.type) ? (
+                        <div className="flex items-center space-x-2 text-[11px]">
+                          <span className="bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
+                            Cabin: {route.cabinBaggageKg || 7}
+                          </span>
+                          <span className="bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
+                            Cargo: {route.checkInBaggageKg || 20}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-zinc-400 text-[10px]">No Baggage Limit</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end space-x-1">
@@ -254,7 +334,7 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
           <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-lg w-full p-6 my-8 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center pb-3 border-b border-zinc-100 mb-4">
               <h3 className="text-base font-bold text-[#14213D] font-fraunces">
-                {editingItem ? "Edit Flight Route" : "Add Flight Route"}
+                {editingItem ? "Edit Route Option" : "Add Route Option"}
               </h3>
               <button
                 onClick={() => setModalOpen(false)}
@@ -266,37 +346,86 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Transportation Type *
+                  </label>
+                  <select
+                    value={formData.type}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
+                  >
+                    {TRANSPORT_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Associated Title Template
+                  </label>
+                  <select
+                    value={formData.titleTemplateId}
+                    onChange={(e) => setFormData({ ...formData, titleTemplateId: e.target.value })}
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
+                  >
+                    <option value="">No Template Association</option>
+                    {titleTemplates.map((t: any) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Preferred Travel Time *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.travelTime}
+                    onChange={(e) => setFormData({ ...formData, travelTime: e.target.value })}
+                    placeholder="e.g. 08:00 PM or 09:30 AM"
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                  />
+                </div>
+
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Route Sector * (e.g. BOM to DPS)
+                    Route Sector * (e.g. Vadodara to Ahmedabad, or Ahmedabad to Udaipur)
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.sector}
                     onChange={(e) => setFormData({ ...formData, sector: e.target.value })}
-                    placeholder="BOM to DPS (Mumbai to Bali)"
+                    placeholder="e.g. Vadodara to Ahmedabad"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Airline Name *
+                    Carrier / Provider Name *
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.airline}
                     onChange={(e) => setFormData({ ...formData, airline: e.target.value })}
-                    placeholder="e.g. VietJet Air, Emirates"
+                    placeholder="e.g. Indian Railways, GSRTC, Private Sedan"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Default Flight Code (Optional)
+                    Route / Vehicle Code (Optional)
                   </label>
                   <input
                     type="text"
@@ -304,14 +433,14 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
                     onChange={(e) =>
                       setFormData({ ...formData, flightCodeDefault: e.target.value })
                     }
-                    placeholder="e.g. VJ-884"
+                    placeholder="e.g. Train No, Flight No, Plate No"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Typical Number of Stops
+                    Number of Stops / Layover Points
                   </label>
                   <select
                     value={formData.typicalStops}
@@ -328,7 +457,7 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Typical Layover Details
+                    Transit Details (Optional)
                   </label>
                   <input
                     type="text"
@@ -336,42 +465,46 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
                     onChange={(e) =>
                       setFormData({ ...formData, typicalLayoverInfo: e.target.value })
                     }
-                    placeholder="e.g. 2h 15m at SGN"
+                    placeholder="e.g. via Himmatnagar, or 2h at BOM"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Cabin Baggage (KG)
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.cabinBaggageKg}
-                    onChange={(e) =>
-                      setFormData({ ...formData, cabinBaggageKg: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                  />
-                </div>
+                {formData.type === "Flight" && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Cabin Baggage (KG)
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.cabinBaggageKg}
+                        onChange={(e) =>
+                          setFormData({ ...formData, cabinBaggageKg: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Check-in Baggage (KG)
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.checkInBaggageKg}
-                    onChange={(e) =>
-                      setFormData({ ...formData, checkInBaggageKg: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Check-in Baggage (KG)
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.checkInBaggageKg}
+                        onChange={(e) =>
+                          setFormData({ ...formData, checkInBaggageKg: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Cancellation Policy / Terms
+                    Cancellation / Advisory Policy
                   </label>
                   <input
                     type="text"
@@ -379,14 +512,14 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
                     onChange={(e) =>
                       setFormData({ ...formData, cancellationPolicy: e.target.value })
                     }
-                    placeholder="e.g. Non-refundable ticket. Date change allowed with airline penalty."
+                    placeholder="e.g. Free cancellation up to 24h before departure."
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
 
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Flight Notes & Advisory
+                    Route Notes & Advisory
                   </label>
                   <textarea
                     rows={2}
@@ -394,7 +527,7 @@ export function FlightRoutesTab({ initialData }: { initialData: FlightRouteItem[
                     onChange={(e) =>
                       setFormData({ ...formData, flightNotes: e.target.value })
                     }
-                    placeholder="e.g. Meals and extra luggage are pre-arranged on group PNR."
+                    placeholder="e.g. Recommended for night transit to Udaipur."
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>

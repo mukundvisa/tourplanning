@@ -8,18 +8,20 @@ import {
   deleteMasterActivity,
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { RichTextEditor } from "../RichTextEditor";
 
 interface ActivityItem {
   id: string;
   title: string;
   suggestedCityId: string | null;
   suggestedCity?: { id: string; name: string; country: string } | null;
-  defaultDurationHours: number | null;
+  defaultDurationHours: string | null;
   description: string;
   inclusions: string[];
   exclusions: string[];
   loveTips: string[];
   watchOutTips: string[];
+  titleTemplateId: string | null;
 }
 
 interface CityOption {
@@ -28,15 +30,25 @@ interface CityOption {
   country: string;
 }
 
+interface TitleTemplateItem {
+  id: string;
+  title: string;
+}
+
 export function ActivitiesTab({
   initialData,
   cities,
+  titleTemplates,
 }: {
   initialData: ActivityItem[];
   cities: CityOption[];
+  titleTemplates: TitleTemplateItem[];
 }) {
   const router = useRouter();
   const [data, setData] = useState<ActivityItem[]>(initialData);
+  const [selectedTitleId, setSelectedTitleId] = useState<string>(() => {
+    return titleTemplates[0]?.id || "";
+  });
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ActivityItem | null>(null);
@@ -51,6 +63,7 @@ export function ActivitiesTab({
     exclusions: [] as string[],
     loveTips: [] as string[],
     watchOutTips: [] as string[],
+    titleTemplateId: "",
   });
 
   // Tag inputs
@@ -62,7 +75,8 @@ export function ActivitiesTab({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = data.filter(
+  const filteredByTemplate = data.filter((a) => a.titleTemplateId === selectedTitleId);
+  const filtered = filteredByTemplate.filter(
     (a) =>
       a.title.toLowerCase().includes(search.toLowerCase()) ||
       a.description.toLowerCase().includes(search.toLowerCase()) ||
@@ -70,6 +84,10 @@ export function ActivitiesTab({
   );
 
   const openCreate = () => {
+    if (!selectedTitleId) {
+      alert("Please select a Title Template first.");
+      return;
+    }
     setEditingItem(null);
     setFormData({
       title: "",
@@ -80,6 +98,7 @@ export function ActivitiesTab({
       exclusions: [],
       loveTips: [],
       watchOutTips: [],
+      titleTemplateId: selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -95,24 +114,26 @@ export function ActivitiesTab({
       exclusions: item.exclusions || [],
       loveTips: item.loveTips || [],
       watchOutTips: item.watchOutTips || [],
+      titleTemplateId: item.titleTemplateId || selectedTitleId,
     });
     setModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !formData.description) return;
+    if (!formData.title || !formData.description || !formData.titleTemplateId) return;
     setSaving(true);
     try {
       const payload = {
         title: formData.title,
         suggestedCityId: formData.suggestedCityId || undefined,
-        defaultDurationHours: parseFloat(formData.defaultDurationHours) || undefined,
+        defaultDurationHours: formData.defaultDurationHours || undefined,
         description: formData.description,
         inclusions: formData.inclusions,
         exclusions: formData.exclusions,
         loveTips: formData.loveTips,
         watchOutTips: formData.watchOutTips,
+        titleTemplateId: formData.titleTemplateId,
       };
 
       if (editingItem) {
@@ -163,6 +184,8 @@ export function ActivitiesTab({
     }
   };
 
+  const selectedTemplate = titleTemplates.find((t) => t.id === selectedTitleId);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -171,35 +194,63 @@ export function ActivitiesTab({
             Activity & Tour Library
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Pre-configured sightseeing days that auto-populate descriptions, duration, inclusions, and tips
+            Manage sightseeing days and itineraries associated with proposal Title Templates.
           </p>
         </div>
         <button
           onClick={openCreate}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          disabled={!selectedTitleId}
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="h-4 w-4" />
           <span>Add Master Activity</span>
         </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-        <input
-          type="text"
-          placeholder="Search activities by title, location, or description..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
-        />
+      {/* Template Selection Dropdown */}
+      <div className="bg-white border border-[#B8944F]/10 rounded-lg p-4 craft-card space-y-3">
+        <label className="block text-xs font-bold text-zinc-700">
+          Select Title Template to Configure Activities:
+        </label>
+        <select
+          value={selectedTitleId}
+          onChange={(e) => setSelectedTitleId(e.target.value)}
+          className="w-full max-w-md px-3.5 py-2.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:bg-white focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+        >
+          <option value="">-- Choose a Title Template --</option>
+          {titleTemplates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.title}
+            </option>
+          ))}
+        </select>
+        {selectedTemplate && (
+          <p className="text-[11px] text-zinc-500 font-semibold flex items-center mt-1">
+            <Compass className="h-3.5 w-3.5 text-[#B8944F] mr-1" />
+            Configuring activities for: <span className="text-[#14213D] ml-1">"{selectedTemplate.title}"</span>
+          </p>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filtered.length === 0 ? (
-          <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
-            No activities found matching query.
+      {selectedTitleId ? (
+        <>
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Search activities by title, location, or description..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+            />
           </div>
-        ) : (
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {filtered.length === 0 ? (
+              <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+                No activities found configured for this template.
+              </div>
+            ) : (
           filtered.map((act) => (
             <div
               key={act.id}
@@ -241,14 +292,17 @@ export function ActivitiesTab({
                   {act.defaultDurationHours && (
                     <span className="flex items-center font-mono">
                       <Clock className="h-3 w-3 mr-1 text-zinc-400" />
-                      {act.defaultDurationHours} Hours
+                      {act.defaultDurationHours.toLowerCase().includes("hour") || act.defaultDurationHours.toLowerCase().includes("day")
+                        ? act.defaultDurationHours
+                        : `${act.defaultDurationHours} Hours`}
                     </span>
                   )}
                 </div>
 
-                <p className="text-xs text-zinc-600 line-clamp-3 leading-relaxed mb-4">
-                  {act.description}
-                </p>
+                <div 
+                  className="text-xs text-zinc-600 line-clamp-3 leading-relaxed mb-4"
+                  dangerouslySetInnerHTML={{ __html: act.description }}
+                />
 
                 {/* Inclusions & Tips preview */}
                 <div className="space-y-1.5 pt-3 border-t border-zinc-100 text-[11px]">
@@ -271,6 +325,12 @@ export function ActivitiesTab({
           ))
         )}
       </div>
+    </>
+  ) : (
+    <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+      Please select a Title Template from the dropdown above to manage its activities.
+    </div>
+  )}
 
       {/* Modal */}
       {modalOpen && (
@@ -304,6 +364,27 @@ export function ActivitiesTab({
                   />
                 </div>
 
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Associate with Title Template *
+                  </label>
+                  <select
+                    required
+                    value={formData.titleTemplateId}
+                    onChange={(e) =>
+                      setFormData({ ...formData, titleTemplateId: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
+                  >
+                    <option value="">-- Choose a Title Template --</option>
+                    {titleTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
                     Suggested Destination City
@@ -326,16 +407,15 @@ export function ActivitiesTab({
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Default Duration (Hours)
+                    Default Duration (e.g. 4 Hours, Half Day, Full Day)
                   </label>
                   <input
-                    type="number"
-                    step="0.5"
+                    type="text"
                     value={formData.defaultDurationHours}
                     onChange={(e) =>
                       setFormData({ ...formData, defaultDurationHours: e.target.value })
                     }
-                    placeholder="4.5"
+                    placeholder="e.g. 4 Hours, Half Day"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
@@ -345,13 +425,10 @@ export function ActivitiesTab({
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   Day Narrative Description *
                 </label>
-                <textarea
-                  rows={4}
-                  required
+                <RichTextEditor
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(val) => setFormData({ ...formData, description: val })}
                   placeholder="Detailed chronological plan of activities..."
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
               </div>
 

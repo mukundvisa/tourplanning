@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   LayoutDashboard,
   MapPin,
@@ -11,6 +12,7 @@ import {
   Compass,
   BedDouble,
   Plane,
+  Bus,
   Ticket,
   UtensilsCrossed,
   FileText,
@@ -61,25 +63,33 @@ interface MasterDataHubProps {
 
 const TABS = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "titles", label: "Title Templates", icon: Type },
   { id: "cities", label: "Cities & States", icon: MapPin },
   { id: "consultants", label: "Consultants", icon: User },
   { id: "tax", label: "Tax Settings", icon: Percent },
-  { id: "pricing", label: "Pricing Labels", icon: Tag },
+  { id: "pricing", label: "Pricing", icon: Tag },
   { id: "activities", label: "Activities", icon: Compass },
   { id: "hotels", label: "Hotels", icon: BedDouble },
-  { id: "flights", label: "Flight Routes", icon: Plane },
+  { id: "flights", label: "Transportation", icon: Bus },
   { id: "addons", label: "Add-ons & Visa", icon: Ticket },
   { id: "restaurants", label: "Restaurants", icon: UtensilsCrossed },
   { id: "policies", label: "Policy Templates", icon: FileText },
-  { id: "titles", label: "Title Templates", icon: Type },
   { id: "banners", label: "Banner Images", icon: ImageIcon },
-  { id: "costing", label: "Admin Cost Calculation", icon: Calculator, isSage: true },
 ];
 
-export function MasterDataHub(props: MasterDataHubProps) {
-  const [activeTab, setActiveTab] = useState("overview");
+function MasterDataHubContent(props: MasterDataHubProps) {
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") || "overview";
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab");
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#14213D] flex flex-col font-sans">
@@ -112,7 +122,7 @@ export function MasterDataHub(props: MasterDataHubProps) {
             </Link>
             <span className="text-zinc-300 hidden sm:inline">/</span>
             <span className="font-bold text-[#14213D] truncate max-w-[160px] sm:max-w-xs">
-              Master Data Hub
+              {activeTab === "costing" ? "Admin Cost Engine" : "Master Data Hub"}
             </span>
           </div>
         </div>
@@ -228,7 +238,7 @@ export function MasterDataHub(props: MasterDataHubProps) {
 
         {/* Content Area */}
         <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-          {/* Horizontal Icon-Tab Strip (14 Tabs) */}
+          {/* Horizontal Icon-Tab Strip (Master Data Tabs only - No Cost Calculation in Header Tabs) */}
           <div className="bg-white border-b border-zinc-200/80 px-4 sm:px-6 sticky top-0 z-20 shadow-2xs">
             <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar py-2.5">
               {TABS.map((tab) => {
@@ -236,9 +246,7 @@ export function MasterDataHub(props: MasterDataHubProps) {
                 const isActive = activeTab === tab.id;
                 let activeStyles = "text-zinc-500 hover:text-[#14213D] hover:bg-zinc-50";
                 if (isActive) {
-                  activeStyles = tab.isSage
-                    ? "bg-[#6B7A5E]/15 text-[#6B7A5E] font-bold border-b-2 border-[#6B7A5E] rounded-b-none"
-                    : "text-[#B8944F] font-bold border-b-2 border-[#B8944F] bg-[#B8944F]/8 rounded-b-none";
+                  activeStyles = "text-[#B8944F] font-bold border-b-2 border-[#B8944F] bg-[#B8944F]/8 rounded-b-none";
                 }
 
                 return (
@@ -250,9 +258,7 @@ export function MasterDataHub(props: MasterDataHubProps) {
                     <Icon
                       className={`h-3.5 w-3.5 ${
                         isActive
-                          ? tab.isSage
-                            ? "text-[#6B7A5E]"
-                            : "text-[#B8944F]"
+                          ? "text-[#B8944F]"
                           : "text-zinc-400"
                       }`}
                     />
@@ -266,35 +272,61 @@ export function MasterDataHub(props: MasterDataHubProps) {
           {/* Active Tab Panel Content */}
           <div className="p-4 sm:p-8 max-w-7xl w-full mx-auto">
             {activeTab === "overview" && <OverviewTab stats={props.overviewStats} />}
+            {activeTab === "costing" && (
+              <AdminCostCalculationTab
+                trips={props.tripsForCost}
+                costRates={props.costRates}
+              />
+            )}
             {activeTab === "cities" && <CitiesTab initialData={props.cities} />}
             {activeTab === "consultants" && (
               <ConsultantsTab initialData={props.consultants} />
             )}
             {activeTab === "tax" && <TaxSettingsTab initialData={props.taxSettings} />}
             {activeTab === "pricing" && (
-              <PricingLabelsTab initialData={props.pricingLabels} />
+              <PricingLabelsTab
+                initialData={props.pricingLabels}
+                titleTemplates={props.titleTemplates}
+              />
             )}
             {activeTab === "activities" && (
               <ActivitiesTab
                 initialData={props.activities}
                 cities={props.cities}
+                titleTemplates={props.titleTemplates}
               />
             )}
             {activeTab === "hotels" && (
-              <HotelsTab initialData={props.hotels} cities={props.cities} />
+              <HotelsTab
+                initialData={props.hotels}
+                cities={props.cities}
+                titleTemplates={props.titleTemplates}
+              />
             )}
             {activeTab === "flights" && (
-              <FlightRoutesTab initialData={props.flightRoutes} />
+              <FlightRoutesTab
+                initialData={props.flightRoutes}
+                titleTemplates={props.titleTemplates}
+              />
             )}
-            {activeTab === "addons" && <AddOnsTab initialData={props.addOns} />}
+            {activeTab === "addons" && (
+              <AddOnsTab
+                initialData={props.addOns}
+                titleTemplates={props.titleTemplates}
+              />
+            )}
             {activeTab === "restaurants" && (
               <RestaurantsTab
                 initialData={props.restaurants}
                 cities={props.cities}
+                titleTemplates={props.titleTemplates}
               />
             )}
             {activeTab === "policies" && (
-              <PolicyTemplatesTab initialData={props.policyTemplates} />
+              <PolicyTemplatesTab
+                initialData={props.policyTemplates}
+                titleTemplates={props.titleTemplates}
+              />
             )}
             {activeTab === "titles" && (
               <TitleTemplatesTab initialData={props.titleTemplates} />
@@ -305,15 +337,17 @@ export function MasterDataHub(props: MasterDataHubProps) {
                 cities={props.cities}
               />
             )}
-            {activeTab === "costing" && (
-              <AdminCostCalculationTab
-                trips={props.tripsForCost}
-                costRates={props.costRates}
-              />
-            )}
           </div>
         </main>
       </div>
     </div>
+  );
+}
+
+export function MasterDataHub(props: MasterDataHubProps) {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-zinc-500 font-medium">Loading workspace...</div>}>
+      <MasterDataHubContent {...props} />
+    </Suspense>
   );
 }
