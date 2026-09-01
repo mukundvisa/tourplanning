@@ -29,10 +29,8 @@ const TRANSPORT_TYPES = ["Flight", "Train", "Bus", "Car", "Sedan", "SUV", "Other
 
 export function FlightRoutesTab({
   initialData,
-  titleTemplates = [],
 }: {
   initialData: FlightRouteItem[];
-  titleTemplates?: any[];
 }) {
   const router = useRouter();
   const [data, setData] = useState<FlightRouteItem[]>(initialData);
@@ -53,7 +51,6 @@ export function FlightRoutesTab({
     flightNotes: "",
     type: "Flight",
     travelTime: "12:00 PM",
-    titleTemplateId: "",
   });
 
   const [saving, setSaving] = useState(false);
@@ -83,7 +80,6 @@ export function FlightRoutesTab({
       flightNotes: "",
       type: selectedTypeFilter !== "All" ? selectedTypeFilter : "Flight",
       travelTime: "08:00 PM",
-      titleTemplateId: "",
     });
     setModalOpen(true);
   };
@@ -102,7 +98,6 @@ export function FlightRoutesTab({
       flightNotes: item.flightNotes || "",
       type: item.type || "Flight",
       travelTime: item.travelTime || "12:00 PM",
-      titleTemplateId: item.titleTemplateId || "",
     });
     setModalOpen(true);
   };
@@ -124,7 +119,6 @@ export function FlightRoutesTab({
         flightNotes: formData.flightNotes || undefined,
         type: formData.type,
         travelTime: formData.travelTime || undefined,
-        titleTemplateId: formData.titleTemplateId || undefined,
       };
 
       if (editingItem) {
@@ -363,23 +357,6 @@ export function FlightRoutesTab({
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Associated Title Template
-                  </label>
-                  <select
-                    value={formData.titleTemplateId}
-                    onChange={(e) => setFormData({ ...formData, titleTemplateId: e.target.value })}
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
-                  >
-                    <option value="">No Template Association</option>
-                    {titleTemplates.map((t: any) => (
-                      <option key={t.id} value={t.id}>
-                        {t.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">

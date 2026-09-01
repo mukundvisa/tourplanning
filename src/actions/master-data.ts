@@ -185,13 +185,19 @@ export async function getMasterConsultants() {
   }
 }
 
-export async function createMasterConsultant(formData: { name: string; phone: string; email?: string }) {
+export async function createMasterConsultant(formData: {
+  name: string;
+  phone: string;
+  email?: string;
+  departureCity?: string;
+}) {
   try {
     const data = await db.masterConsultant.create({
       data: {
         name: formData.name.trim(),
         phone: formData.phone.trim(),
         email: formData.email?.trim() || null,
+        departureCity: formData.departureCity?.trim() || null,
       },
     });
     revalidatePath("/master-data");
@@ -201,7 +207,10 @@ export async function createMasterConsultant(formData: { name: string; phone: st
   }
 }
 
-export async function updateMasterConsultant(id: string, formData: { name: string; phone: string; email?: string }) {
+export async function updateMasterConsultant(
+  id: string,
+  formData: { name: string; phone: string; email?: string; departureCity?: string }
+) {
   try {
     const data = await db.masterConsultant.update({
       where: { id },
@@ -209,6 +218,7 @@ export async function updateMasterConsultant(id: string, formData: { name: strin
         name: formData.name.trim(),
         phone: formData.phone.trim(),
         email: formData.email?.trim() || null,
+        departureCity: formData.departureCity?.trim() || null,
       },
     });
     revalidatePath("/master-data");

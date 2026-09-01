@@ -45,13 +45,13 @@ interface TripFormWizardProps {
 
 const STEPS = [
   { number: 1, name: "Core Trip & Consultant", icon: MapPin },
-  { number: 2, name: "Price Quotes & Financials", icon: DollarSign },
-  { number: 3, name: "Day-by-Day Itinerary", icon: Calendar },
-  { number: 4, name: "Stays & Accommodations", icon: Coffee },
-  { number: 5, name: "Flight Details", icon: Plane },
-  { number: 6, name: "Optional Add-ons & Visa", icon: PlusCircle },
-  { number: 7, name: "Restaurant & Club Suggestions", icon: Utensils },
-  { number: 8, name: "Master Policies & Guidelines", icon: FileText },
+  { number: 2, name: "Day-by-Day Itinerary", icon: Calendar },
+  { number: 3, name: "Stays & Accommodations", icon: Coffee },
+  { number: 4, name: "Flight Details", icon: Plane },
+  { number: 5, name: "Optional Add-ons & Visa", icon: PlusCircle },
+  { number: 6, name: "Restaurant & Club Suggestions", icon: Utensils },
+  { number: 7, name: "Master Policies & Guidelines", icon: FileText },
+  { number: 8, name: "Price Quotes & Financials", icon: DollarSign },
 ];
 
 export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
@@ -74,7 +74,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     addOns: any[];
     restaurants: any[];
     policyTemplates: any[];
-    titleTemplates: any[];
     bannerImages: any[];
   }>({
     cities: [],
@@ -87,7 +86,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     addOns: [],
     restaurants: [],
     policyTemplates: [],
-    titleTemplates: [],
     bannerImages: [],
   });
 
@@ -219,6 +217,41 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       },
     }));
   }, [formData.priceQuoteItems, formData.tripFinancials?.tcsPercentage, formData.numTravellers]);
+
+  // Auto-assign Consultant based on Departure City
+  const [autoMatchedConsultant, setAutoMatchedConsultant] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!formData.departureCity || masterData.consultants.length === 0) {
+      setAutoMatchedConsultant(null);
+      return;
+    }
+
+    const cleanInputCity = formData.departureCity.split("(")[0].trim().toLowerCase();
+    if (!cleanInputCity) return;
+
+    const matched = masterData.consultants.find((c: any) => {
+      if (!c.departureCity) return false;
+      const cCity = c.departureCity.split("(")[0].trim().toLowerCase();
+      return cCity === cleanInputCity || cleanInputCity.includes(cCity) || cCity.includes(cleanInputCity);
+    });
+
+    if (matched) {
+      setAutoMatchedConsultant(`${matched.name} (${matched.departureCity})`);
+      setFormData((prev: any) => {
+        if (prev.consultantName === matched.name && prev.consultantPhone === matched.phone) {
+          return prev;
+        }
+        return {
+          ...prev,
+          consultantName: matched.name,
+          consultantPhone: matched.phone,
+        };
+      });
+    } else {
+      setAutoMatchedConsultant(null);
+    }
+  }, [formData.departureCity, masterData.consultants]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -747,158 +780,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Itinerary Title with Template Picker */}
+              {/* Itinerary Title */}
               <div className="md:col-span-2 space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <label className="block text-xs font-semibold text-zinc-700">
-                    Itinerary Title *
-                  </label>
-                  {masterData.titleTemplates.length > 0 && (
-                    <select
-                      value={formData.pricingTitle || ""}
-                      onChange={(e) => {
-                        const selectedTitle = e.target.value;
-                        if (selectedTitle) {
-                          const template = masterData.titleTemplates.find((t) => t.title === selectedTitle);
-                          if (template) {
-                            // 1. Fetch matching pricing labels
-                            const matchingPricing = masterData.pricingLabels.filter(
-                              (p) => p.titleTemplateId === template.id
-                            );
-                            const priceItems = matchingPricing.map((p, idx) => ({
-                              label: p.name,
-                              amount: p.price,
-                              sortOrder: idx,
-                            }));
-
-                            // 2. Fetch matching master activities
-                            const matchingActivities = masterData.activities.filter(
-                              (a) => a.titleTemplateId === template.id
-                            );
-                            const itineraryDays = matchingActivities.map((act, idx) => ({
-                              dayNumber: idx + 1,
-                              cityOrStay: act.suggestedCity?.name || "",
-                              title: act.title,
-                              durationHours: act.defaultDurationHours,
-                              description: act.description,
-                              inclusions: act.inclusions || [],
-                              exclusions: act.exclusions || [],
-                              customerLovedTips: act.loveTips || [],
-                              customerWatchOutTips: act.watchOutTips || [],
-                              sortOrder: idx + 1,
-                            }));
-
-                            // 3. Fetch matching master hotels
-                            const matchingHotels = masterData.hotels.filter(
-                              (h) => h.titleTemplateId === template.id
-                            );
-                            const accommodations = matchingHotels.map((h) => ({
-                              location: h.city?.name || "",
-                              checkInDate: "",
-                              checkOutDate: "",
-                              hotelName: h.name,
-                              starRating: h.starRating,
-                              roomType: h.roomTypes[0] || "Standard Room",
-                              mealPlan: h.mealPlans[0] || "CP",
-                              ratingScore: h.guestScore,
-                              ratingLabel: h.guestScoreLabel,
-                              facilities: h.facilities || [],
-                              nearbyAttractions: h.nearbyAttractions || [],
-                              nearbyRestaurants: h.nearbyRestaurants || [],
-                              photos: h.photos || [],
-                            }));
-
-                            // 4. Fetch matching master restaurants
-                            const matchingRestaurants = masterData.restaurants.filter(
-                              (r) => r.titleTemplateId === template.id
-                            );
-                            const restaurantSuggestions = matchingRestaurants.map((r) => ({
-                              location: r.city?.name || "",
-                              cuisineType: r.cuisineType,
-                              name: r.name,
-                              rating: r.starRating,
-                              reviewCount: r.reviewsCount,
-                              isVeg: r.offersPureVegJain,
-                              category: r.categoryType || "Restaurant",
-                            }));
-
-                            // 5. Fetch matching master add-ons
-                            const matchingAddOns = masterData.addOns.filter(
-                              (a: any) => a.titleTemplateId === template.id
-                            );
-                            const addOns = matchingAddOns.map((a: any) => ({
-                              name: a.name,
-                              price: a.defaultPrice,
-                              priceType: "per person",
-                              detailsJson: {
-                                visaType: a.visaType || "",
-                                length: a.validityLength || "",
-                                validity: a.validityWindow || "",
-                                details: a.detailsDescription || "",
-                              },
-                            }));
-
-                            // 6. Fetch matching master policy
-                            const matchedPolicy = masterData.policyTemplates.find(
-                              (p: any) => p.titleTemplateId === template.id
-                            );
-                            const tripTerms = matchedPolicy ? {
-                              paymentPolicy: matchedPolicy.paymentPolicy || "",
-                              cancellationPolicy: matchedPolicy.cancellationPolicy || "",
-                              visaRules: matchedPolicy.visaRules || "",
-                              generalNotes: matchedPolicy.generalNotes || "",
-                            } : {
-                              paymentPolicy: "",
-                              cancellationPolicy: "",
-                              visaRules: "",
-                              generalNotes: "",
-                            };
-
-                            // Update form state
-                            setFormData((prev: any) => ({
-                              ...prev,
-                              title: selectedTitle,
-                              pricingTitle: selectedTitle,
-                              priceQuoteItems: priceItems,
-                              itineraryDays: itineraryDays,
-                              accommodations: accommodations,
-                              restaurantSuggestions: restaurantSuggestions,
-                              addOns: addOns,
-                              tripTerms: tripTerms,
-                            }));
-                          } else {
-                            setFormData((prev: any) => ({ ...prev, title: selectedTitle }));
-                          }
-                        } else {
-                          setFormData((prev: any) => ({
-                            ...prev,
-                            title: "",
-                            pricingTitle: "",
-                            priceQuoteItems: [],
-                            itineraryDays: [],
-                            accommodations: [],
-                            restaurantSuggestions: [],
-                            addOns: [],
-                            tripTerms: {
-                              paymentPolicy: "",
-                              cancellationPolicy: "",
-                              visaRules: "",
-                              generalNotes: "",
-                            },
-                          }));
-                        }
-                      }}
-                      className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/8 border border-[#B8944F]/30 rounded-lg px-2.5 py-1 outline-none cursor-pointer"
-                    >
-                      <option value="">⚡ Load from Title Templates...</option>
-                      {masterData.titleTemplates.map((t) => (
-                        <option key={t.id} value={t.title}>
-                          {t.title}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Itinerary Title *
+                </label>
                 <input
                   type="text"
                   name="title"
@@ -972,50 +858,64 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                 </div>
               </div>
 
-              {/* Destination Country/City (Searchable Select) */}
+              {/* Destination Country/City (Master Data Hub Only) */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-zinc-700">
                   Destination Country/City *
                 </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    name="destination"
-                    list="destination-list"
-                    value={formData.destination}
-                    onChange={handleInputChange}
-                    placeholder="e.g. Bali, Indonesia or Dubai, UAE"
-                    className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                  />
-                  <datalist id="destination-list">
-                    {masterData.cities.map((c) => (
-                      <option key={c.id} value={`${c.name}, ${c.country}`} />
-                    ))}
-                  </datalist>
-                </div>
+                <select
+                  name="destination"
+                  value={formData.destination}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-medium text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+                >
+                  <option value="">-- Select Master Destination City / Country --</option>
+                  {formData.destination &&
+                    !masterData.cities.some(
+                      (c) => `${c.name}, ${c.country}` === formData.destination || c.name === formData.destination
+                    ) && (
+                      <option value={formData.destination}>{formData.destination} (Current)</option>
+                    )}
+                  {masterData.cities.map((c) => (
+                    <option key={c.id} value={`${c.name}, ${c.country}`}>
+                      {c.name}, {c.country} {c.state ? `(${c.state})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-zinc-400">
+                  Displays only cities managed in Master Data Hub &rarr; Cities.
+                </p>
               </div>
 
-              {/* Departure City (India states/cities only) */}
+              {/* Departure City (India Hubs Only - Master Data Hub Only) */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-zinc-700">
-                  Departure City (India Hubs Only) *
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    name="departureCity"
-                    list="departure-list"
-                    value={formData.departureCity}
-                    onChange={handleInputChange}
-                    placeholder="e.g. Mumbai, Delhi, Ahmedabad, Bengaluru"
-                    className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                  />
-                  <datalist id="departure-list">
-                    {indianCities.map((c) => (
-                      <option key={c.id} value={`${c.name} (${c.state})`} />
-                    ))}
-                  </datalist>
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Departure City (India Hubs Only) *
+                  </label>
                 </div>
+                <select
+                  name="departureCity"
+                  value={formData.departureCity}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-medium text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+                >
+                  <option value="">-- Select Master Departure City (India Hub) --</option>
+                  {formData.departureCity &&
+                    !indianCities.some(
+                      (c) => c.name === formData.departureCity || `${c.name} (${c.state})` === formData.departureCity
+                    ) && (
+                      <option value={formData.departureCity}>{formData.departureCity} (Current)</option>
+                    )}
+                  {indianCities.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name} {c.state ? `(${c.state})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-zinc-400">
+                  Displays only Indian cities managed in Master Data Hub &rarr; Cities. Auto-assigns mapped consultant.
+                </p>
               </div>
 
               {/* Start Date & End Date */}
@@ -1079,37 +979,12 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                 />
               </div>
 
-              {/* Consultant Name & Phone (Select from MasterConsultant) */}
+              {/* Consultant Name & Phone (Select from MasterConsultant or Auto-Assigned) */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <label className="block text-xs font-semibold text-zinc-700">
                     Consultant Name & Phone *
                   </label>
-                  {masterData.consultants.length > 0 && (
-                    <select
-                      onChange={(e) => {
-                        const selected = masterData.consultants.find(
-                          (c) => c.name === e.target.value
-                        );
-                        if (selected) {
-                          setFormData((prev: any) => ({
-                            ...prev,
-                            consultantName: selected.name,
-                            consultantPhone: selected.phone,
-                          }));
-                        }
-                      }}
-                      value=""
-                      className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/8 border border-[#B8944F]/30 rounded-lg px-2.5 py-1 outline-none cursor-pointer"
-                    >
-                      <option value="">⚡ Select Active Consultant...</option>
-                      {masterData.consultants.map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.name} ({c.phone})
-                        </option>
-                      ))}
-                    </select>
-                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -1137,236 +1012,9 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       case 2:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 2: Price Quotes & Financials
-            </h2>
-
-            {/* Pricing Title Selection Dropdown */}
-            <div className="bg-[#B8944F]/5 border border-[#B8944F]/20 rounded-lg p-4 space-y-2">
-              <label className="block text-xs font-bold text-zinc-700">
-                Select Pricing Title Template (Auto-fills pricing details)
-              </label>
-              <select
-                value={formData.pricingTitle || ""}
-                onChange={(e) => {
-                  const selectedTitle = e.target.value;
-                  setFormData((prev: any) => {
-                    const template = masterData.titleTemplates.find((t) => t.title === selectedTitle);
-                    let items = [...prev.priceQuoteItems];
-                    if (template) {
-                      const matchingLabels = masterData.pricingLabels.filter(
-                        (p) => p.titleTemplateId === template.id
-                      );
-                      items = matchingLabels.map((lbl, idx) => ({
-                        label: lbl.name,
-                        amount: lbl.price,
-                        sortOrder: idx,
-                      }));
-                    } else if (!selectedTitle) {
-                      items = [];
-                    }
-                    return {
-                      ...prev,
-                      pricingTitle: selectedTitle || null,
-                      priceQuoteItems: items,
-                    };
-                  });
-                }}
-                className="w-full px-3.5 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
-              >
-                <option value="">-- No Pricing Title Template --</option>
-                {masterData.titleTemplates.map((t) => (
-                  <option key={t.id} value={t.title}>
-                    {t.title}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-zinc-400">
-                Selecting a pricing title will automatically load its corresponding pricing labels and per-person prices from the Master Data Hub.
-              </p>
-            </div>
-
-            {/* Price line items repeater */}
-            <div className="space-y-4">
-              <label className="block text-xs font-semibold text-zinc-700">
-                Plan Inclusions Cost Breakdown
-              </label>
-
-              {/* Add item bar with Master Pricing Label selector */}
-              <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] font-bold text-zinc-500 uppercase">
-                    Add Line Item
-                  </span>
-                  {masterData.pricingLabels.length > 0 && (
-                    <select
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setNewPriceLabel(e.target.value);
-                        }
-                      }}
-                      value=""
-                      className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2 py-0.5 outline-none cursor-pointer"
-                    >
-                      <option value="">⚡ Select from Master Pricing...</option>
-                      {masterData.pricingLabels.map((p) => (
-                        <option key={p.id} value={p.name}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="text"
-                    value={newPriceLabel}
-                    onChange={(e) => setNewPriceLabel(e.target.value)}
-                    placeholder="e.g. 5-Star Beachfront Luxury Villa (4 Nights)"
-                    className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                  />
-                  <div className="relative w-full sm:w-44">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
-                      ₹
-                    </span>
-                    <input
-                      type="number"
-                      value={newPriceAmt}
-                      onChange={(e) => setNewPriceAmt(e.target.value)}
-                      placeholder="Amount (INR)"
-                      className="w-full pl-7 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={addPriceItem}
-                    className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                  >
-                    + Add Item
-                  </button>
-                </div>
-              </div>
-
-              {/* Items List */}
-              <div className="space-y-2">
-                {formData.priceQuoteItems.map((item: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-3 bg-white border border-zinc-200 rounded-lg text-xs"
-                  >
-                    <span className="font-semibold text-[#14213D]">{item.label}</span>
-                    <div className="flex items-center space-x-3">
-                      <span className="font-mono font-bold text-[#14213D]">
-                        ₹{Number(item.amount).toLocaleString("en-IN")}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removePriceItem(idx)}
-                        className="text-zinc-400 hover:text-red-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Financial Summary Card (TCS Read-only) */}
-            <div className="bg-[#FAF8F5] border border-[#B8944F]/30 rounded-lg p-6 space-y-4 craft-card">
-              <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                Financial Totals & Statutory TCS
-              </h3>
-
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 border-b border-zinc-200 pb-4">
-                <div>
-                  <span className="text-[11px] text-zinc-500 font-semibold block">
-                    Per-Person Price
-                  </span>
-                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
-                    ₹
-                    {(() => {
-                      const perPersonSubtotal = (formData.priceQuoteItems || []).reduce(
-                        (acc: number, item: any) => acc + Number(item.amount || 0),
-                        0
-                      );
-                      return perPersonSubtotal.toLocaleString("en-IN");
-                    })()}
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-[11px] text-zinc-500 font-semibold block">
-                    Travellers
-                  </span>
-                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
-                    {formData.numTravellers || 1}
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-[11px] text-zinc-500 font-semibold block">
-                    Total Base Price
-                  </span>
-                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
-                    ₹
-                    {(() => {
-                      const perPersonSubtotal = (formData.priceQuoteItems || []).reduce(
-                        (acc: number, item: any) => acc + Number(item.amount || 0),
-                        0
-                      );
-                      return (perPersonSubtotal * Number(formData.numTravellers || 1)).toLocaleString("en-IN");
-                    })()}
-                  </p>
-                </div>
-
-                <div>
-                  <span className="text-[11px] text-zinc-500 font-semibold block">
-                    Total TCS ({formData.tripFinancials.tcsPercentage}%)
-                  </span>
-                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
-                    ₹{formData.tripFinancials.tcsAmount?.toLocaleString("en-IN")}
-                  </p>
-                </div>
-
-                <div className="col-span-2 md:col-span-1">
-                  <span className="text-[11px] text-[#B8944F] font-bold block">
-                    Grand Total
-                  </span>
-                  <p className="text-base font-black text-[#14213D] font-mono mt-0.5">
-                    ₹{formData.tripFinancials.totalWithTcs?.toLocaleString("en-IN")}
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Additional Financial Notes
-                </label>
-                <textarea
-                  rows={2}
-                  value={formData.tripFinancials.notes || ""}
-                  onChange={(e) =>
-                    setFormData((prev: any) => ({
-                      ...prev,
-                      tripFinancials: { ...prev.tripFinancials, notes: e.target.value },
-                    }))
-                  }
-                  placeholder="Notes regarding tax credits, payment terms, or dynamic airfare exclusions."
-                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-700 focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                />
-              </div>
-            </div>
-          </div>
-        );
-
-      case 3:
-        return (
-          <div className="space-y-6">
             <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
               <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-                Step 3: Day-by-Day Itinerary Builder
+                Step 2: Day-by-Day Itinerary Builder
               </h2>
               <button
                 type="button"
@@ -1702,11 +1350,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         );
 
-      case 4:
+      case 3:
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 4: Stays & Accommodations
+              Step 3: Stays & Accommodations
             </h2>
 
             {/* Hotel Entry Form */}
@@ -1977,7 +1625,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         );
 
-      case 5: {
+      case 4: {
         const TRANSPORT_TYPES = ["Flight", "Train", "Bus", "Car", "Sedan", "SUV", "Other"];
         const getTransportIcon = (type: string) => {
           switch (type) {
@@ -1999,7 +1647,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces flex items-center justify-between">
-              <span>Step 5: Transportation & Transit arrangements</span>
+              <span>Step 4: Transportation & Transit arrangements</span>
               <span className="text-xs bg-[#B8944F]/10 text-[#B8944F] font-bold px-2 py-1 rounded">
                 Master Catalog Linked
               </span>
@@ -2396,11 +2044,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
         );
       }
 
-      case 6:
+      case 5:
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 6: Optional Add-ons & Visa
+              Step 5: Optional Add-ons & Visa
             </h2>
 
             {/* Add-on Entry Form with Master AddOn picker */}
@@ -2577,11 +2225,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         );
 
-      case 7:
+      case 6:
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 7: Restaurant & Club Suggestions
+              Step 6: Restaurant & Club Suggestions
             </h2>
 
             {/* Restaurant Form with Master Restaurant Selector */}
@@ -2752,12 +2400,12 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         );
 
-      case 8:
+      case 7:
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
               <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-                Step 8: Master Policies & Guidelines
+                Step 7: Master Policies & Guidelines
               </h2>
 
               {/* Master Policy Template Loader */}
@@ -2854,6 +2502,188 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                     }));
                   }}
                   placeholder="Specify standard hotel check-in/out hours, driver service rules, extreme weather clauses, and baggage notes."
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case 8:
+        return (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
+              Step 8: Price Quotes & Financials
+            </h2>
+
+            {/* Price line items repeater */}
+            <div className="space-y-4">
+              <label className="block text-xs font-semibold text-zinc-700">
+                Plan Inclusions Cost Breakdown
+              </label>
+
+              {/* Add item bar with Master Pricing Label selector */}
+              <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] font-bold text-zinc-500 uppercase">
+                    Add Line Item
+                  </span>
+                  {masterData.pricingLabels.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setNewPriceLabel(e.target.value);
+                        }
+                      }}
+                      value=""
+                      className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2 py-0.5 outline-none cursor-pointer"
+                    >
+                      <option value="">⚡ Select from Master Pricing...</option>
+                      {masterData.pricingLabels.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    type="text"
+                    value={newPriceLabel}
+                    onChange={(e) => setNewPriceLabel(e.target.value)}
+                    placeholder="e.g. 5-Star Beachfront Luxury Villa (4 Nights)"
+                    className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                  />
+                  <div className="relative w-full sm:w-44">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      value={newPriceAmt}
+                      onChange={(e) => setNewPriceAmt(e.target.value)}
+                      placeholder="Amount (INR)"
+                      className="w-full pl-7 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addPriceItem}
+                    className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    + Add Item
+                  </button>
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-2">
+                {formData.priceQuoteItems.map((item: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between p-3 bg-white border border-zinc-200 rounded-lg text-xs"
+                  >
+                    <span className="font-semibold text-[#14213D]">{item.label}</span>
+                    <div className="flex items-center space-x-3">
+                      <span className="font-mono font-bold text-[#14213D]">
+                        ₹{Number(item.amount).toLocaleString("en-IN")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removePriceItem(idx)}
+                        className="text-zinc-400 hover:text-red-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Financial Summary Card (TCS Read-only) */}
+            <div className="bg-[#FAF8F5] border border-[#B8944F]/30 rounded-lg p-6 space-y-4 craft-card">
+              <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                Financial Totals & Statutory TCS
+              </h3>
+
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 border-b border-zinc-200 pb-4">
+                <div>
+                  <span className="text-[11px] text-zinc-500 font-semibold block">
+                    Per-Person Price
+                  </span>
+                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
+                    ₹
+                    {(() => {
+                      const perPersonSubtotal = (formData.priceQuoteItems || []).reduce(
+                        (acc: number, item: any) => acc + Number(item.amount || 0),
+                        0
+                      );
+                      return perPersonSubtotal.toLocaleString("en-IN");
+                    })()}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-zinc-500 font-semibold block">
+                    Travellers
+                  </span>
+                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
+                    {formData.numTravellers || 1}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-zinc-500 font-semibold block">
+                    Total Base Price
+                  </span>
+                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
+                    ₹
+                    {(() => {
+                      const perPersonSubtotal = (formData.priceQuoteItems || []).reduce(
+                        (acc: number, item: any) => acc + Number(item.amount || 0),
+                        0
+                      );
+                      return (perPersonSubtotal * Number(formData.numTravellers || 1)).toLocaleString("en-IN");
+                    })()}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-[11px] text-zinc-500 font-semibold block">
+                    Total TCS ({formData.tripFinancials.tcsPercentage}%)
+                  </span>
+                  <p className="text-sm font-bold text-[#14213D] font-mono mt-0.5">
+                    ₹{formData.tripFinancials.tcsAmount?.toLocaleString("en-IN")}
+                  </p>
+                </div>
+
+                <div className="col-span-2 md:col-span-1">
+                  <span className="text-[11px] text-[#B8944F] font-bold block">
+                    Grand Total
+                  </span>
+                  <p className="text-base font-black text-[#14213D] font-mono mt-0.5">
+                    ₹{formData.tripFinancials.totalWithTcs?.toLocaleString("en-IN")}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Additional Financial Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={formData.tripFinancials.notes || ""}
+                  onChange={(e) =>
+                    setFormData((prev: any) => ({
+                      ...prev,
+                      tripFinancials: { ...prev.tripFinancials, notes: e.target.value },
+                    }))
+                  }
+                  placeholder="Notes regarding tax credits, payment terms, or dynamic airfare exclusions."
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-700 focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
               </div>
             </div>

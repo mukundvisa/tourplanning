@@ -1,5 +1,6 @@
 import React from "react";
-import { MasterDataHub } from "@/components/master-data/MasterDataHub";
+import { db } from "@/lib/db";
+import { UnifiedDashboard } from "@/components/UnifiedDashboard";
 import {
   getOverviewStats,
   getMasterCities,
@@ -12,7 +13,6 @@ import {
   getMasterAddOns,
   getMasterRestaurants,
   getMasterPolicyTemplates,
-  getMasterTitleTemplates,
   getMasterBannerImages,
   getTripsForCostCalculation,
   getMasterCostRates,
@@ -27,6 +27,7 @@ export const metadata = {
 
 export default async function MasterDataPage() {
   const [
+    tripsRes,
     statsRes,
     citiesRes,
     consultantsRes,
@@ -38,11 +39,26 @@ export default async function MasterDataPage() {
     addonsRes,
     restaurantsRes,
     policiesRes,
-    titlesRes,
     bannersRes,
     tripsCostRes,
     costRatesRes,
   ] = await Promise.all([
+    db.trip.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        destination: true,
+        departureCity: true,
+        startDate: true,
+        endDate: true,
+        durationDays: true,
+        durationNights: true,
+        numTravellers: true,
+        consultantName: true,
+        updatedAt: true,
+      },
+    }),
     getOverviewStats(),
     getMasterCities(),
     getMasterConsultants(),
@@ -54,14 +70,15 @@ export default async function MasterDataPage() {
     getMasterAddOns(),
     getMasterRestaurants(),
     getMasterPolicyTemplates(),
-    getMasterTitleTemplates(),
     getMasterBannerImages(),
     getTripsForCostCalculation(),
     getMasterCostRates(),
   ]);
 
   return (
-    <MasterDataHub
+    <UnifiedDashboard
+      defaultView="master-data"
+      initialTrips={JSON.parse(JSON.stringify(tripsRes))}
       overviewStats={
         statsRes.data || {
           totalTrips: 0,
@@ -81,7 +98,6 @@ export default async function MasterDataPage() {
       addOns={addonsRes.data || []}
       restaurants={restaurantsRes.data || []}
       policyTemplates={policiesRes.data || []}
-      titleTemplates={titlesRes.data || []}
       bannerImages={bannersRes.data || []}
       tripsForCost={tripsCostRes.data || []}
       costRates={costRatesRes.data || []}

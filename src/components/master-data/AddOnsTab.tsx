@@ -9,7 +9,7 @@ import {
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
 
-interface AddOnItem {
+export interface AddOnItem {
   id: string;
   name: string;
   type: string;
@@ -18,26 +18,14 @@ interface AddOnItem {
   validityWindow: string | null;
   defaultPrice: number;
   detailsDescription: string | null;
-  titleTemplateId: string | null;
 }
 
-interface TitleTemplateItem {
-  id: string;
-  title: string;
-}
+const ADDON_TYPES = ["All", "Visa", "Transfer", "Activity", "Insurance", "SIM", "Other"];
 
-export function AddOnsTab({
-  initialData,
-  titleTemplates,
-}: {
-  initialData: AddOnItem[];
-  titleTemplates: TitleTemplateItem[];
-}) {
+export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
   const router = useRouter();
   const [data, setData] = useState<AddOnItem[]>(initialData);
-  const [selectedTitleId, setSelectedTitleId] = useState<string>(() => {
-    return titleTemplates[0]?.id || "";
-  });
+  const [selectedType, setSelectedType] = useState("All");
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<AddOnItem | null>(null);
@@ -50,14 +38,13 @@ export function AddOnsTab({
     validityWindow: "",
     defaultPrice: "3500",
     detailsDescription: "",
-    titleTemplateId: "",
   });
 
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filteredByTemplate = data.filter((a) => a.titleTemplateId === selectedTitleId);
-  const filtered = filteredByTemplate.filter(
+  const filteredByType = selectedType === "All" ? data : data.filter((a) => a.type === selectedType);
+  const filtered = filteredByType.filter(
     (a) =>
       a.name.toLowerCase().includes(search.toLowerCase()) ||
       (a.visaType && a.visaType.toLowerCase().includes(search.toLowerCase())) ||
@@ -65,20 +52,15 @@ export function AddOnsTab({
   );
 
   const openCreate = () => {
-    if (!selectedTitleId) {
-      alert("Please select a Title Template first.");
-      return;
-    }
     setEditingItem(null);
     setFormData({
       name: "",
-      type: "Visa",
+      type: selectedType !== "All" ? selectedType : "Visa",
       visaType: "Tourist E-Visa (Single Entry)",
       validityLength: "30 Days",
       validityWindow: "90 Days from issue",
       defaultPrice: "3500",
       detailsDescription: "Fast-track electronic visa processing.",
-      titleTemplateId: selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -93,7 +75,6 @@ export function AddOnsTab({
       validityWindow: item.validityWindow || "",
       defaultPrice: item.defaultPrice?.toString() || "0",
       detailsDescription: item.detailsDescription || "",
-      titleTemplateId: item.titleTemplateId || selectedTitleId,
     });
     setModalOpen(true);
   };
@@ -111,14 +92,13 @@ export function AddOnsTab({
         validityWindow: formData.validityWindow || undefined,
         defaultPrice: parseFloat(formData.defaultPrice) || 0,
         detailsDescription: formData.detailsDescription || undefined,
-        titleTemplateId: formData.titleTemplateId || undefined,
       };
 
       if (editingItem) {
         const res = await updateMasterAddOn(editingItem.id, payload);
         if (res.success && res.data) {
           setData((prev) =>
-            prev.map((a) => (a.id === editingItem.id ? res.data! : a))
+            prev.map((a) => (a.id === editingItem.id ? (res.data! as any) : a))
           );
           setModalOpen(false);
           router.refresh();
@@ -128,7 +108,7 @@ export function AddOnsTab({
       } else {
         const res = await createMasterAddOn(payload);
         if (res.success && res.data) {
-          setData((prev) => [res.data!, ...prev]);
+          setData((prev) => [res.data! as any, ...prev]);
           setModalOpen(false);
           router.refresh();
         } else {
@@ -156,156 +136,134 @@ export function AddOnsTab({
     }
   };
 
-  const selectedTemplate = titleTemplates.find((t) => t.id === selectedTitleId);
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Add-ons, Visas & Experience Upgrades
+            Add-ons, Visas & Insurance Catalog
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Pre-fills visa categories, validity rules, and default selling prices in Step 6
+            Manage visa packages, international SIM cards, airport lounge access, and travel insurance items
           </p>
         </div>
         <button
           onClick={openCreate}
-          disabled={!selectedTitleId}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
         >
           <Plus className="h-4 w-4" />
           <span>Add Master Add-on</span>
         </button>
       </div>
 
-      {/* Template Selection Dropdown */}
-      <div className="bg-white border border-[#B8944F]/10 rounded-lg p-4 craft-card space-y-3">
-        <label className="block text-xs font-bold text-zinc-700">
-          Select Title Template to Configure Add-ons:
-        </label>
+      {/* Filter and Search */}
+      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <input
+            type="text"
+            placeholder="Search add-ons by package name or description..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+          />
+        </div>
+
         <select
-          value={selectedTitleId}
-          onChange={(e) => setSelectedTitleId(e.target.value)}
-          className="w-full max-w-md px-3.5 py-2.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:bg-white focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+          value={selectedType}
+          onChange={(e) => setSelectedType(e.target.value)}
+          className="px-3.5 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
         >
-          <option value="">-- Choose a Title Template --</option>
-          {titleTemplates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.title}
+          {ADDON_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t === "All" ? "📦 All Add-on Categories" : `${t} Packages`}
             </option>
           ))}
         </select>
-        {selectedTemplate && (
-          <p className="text-[11px] text-zinc-500 font-semibold flex items-center mt-1">
-            <Ticket className="h-3.5 w-3.5 text-[#B8944F] mr-1" />
-            Configuring add-ons for: <span className="text-[#14213D] ml-1">"{selectedTemplate.title}"</span>
-          </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {filtered.length === 0 ? (
+          <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+            No add-ons found. Click "Add Master Add-on" to create one.
+          </div>
+        ) : (
+          filtered.map((item) => (
+            <div
+              key={item.id}
+              className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#B8944F]/10 text-[#8F6F33] border border-[#B8944F]/20 uppercase tracking-wider">
+                    {item.type}
+                  </span>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => openEdit(item)}
+                      className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(item.id, item.name)}
+                      disabled={deletingId === item.id}
+                      className="p-1 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
+                    >
+                      {deletingId === item.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <h3 className="text-base font-bold text-[#14213D] font-fraunces mb-1">
+                  {item.name}
+                </h3>
+                {item.visaType && (
+                  <p className="text-xs text-zinc-500 font-medium mb-2">
+                    {item.visaType}
+                  </p>
+                )}
+
+                {item.detailsDescription && (
+                  <p className="text-xs text-zinc-600 mb-3 bg-zinc-50 p-2.5 rounded border border-zinc-100">
+                    {item.detailsDescription}
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500 pt-2 border-t border-zinc-100">
+                  {item.validityLength && (
+                    <div>
+                      <span className="text-zinc-400 block text-[10px]">Validity:</span>
+                      <span className="font-semibold text-zinc-700">{item.validityLength}</span>
+                    </div>
+                  )}
+                  {item.validityWindow && (
+                    <div>
+                      <span className="text-zinc-400 block text-[10px]">Window:</span>
+                      <span className="font-semibold text-zinc-700">{item.validityWindow}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-zinc-100 flex justify-between items-center mt-3">
+                <span className="text-xs text-zinc-500 font-semibold">Standard Cost:</span>
+                <span className="text-sm font-bold text-[#14213D] font-mono">
+                  ₹{item.defaultPrice.toLocaleString("en-IN")}
+                </span>
+              </div>
+            </div>
+          ))
         )}
       </div>
 
-      {selectedTitleId ? (
-        <>
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-            <input
-              type="text"
-              placeholder="Search add-ons by package name or visa type..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
-            />
-          </div>
-
-          <div className="bg-white border border-[#B8944F]/20 rounded-lg overflow-hidden craft-card">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#FAF8F5] border-b border-zinc-200 text-zinc-600 font-semibold">
-                  <tr>
-                    <th className="py-3 px-4">Add-on / Visa Package</th>
-                    <th className="py-3 px-4">Category</th>
-                    <th className="py-3 px-4">Validity Details</th>
-                    <th className="py-3 px-4">Default Price</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {filtered.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-zinc-400 text-xs">
-                        No add-ons found.
-                      </td>
-                    </tr>
-                  ) : (
-                    filtered.map((item) => (
-                  <tr key={item.id} className="hover:bg-zinc-50/70 transition-colors">
-                    <td className="py-3 px-4 font-bold text-[#14213D]">
-                      <div className="flex items-center">
-                        <Ticket className="h-3.5 w-3.5 text-[#B8944F] mr-2 shrink-0" />
-                        <div>
-                          <span>{item.name}</span>
-                          {item.detailsDescription && (
-                            <p className="text-[10px] text-zinc-400 font-normal mt-0.5 line-clamp-1">
-                              {item.detailsDescription}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-100 text-zinc-700">
-                        {item.type}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-zinc-600">
-                      {item.visaType && <p className="font-semibold">{item.visaType}</p>}
-                      {(item.validityLength || item.validityWindow) && (
-                        <p className="text-[10px] text-zinc-400">
-                          {item.validityLength} {item.validityWindow ? `(${item.validityWindow})` : ""}
-                        </p>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 font-bold text-[#14213D] font-mono">
-                      ₹{item.defaultPrice?.toLocaleString("en-IN")}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end space-x-1">
-                        <button
-                          onClick={() => openEdit(item)}
-                          className="p-1.5 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id, item.name)}
-                          disabled={deletingId === item.id}
-                          className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
-                        >
-                          {deletingId === item.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      </>
-      ) : (
-        <div className="bg-zinc-50 border border-dashed border-zinc-200 rounded-xl p-8 text-center text-zinc-400 text-xs font-medium">
-          Please select a Title Template from the dropdown above to configure its associated Add-ons.
-        </div>
-      )}
-
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-lg w-full p-6 my-8 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center pb-3 border-b border-zinc-100 mb-4">
               <h3 className="text-base font-bold text-[#14213D] font-fraunces">
                 {editingItem ? "Edit Add-on / Visa" : "Add Master Add-on"}
@@ -319,128 +277,106 @@ export function AddOnsTab({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Associated Title Template *
-                  </label>
-                  <select
-                    required
-                    value={formData.titleTemplateId}
-                    onChange={(e) => setFormData({ ...formData, titleTemplateId: e.target.value })}
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
-                  >
-                    <option value="">-- Select Template --</option>
-                    {titleTemplates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Package / Item Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. UAE 30-Day Express Tourist Visa"
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                />
+              </div>
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Add-on / Service Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Indonesia Official E-VOA (Electronic Visa on Arrival)"
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                  />
-                </div>
-
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Add-on Category
+                    Category Type *
                   </label>
                   <select
                     value={formData.type}
                     onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white"
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
                   >
-                    <option value="Visa">Visa Service</option>
-                    <option value="Insurance">Travel Insurance</option>
-                    <option value="SIM">eSIM / Data Roaming</option>
-                    <option value="Transfer">VIP Transit Upgrade</option>
-                    <option value="Experience">Dining / Club Pass</option>
+                    <option value="Visa">Visa</option>
+                    <option value="Transfer">Transfer</option>
+                    <option value="Activity">Activity</option>
+                    <option value="Insurance">Insurance</option>
+                    <option value="SIM">SIM Card</option>
+                    <option value="Other">Other</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Default Selling Price (₹)
+                    Default Price (₹) *
                   </label>
                   <input
                     type="number"
+                    required
                     value={formData.defaultPrice}
-                    onChange={(e) =>
-                      setFormData({ ...formData, defaultPrice: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                    onChange={(e) => setFormData({ ...formData, defaultPrice: e.target.value })}
+                    placeholder="e.g. 3500"
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-mono focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
+              </div>
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Visa Type / Sub-heading
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.visaType}
-                    onChange={(e) => setFormData({ ...formData, visaType: e.target.value })}
-                    placeholder="e.g. Tourist E-VOA (30 Days Single Entry)"
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Visa / Service Subtype (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={formData.visaType}
+                  onChange={(e) => setFormData({ ...formData, visaType: e.target.value })}
+                  placeholder="e.g. Single Entry E-Visa"
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                />
+              </div>
 
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Validity Length
+                    Stay Validity
                   </label>
                   <input
                     type="text"
                     value={formData.validityLength}
-                    onChange={(e) =>
-                      setFormData({ ...formData, validityLength: e.target.value })
-                    }
-                    placeholder="e.g. 30 Days"
+                    onChange={(e) => setFormData({ ...formData, validityLength: e.target.value })}
+                    placeholder="e.g. 30 Days Stay"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Validity Window
+                    Window / Expiry
                   </label>
                   <input
                     type="text"
                     value={formData.validityWindow}
-                    onChange={(e) =>
-                      setFormData({ ...formData, validityWindow: e.target.value })
-                    }
-                    placeholder="e.g. 90 Days from issuance"
+                    onChange={(e) => setFormData({ ...formData, validityWindow: e.target.value })}
+                    placeholder="e.g. 60 Days from Issue"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
+              </div>
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Service Description
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={formData.detailsDescription}
-                    onChange={(e) =>
-                      setFormData({ ...formData, detailsDescription: e.target.value })
-                    }
-                    placeholder="e.g. Pre-approved electronic visa clearance barcode for dedicated VIP e-gates."
-                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Description / Features
+                </label>
+                <textarea
+                  rows={3}
+                  value={formData.detailsDescription}
+                  onChange={(e) => setFormData({ ...formData, detailsDescription: e.target.value })}
+                  placeholder="e.g. Includes mandatory COVID insurance, embassy handling fees, and photo processing."
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                />
               </div>
 
               <div className="flex justify-end space-x-2 pt-4 border-t border-zinc-100">
@@ -457,7 +393,7 @@ export function AddOnsTab({
                   className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center"
                 >
                   {saving && <Loader2 className="h-3 w-3 animate-spin mr-1.5" />}
-                  {editingItem ? "Update Add-on" : "Save Add-on"}
+                  {editingItem ? "Update Package" : "Save Package"}
                 </button>
               </div>
             </form>

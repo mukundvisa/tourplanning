@@ -39,7 +39,6 @@ import { FlightRoutesTab } from "./FlightRoutesTab";
 import { AddOnsTab } from "./AddOnsTab";
 import { RestaurantsTab } from "./RestaurantsTab";
 import { PolicyTemplatesTab } from "./PolicyTemplatesTab";
-import { TitleTemplatesTab } from "./TitleTemplatesTab";
 import { BannerImagesTab } from "./BannerImagesTab";
 import { AdminCostCalculationTab } from "./AdminCostCalculationTab";
 
@@ -55,26 +54,24 @@ interface MasterDataHubProps {
   addOns: any[];
   restaurants: any[];
   policyTemplates: any[];
-  titleTemplates: any[];
   bannerImages: any[];
   tripsForCost: any[];
   costRates: any[];
 }
 
 const TABS = [
+  { id: "banners", label: "Banner Images", icon: ImageIcon },
   { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "titles", label: "Title Templates", icon: Type },
   { id: "cities", label: "Cities & States", icon: MapPin },
   { id: "consultants", label: "Consultants", icon: User },
   { id: "tax", label: "Tax Settings", icon: Percent },
-  { id: "pricing", label: "Pricing", icon: Tag },
   { id: "activities", label: "Activities", icon: Compass },
   { id: "hotels", label: "Hotels", icon: BedDouble },
   { id: "flights", label: "Transportation", icon: Bus },
   { id: "addons", label: "Add-ons & Visa", icon: Ticket },
   { id: "restaurants", label: "Restaurants", icon: UtensilsCrossed },
   { id: "policies", label: "Policy Templates", icon: FileText },
-  { id: "banners", label: "Banner Images", icon: ImageIcon },
+  { id: "pricing", label: "Pricing", icon: Tag },
 ];
 
 function MasterDataHubContent(props: MasterDataHubProps) {
@@ -280,62 +277,32 @@ function MasterDataHubContent(props: MasterDataHubProps) {
             )}
             {activeTab === "cities" && <CitiesTab initialData={props.cities} />}
             {activeTab === "consultants" && (
-              <ConsultantsTab initialData={props.consultants} />
+              <ConsultantsTab initialData={props.consultants} cities={props.cities} />
             )}
             {activeTab === "tax" && <TaxSettingsTab initialData={props.taxSettings} />}
             {activeTab === "pricing" && (
-              <PricingLabelsTab
-                initialData={props.pricingLabels}
-                titleTemplates={props.titleTemplates}
-              />
+              <PricingLabelsTab initialData={props.pricingLabels} />
             )}
             {activeTab === "activities" && (
-              <ActivitiesTab
-                initialData={props.activities}
-                cities={props.cities}
-                titleTemplates={props.titleTemplates}
-              />
+              <ActivitiesTab initialData={props.activities} cities={props.cities} />
             )}
             {activeTab === "hotels" && (
-              <HotelsTab
-                initialData={props.hotels}
-                cities={props.cities}
-                titleTemplates={props.titleTemplates}
-              />
+              <HotelsTab initialData={props.hotels} cities={props.cities} />
             )}
             {activeTab === "flights" && (
-              <FlightRoutesTab
-                initialData={props.flightRoutes}
-                titleTemplates={props.titleTemplates}
-              />
+              <FlightRoutesTab initialData={props.flightRoutes} />
             )}
             {activeTab === "addons" && (
-              <AddOnsTab
-                initialData={props.addOns}
-                titleTemplates={props.titleTemplates}
-              />
+              <AddOnsTab initialData={props.addOns} />
             )}
             {activeTab === "restaurants" && (
-              <RestaurantsTab
-                initialData={props.restaurants}
-                cities={props.cities}
-                titleTemplates={props.titleTemplates}
-              />
+              <RestaurantsTab initialData={props.restaurants} cities={props.cities} />
             )}
             {activeTab === "policies" && (
-              <PolicyTemplatesTab
-                initialData={props.policyTemplates}
-                titleTemplates={props.titleTemplates}
-              />
-            )}
-            {activeTab === "titles" && (
-              <TitleTemplatesTab initialData={props.titleTemplates} />
+              <PolicyTemplatesTab initialData={props.policyTemplates} />
             )}
             {activeTab === "banners" && (
-              <BannerImagesTab
-                initialData={props.bannerImages}
-                cities={props.cities}
-              />
+              <BannerImagesTab initialData={props.bannerImages} cities={props.cities} />
             )}
           </div>
         </main>

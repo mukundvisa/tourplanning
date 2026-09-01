@@ -1,32 +1,106 @@
+import React from "react";
 import { db } from "@/lib/db";
-import { AdminDashboard } from "@/components/AdminDashboard";
+import { UnifiedDashboard } from "@/components/UnifiedDashboard";
+import {
+  getOverviewStats,
+  getMasterCities,
+  getMasterConsultants,
+  getMasterTaxSettings,
+  getMasterPricingLabels,
+  getMasterActivities,
+  getMasterHotels,
+  getMasterFlightRoutes,
+  getMasterAddOns,
+  getMasterRestaurants,
+  getMasterPolicyTemplates,
+  getMasterBannerImages,
+  getTripsForCostCalculation,
+  getMasterCostRates,
+} from "@/actions/master-data";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "TripCraft Workspace | Unified Operations Dashboard",
+  description: "Unified travel agency operations for master data, proposals, cost engine, and performance analytics.",
+};
+
 export default async function HomePage() {
-  // Query all itineraries
-  const trips = await db.trip.findMany({
-    orderBy: {
-      createdAt: "desc",
-    },
-    select: {
-      id: true,
-      title: true,
-      destination: true,
-      departureCity: true,
-      startDate: true,
-      endDate: true,
-      durationDays: true,
-      durationNights: true,
-      numTravellers: true,
-      consultantName: true,
-      updatedAt: true,
-    },
-  });
+  const [
+    tripsRes,
+    statsRes,
+    citiesRes,
+    consultantsRes,
+    taxRes,
+    pricingRes,
+    activitiesRes,
+    hotelsRes,
+    flightsRes,
+    addonsRes,
+    restaurantsRes,
+    policiesRes,
+    bannersRes,
+    tripsCostRes,
+    costRatesRes,
+  ] = await Promise.all([
+    db.trip.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        destination: true,
+        departureCity: true,
+        startDate: true,
+        endDate: true,
+        durationDays: true,
+        durationNights: true,
+        numTravellers: true,
+        consultantName: true,
+        updatedAt: true,
+      },
+    }),
+    getOverviewStats(),
+    getMasterCities(),
+    getMasterConsultants(),
+    getMasterTaxSettings(),
+    getMasterPricingLabels(),
+    getMasterActivities(),
+    getMasterHotels(),
+    getMasterFlightRoutes(),
+    getMasterAddOns(),
+    getMasterRestaurants(),
+    getMasterPolicyTemplates(),
+    getMasterBannerImages(),
+    getTripsForCostCalculation(),
+    getMasterCostRates(),
+  ]);
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-[#1E3B39] font-sans">
-      <AdminDashboard initialTrips={JSON.parse(JSON.stringify(trips))} />
-    </div>
+    <UnifiedDashboard
+      defaultView="console"
+      initialTrips={JSON.parse(JSON.stringify(tripsRes))}
+      overviewStats={
+        statsRes.data || {
+          totalTrips: 0,
+          tripsThisMonth: 0,
+          totalMasterRecords: 0,
+          avgMargin: 24.5,
+          chartData: [],
+        }
+      }
+      cities={citiesRes.data || []}
+      consultants={consultantsRes.data || []}
+      taxSettings={taxRes.data || []}
+      pricingLabels={pricingRes.data || []}
+      activities={activitiesRes.data || []}
+      hotels={hotelsRes.data || []}
+      flightRoutes={flightsRes.data || []}
+      addOns={addonsRes.data || []}
+      restaurants={restaurantsRes.data || []}
+      policyTemplates={policiesRes.data || []}
+      bannerImages={bannersRes.data || []}
+      tripsForCost={tripsCostRes.data || []}
+      costRates={costRatesRes.data || []}
+    />
   );
 }

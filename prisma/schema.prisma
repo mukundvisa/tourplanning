@@ -165,12 +165,13 @@ model MasterCity {
 }
 
 model MasterConsultant {
-  id        String   @id @default(uuid())
-  name      String
-  phone     String
-  email     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id            String   @id @default(uuid())
+  name          String
+  phone         String
+  email         String?
+  departureCity String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
 }
 
 model MasterTaxSetting {

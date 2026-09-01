@@ -1,24 +1,36 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, User, Phone, Mail, X, Loader2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, User, Phone, Mail, MapPin, X, Loader2 } from "lucide-react";
 import { createMasterConsultant, updateMasterConsultant, deleteMasterConsultant } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
 
-interface ConsultantItem {
+export interface ConsultantItem {
   id: string;
   name: string;
   phone: string;
   email: string | null;
+  departureCity: string | null;
 }
 
-export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] }) {
+export function ConsultantsTab({
+  initialData,
+  cities = [],
+}: {
+  initialData: ConsultantItem[];
+  cities?: any[];
+}) {
   const router = useRouter();
   const [data, setData] = useState<ConsultantItem[]>(initialData);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ConsultantItem | null>(null);
-  const [formData, setFormData] = useState({ name: "", phone: "", email: "" });
+  const [formData, setFormData] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    departureCity: "",
+  });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -26,18 +38,24 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search) ||
+      (c.departureCity && c.departureCity.toLowerCase().includes(search.toLowerCase())) ||
       (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
   );
 
   const openCreate = () => {
     setEditingItem(null);
-    setFormData({ name: "", phone: "", email: "" });
+    setFormData({ name: "", phone: "", email: "", departureCity: "" });
     setModalOpen(true);
   };
 
   const openEdit = (item: ConsultantItem) => {
     setEditingItem(item);
-    setFormData({ name: item.name, phone: item.phone, email: item.email || "" });
+    setFormData({
+      name: item.name,
+      phone: item.phone,
+      email: item.email || "",
+      departureCity: item.departureCity || "",
+    });
     setModalOpen(true);
   };
 
@@ -49,7 +67,7 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
       if (editingItem) {
         const res = await updateMasterConsultant(editingItem.id, formData);
         if (res.success && res.data) {
-          setData((prev) => prev.map((c) => (c.id === editingItem.id ? res.data! : c)));
+          setData((prev) => prev.map((c) => (c.id === editingItem.id ? (res.data as ConsultantItem) : c)));
           setModalOpen(false);
           router.refresh();
         } else {
@@ -58,7 +76,7 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
       } else {
         const res = await createMasterConsultant(formData);
         if (res.success && res.data) {
-          setData((prev) => [res.data!, ...prev]);
+          setData((prev) => [res.data as ConsultantItem, ...prev]);
           setModalOpen(false);
           router.refresh();
         } else {
@@ -91,10 +109,10 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Travel Consultants
+            Travel Consultants & Departure Cities
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Manage travel advisors whose contact details are stamped on customer proposals
+            Assign consultants to specific departure cities (e.g. Vadodara, Ahmedabad, Mumbai). When a departure city is picked during itinerary drafting, the assigned consultant auto-populates.
           </p>
         </div>
         <button
@@ -110,7 +128,7 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
         <input
           type="text"
-          placeholder="Search by advisor name, phone, or email..."
+          placeholder="Search by advisor name, assigned departure city, phone, or email..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
@@ -123,6 +141,7 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
             <thead className="bg-[#FAF8F5] border-b border-zinc-200/80 text-zinc-600 font-semibold">
               <tr>
                 <th className="py-3 px-4">Consultant Name</th>
+                <th className="py-3 px-4">Assigned Departure City</th>
                 <th className="py-3 px-4">Direct Phone</th>
                 <th className="py-3 px-4">Email Address</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -131,7 +150,7 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
             <tbody className="divide-y divide-zinc-100">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-8 text-center text-zinc-400 text-xs">
+                  <td colSpan={5} className="py-8 text-center text-zinc-400 text-xs">
                     No consultants found.
                   </td>
                 </tr>
@@ -143,6 +162,16 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
                         {item.name[0]}
                       </div>
                       {item.name}
+                    </td>
+                    <td className="py-3 px-4">
+                      {item.departureCity ? (
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#B8944F]/15 text-[#8F6F33] border border-[#B8944F]/30">
+                          <MapPin className="h-3 w-3" />
+                          <span>{item.departureCity}</span>
+                        </span>
+                      ) : (
+                        <span className="text-zinc-400 text-[11px] italic">All / Not specified</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-zinc-600 font-mono text-[11px]">
                       <span className="flex items-center">
@@ -221,6 +250,27 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Assigned Departure City
+                </label>
+                <select
+                  value={formData.departureCity}
+                  onChange={(e) => setFormData({ ...formData, departureCity: e.target.value })}
+                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none bg-white cursor-pointer"
+                >
+                  <option value="">-- Select Master Departure City --</option>
+                  {cities.map((city: any) => (
+                    <option key={city.id || city.name} value={city.name}>
+                      {city.name} {city.state ? `(${city.state})` : city.country ? `(${city.country})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-zinc-400 mt-1">
+                  Displays only cities managed in Master Data Hub &rarr; Cities. When selected in a trip proposal, this consultant is auto-assigned.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
                   Contact Phone / WhatsApp *
                 </label>
                 <input
@@ -260,7 +310,7 @@ export function ConsultantsTab({ initialData }: { initialData: ConsultantItem[] 
                   className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center"
                 >
                   {saving && <Loader2 className="h-3 w-3 animate-spin mr-1.5" />}
-                  {editingItem ? "Update Advisor" : "Save Advisor"}
+                  {editingItem ? "Update Consultant" : "Save Consultant"}
                 </button>
               </div>
             </form>
