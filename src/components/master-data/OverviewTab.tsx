@@ -122,7 +122,7 @@ export function OverviewTab({ stats }: OverviewTabProps) {
               Trip Itinerary Generation Velocity
             </h2>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Monthly distribution of custom travel proposals created in TripCraft Workspace (last 12 months)
+              Monthly distribution of custom travel proposals created in TripPlanner Workspace (last 12 months)
             </p>
           </div>
           <div className="flex items-center space-x-2 text-xs font-semibold text-[#B8944F]">

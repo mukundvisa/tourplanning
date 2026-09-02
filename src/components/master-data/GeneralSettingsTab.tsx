@@ -268,7 +268,7 @@ export function GeneralSettingsTab({ initialSettings }: GeneralSettingsTabProps)
                   />
                 ) : (
                   <span className="text-3xl font-black text-zinc-900 tracking-wider font-serif uppercase transform -rotate-12">
-                    TripCraft
+                    TripPlanner
                   </span>
                 )}
               </div>
@@ -291,7 +291,7 @@ export function GeneralSettingsTab({ initialSettings }: GeneralSettingsTabProps)
 
               <div className="relative z-10 pt-2 border-t border-zinc-200/80 flex justify-between items-center text-[9px] text-zinc-400">
                 <span>Page 1 • Official Quotation</span>
-                <span className="font-semibold text-[#14213D]">TripCraft</span>
+                <span className="font-semibold text-[#14213D]">TripPlanner</span>
               </div>
             </div>
 

@@ -82,7 +82,7 @@ export function TripsBrowser({ initialTrips }: TripsBrowserProps) {
           <span className="bg-gradient-to-r from-[#0DA590] to-[#FF176B] bg-clip-text text-transparent">Getaway Itinerary</span>
         </h1>
         <p className="max-w-xl mx-auto mt-4 text-sm sm:text-base text-zinc-500 font-medium">
-          Curated master travel plans crafted by the expert consultants at TripCraft.
+          Curated master travel plans crafted by the expert consultants at TripPlanner.
         </p>
 
         {/* Search Bar */}

@@ -22,7 +22,7 @@ import { getGeneralSettings } from "@/actions/settings";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Master Data Management | TripCraft Workspace",
+  title: "Master Data Management | TripPlanner Workspace",
   description: "Centralized configuration of cities, places, hotels, transportation, add-ons, restaurants, and policies.",
 };
 

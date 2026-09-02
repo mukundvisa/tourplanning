@@ -21,7 +21,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Create Trip Blueprint | TripCraft Workspace",
+  title: "Create Trip Blueprint | TripPlanner Workspace",
   description: "Draft, customize, and export client itineraries within the unified workspace.",
 };
 

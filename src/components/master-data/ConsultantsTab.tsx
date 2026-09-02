@@ -291,7 +291,7 @@ export function ConsultantsTab({
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="e.g. akshar@tripcraft.com"
+                  placeholder="e.g. akshar@tripplanner.com"
                   className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
               </div>

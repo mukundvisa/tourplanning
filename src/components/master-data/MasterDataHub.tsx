@@ -72,7 +72,6 @@ interface MasterDataHubProps {
 const TABS = [
   { id: "banners", label: "Banner Images", icon: ImageIcon },
   { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "settings", label: "General Settings", icon: Settings },
   { id: "cities", label: "Cities & States", icon: MapPin },
   { id: "consultants", label: "Consultants", icon: User },
   { id: "places", label: "Places", icon: Landmark },
@@ -156,18 +155,28 @@ function MasterDataHubContent(props: MasterDataHubProps) {
           `}
         >
           <div>
-            {/* Wordmark (Fraunces Text-only — no icon logo) */}
-            <div className="h-16 px-5 border-b border-zinc-100 flex items-center justify-between">
+            {/* Brand Logo & Wordmark */}
+            <div className="h-16 px-4 border-b border-zinc-100 flex items-center justify-between">
               {!isSidebarCollapsed ? (
-                <span className="text-xl font-bold text-[#14213D] font-fraunces tracking-tight">
-                  TripCraft
-                </span>
+                <div className="flex items-center space-x-2.5 overflow-hidden">
+                  <img
+                    src="/brand-logo.png"
+                    alt="TripPlanner"
+                    className="h-9 w-9 rounded-full object-cover shadow-2xs border border-zinc-200/80 shrink-0"
+                  />
+                  <span className="text-lg font-black text-[#14213D] font-fraunces tracking-tight truncate">
+                    Trip<span className="text-[#B8944F]">Planner</span>
+                  </span>
+                </div>
               ) : (
-                <span className="text-xl font-bold text-[#14213D] font-fraunces mx-auto">
-                  TC
-                </span>
+                <div className="mx-auto" title="TripPlanner">
+                  <img
+                    src="/brand-logo.png"
+                    alt="TripPlanner"
+                    className="h-9 w-9 rounded-full object-cover shadow-2xs border border-zinc-200/80 shrink-0"
+                  />
+                </div>
               )}
-              {/* Close on mobile */}
               <button
                 onClick={() => setIsMobileSidebarOpen(false)}
                 className="md:hidden text-zinc-400 p-1 cursor-pointer"
@@ -235,11 +244,11 @@ function MasterDataHubContent(props: MasterDataHubProps) {
           <div className="p-4 border-t border-zinc-100 text-center">
             {!isSidebarCollapsed ? (
               <div className="text-[11px] text-zinc-400">
-                <p className="font-semibold text-zinc-600">TripCraft Workspace</p>
-                <p>Internal Travel Operations</p>
+                <p className="font-semibold text-zinc-600">TripPlanner Workspace</p>
+                <p>Unified Travel Operations</p>
               </div>
             ) : (
-              <div className="text-[10px] font-bold text-[#B8944F]">TC</div>
+              <div className="text-[10px] font-bold text-[#B8944F]">TP</div>
             )}
           </div>
         </aside>
@@ -258,9 +267,6 @@ function MasterDataHubContent(props: MasterDataHubProps) {
           {/* Active Tab Panel Content */}
           <div className="p-4 sm:p-8 max-w-7xl w-full mx-auto">
             {activeTab === "overview" && <OverviewTab stats={props.overviewStats} />}
-            {activeTab === "settings" && (
-              <GeneralSettingsTab initialSettings={props.generalSettings} />
-            )}
             {activeTab === "costing" && (
               <AdminCostCalculationTab
                 trips={props.tripsForCost}

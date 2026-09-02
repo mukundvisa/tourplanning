@@ -10,46 +10,34 @@ export interface SiteLogoSettings {
 
 export async function getSiteLogoSettings(): Promise<{ success: boolean; data: SiteLogoSettings }> {
   try {
-    // 1. Try querying MasterBannerImage for SITE_LOGO (safely available in Prisma model)
-    if (db.masterBannerImage) {
-      const bannerLogo = await db.masterBannerImage.findFirst({
-        where: { label: "SITE_LOGO" },
-      });
-      if (bannerLogo?.imageUrl) {
-        return {
-          success: true,
-          data: {
-            logoUrl: bannerLogo.imageUrl,
-            watermarkOpacity: 0.06,
-          },
-        };
-      }
-    }
+    let logoUrl: string | null = null;
+    let watermarkOpacity: number = 0.06;
 
-    // 2. Try raw query on GeneralSettings table if it exists
+    // 1. Query GeneralSettings table from database
     try {
       const rows: any = await db.$queryRawUnsafe(
         `SELECT "companyLogo", "watermarkOpacity" FROM "GeneralSettings" WHERE id = 'default' LIMIT 1;`
       );
       if (rows && rows.length > 0) {
-        return {
-          success: true,
-          data: {
-            logoUrl: rows[0].companyLogo || null,
-            watermarkOpacity:
-              rows[0].watermarkOpacity !== null ? Number(rows[0].watermarkOpacity) : 0.06,
-          },
-        };
+        if (rows[0].companyLogo !== undefined && rows[0].companyLogo !== null) {
+          logoUrl = rows[0].companyLogo;
+        }
+        if (rows[0].watermarkOpacity !== null && rows[0].watermarkOpacity !== undefined) {
+          const parsed = Number(rows[0].watermarkOpacity);
+          if (!isNaN(parsed) && parsed > 0) {
+            watermarkOpacity = parsed;
+          }
+        }
       }
     } catch (e) {
-      // GeneralSettings table not created or not queried
+      console.warn("Could not query GeneralSettings table directly:", e);
     }
 
     return {
       success: true,
       data: {
-        logoUrl: null,
-        watermarkOpacity: 0.06,
+        logoUrl,
+        watermarkOpacity,
       },
     };
   } catch (err: any) {
@@ -71,8 +59,8 @@ export async function getGeneralSettings() {
     success: true,
     data: {
       id: "default",
-      companyName: "TripCraft",
-      companyLogo: res.data.logoUrl,
+      companyName: "TripPlanner",
+      companyLogo: res.data.logoUrl || "/brand-logo.png",
       watermarkOpacity: res.data.watermarkOpacity,
     },
   };
@@ -85,36 +73,12 @@ export async function updateSiteLogoSettings(data: {
   try {
     const opacity = data.watermarkOpacity !== undefined ? Number(data.watermarkOpacity) : 0.06;
 
-    // 1. Save to masterBannerImage with label "SITE_LOGO"
-    if (db.masterBannerImage) {
-      const existing = await db.masterBannerImage.findFirst({
-        where: { label: "SITE_LOGO" },
-      });
-      if (existing) {
-        if (data.logoUrl) {
-          await db.masterBannerImage.update({
-            where: { id: existing.id },
-            data: { imageUrl: data.logoUrl },
-          });
-        } else {
-          await db.masterBannerImage.delete({ where: { id: existing.id } });
-        }
-      } else if (data.logoUrl) {
-        await db.masterBannerImage.create({
-          data: {
-            label: "SITE_LOGO",
-            imageUrl: data.logoUrl,
-          },
-        });
-      }
-    }
-
-    // 2. Also persist to GeneralSettings table if possible
+    // 1. Persist exclusively to GeneralSettings table in PostgreSQL
     try {
       await db.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "GeneralSettings" (
           "id" TEXT PRIMARY KEY,
-          "companyName" TEXT DEFAULT 'TripCraft',
+          "companyName" TEXT DEFAULT 'TripPlanner',
           "companyLogo" TEXT,
           "watermarkOpacity" DOUBLE PRECISION DEFAULT 0.06,
           "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
@@ -131,7 +95,19 @@ export async function updateSiteLogoSettings(data: {
         opacity
       );
     } catch (e) {
-      console.warn("Could not upsert into GeneralSettings table via raw SQL:", e);
+      console.error("Could not upsert into GeneralSettings table:", e);
+      throw new Error("Failed to save settings to database");
+    }
+
+    // 2. Clean up any legacy settings labels from MasterBannerImage so Banner Images remains pristine
+    if (db.masterBannerImage) {
+      try {
+        await db.masterBannerImage.deleteMany({
+          where: { label: { in: ["SITE_LOGO", "SITE_WATERMARK_OPACITY"] } },
+        });
+      } catch (cleanupErr) {
+        // Ignore if already clean
+      }
     }
 
     revalidatePath("/");

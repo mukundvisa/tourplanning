@@ -65,7 +65,7 @@ import { MasterDataTabSlider } from "./master-data/MasterDataTabSlider";
 import { TripFormWizard } from "./TripFormWizard";
 import { Settings } from "lucide-react";
 
-export type DashboardView = "console" | "create" | "edit" | "analytics" | "costing" | "master-data";
+export type DashboardView = "console" | "create" | "edit" | "analytics" | "costing" | "master-data" | "settings";
 
 interface TripData {
   id: string;
@@ -102,7 +102,6 @@ interface UnifiedDashboardProps {
 }
 
 const MASTER_DATA_TABS = [
-  { id: "settings", label: "General Settings", icon: Settings },
   { id: "banners", label: "Banner Images", icon: ImageIcon },
   { id: "cities", label: "Cities & States", icon: MapPin },
   { id: "consultants", label: "Consultants", icon: User },
@@ -187,6 +186,10 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
       setEditingTripId(null);
       setEditingTripData(null);
       setActiveView("create");
+    } else if (v === "settings") {
+      setEditingTripId(null);
+      setEditingTripData(null);
+      setActiveView("settings");
     } else if (v === "analytics" || t === "overview") {
       setEditingTripId(null);
       setEditingTripData(null);
@@ -220,6 +223,8 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
       newUrl = "/";
     } else if (newView === "create") {
       newUrl = "/?view=create";
+    } else if (newView === "settings") {
+      newUrl = "/?view=settings";
     } else if (newView === "analytics") {
       newUrl = "/?view=analytics";
     } else if (newView === "costing") {
@@ -337,15 +342,14 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
           breadcrumb: "Blueprint Studio", 
           title: editingTripData?.title ? `Editing: ${editingTripData.title}` : "Edit Travel Blueprint" 
         };
+      case "settings":
+        return { breadcrumb: "System Configuration", title: "General Settings & Site Logo" };
       case "costing":
         return { breadcrumb: "Admin Cost Engine", title: "Confidential Costing & Margin Control" };
       case "master-data":
-        if (masterDataTab === "settings") {
-          return { breadcrumb: "Enterprise Settings", title: "General Settings & PDF Watermarking" };
-        }
         return { breadcrumb: "Master Data Hub", title: "Centralized Catalogues & Master Configuration" };
       default:
-        return { breadcrumb: "Dashboard", title: "TripCraft Unified Workspace" };
+        return { breadcrumb: "Dashboard", title: "TripPlanner Workspace" };
     }
   };
 
@@ -374,7 +378,7 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
 
           <div className="text-left">
             <div className="flex items-center space-x-1.5 text-xs text-zinc-400">
-              <span className="font-semibold text-[#14213D]">TripCraft</span>
+              <span className="font-semibold text-[#14213D]">TripPlanner</span>
               <span>/</span>
               <span className="truncate max-w-[140px] sm:max-w-xs">{headerInfo.breadcrumb}</span>
             </div>
@@ -418,16 +422,27 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
           `}
         >
           <div>
-            {/* Wordmark (Fraunces Text-only) */}
-            <div className="h-16 px-5 border-b border-zinc-100 flex items-center justify-between">
+            {/* Wordmark & Brand Logo with modern collapse button */}
+            <div className="h-16 px-4 border-b border-zinc-100 flex items-center justify-between">
               {!isSidebarCollapsed ? (
-                <span className="text-xl font-bold text-[#14213D] font-fraunces tracking-tight">
-                  TripCraft
-                </span>
+                <div className="flex items-center space-x-2.5 overflow-hidden">
+                  <img
+                    src="/brand-logo.png"
+                    alt="TripPlanner"
+                    className="h-9 w-9 rounded-full object-cover shadow-2xs border border-zinc-200/80 shrink-0"
+                  />
+                  <span className="text-lg font-black text-[#14213D] font-fraunces tracking-tight truncate">
+                    Trip<span className="text-[#B8944F]">Planner</span>
+                  </span>
+                </div>
               ) : (
-                <span className="text-xl font-bold text-[#14213D] font-fraunces mx-auto">
-                  TC
-                </span>
+                <div className="mx-auto" title="TripPlanner">
+                  <img
+                    src="/brand-logo.png"
+                    alt="TripPlanner"
+                    className="h-9 w-9 rounded-full object-cover shadow-2xs border border-zinc-200/80 shrink-0"
+                  />
+                </div>
               )}
               <button
                 onClick={() => setIsMobileSidebarOpen(false)}
@@ -509,17 +524,17 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                 {!isSidebarCollapsed && <span>Admin Cost Engine</span>}
               </button>
 
-              {/* 6. General Settings & Logo */}
+              {/* 6. General Settings */}
               <button
-                onClick={() => switchView("master-data", "settings")}
+                onClick={() => switchView("settings")}
                 className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeView === "master-data" && masterDataTab === "settings"
+                  activeView === "settings"
                     ? "bg-[#B8944F]/15 text-[#B8944F] font-bold"
                     : "text-zinc-700 hover:bg-zinc-50 hover:text-[#14213D]"
                 }`}
                 title="General Settings & Logo Watermark"
               >
-                <Settings className={`h-4 w-4 shrink-0 ${activeView === "master-data" && masterDataTab === "settings" ? "text-[#B8944F]" : "text-zinc-500"}`} />
+                <Settings className={`h-4 w-4 shrink-0 ${activeView === "settings" ? "text-[#B8944F]" : "text-zinc-500"}`} />
                 {!isSidebarCollapsed && <span>General Settings</span>}
               </button>
             </div>
@@ -529,11 +544,11 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
           <div className="p-4 border-t border-zinc-100 text-center">
             {!isSidebarCollapsed ? (
               <div className="text-[11px] text-zinc-400">
-                <p className="font-semibold text-zinc-600">TripCraft Workspace</p>
+                <p className="font-semibold text-zinc-600">TripPlanner Workspace</p>
                 <p>Unified Travel Operations</p>
               </div>
             ) : (
-              <div className="text-[10px] font-bold text-[#B8944F]">TC</div>
+              <div className="text-[10px] font-bold text-[#B8944F]">TP</div>
             )}
           </div>
         </aside>
@@ -810,9 +825,6 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
 
               {/* Master Data Tab Content Panels */}
               <div className="p-4 sm:p-8 max-w-7xl w-full mx-auto">
-                {masterDataTab === "settings" && (
-                  <GeneralSettingsTab initialSettings={props.generalSettings} />
-                )}
                 {masterDataTab === "cities" && <CitiesTab initialData={props.cities} />}
                 {masterDataTab === "places" && (
                   <PlacesTab initialData={props.places} cities={props.cities} />
@@ -846,6 +858,15 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                   />
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ========================================================= */}
+          {/* VIEW 6: GENERAL SETTINGS */}
+          {/* ========================================================= */}
+          {activeView === "settings" && (
+            <div className="p-4 sm:p-8 max-w-7xl w-full mx-auto">
+              <GeneralSettingsTab initialSettings={props.generalSettings} />
             </div>
           )}
         </main>

@@ -16,8 +16,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TripCraft Workspace - Travel Admin & Itinerary Manager",
-  description: "Internal travel agency admin tool for crafting, calculating, and exporting premium travel blueprints.",
+  title: "TripPlanner Workspace - Travel Admin & Itinerary Manager",
+  description: "Internal travel agency admin tool for planning, calculating, and exporting premium travel blueprints.",
+  icons: {
+    icon: "/brand-logo.png",
+    shortcut: "/brand-logo.png",
+    apple: "/brand-logo.png",
+  },
 };
 
 export default function RootLayout({

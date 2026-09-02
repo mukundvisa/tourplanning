@@ -176,7 +176,7 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
 
           <div className="text-left">
             <div className="flex items-center space-x-1.5 text-xs text-zinc-400">
-              <span className="font-semibold text-[#14213D]">TripCraft</span>
+              <span className="font-semibold text-[#14213D]">TripPlanner</span>
               <span>/</span>
               <span className="truncate max-w-[120px] sm:max-w-xs">Admin Section</span>
             </div>
@@ -210,13 +210,16 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
             {/* Wordmark (Fraunces Text-only) */}
             <div className="h-16 px-5 border-b border-zinc-100 flex items-center justify-between">
               {!isSidebarCollapsed ? (
-                <span className="text-xl font-bold text-[#14213D] font-fraunces tracking-tight">
-                  TripCraft
-                </span>
+                <div className="flex items-center space-x-2">
+                  <img src="/brand-logo.png" alt="TripPlanner" className="h-8 w-8 rounded-full object-cover shadow-2xs" />
+                  <span className="text-xl font-bold text-[#14213D] font-fraunces tracking-tight">
+                    TripPlanner
+                  </span>
+                </div>
               ) : (
-                <span className="text-xl font-bold text-[#14213D] font-fraunces mx-auto">
-                  TC
-                </span>
+                <div className="mx-auto" title="TripPlanner">
+                  <img src="/brand-logo.png" alt="TripPlanner" className="h-8 w-8 rounded-full object-cover shadow-2xs" />
+                </div>
               )}
               <button
                 onClick={() => setIsMobileSidebarOpen(false)}
@@ -226,21 +229,14 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
               </button>
             </div>
 
-            {/* Main Action Links */}
+            {/* Navigation */}
             <div className="p-3 space-y-1">
               <Link
                 href="/"
                 className="flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-bold bg-[#B8944F]/15 text-[#B8944F] transition-colors cursor-pointer"
               >
-                <LayoutDashboard className="h-4 w-4 text-[#B8944F] shrink-0" />
-                {!isSidebarCollapsed && <span>Itineraries Console</span>}
-              </Link>
-              <Link
-                href="/trips/new"
-                className="flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-zinc-600 hover:bg-zinc-50 hover:text-[#14213D] transition-colors cursor-pointer"
-              >
                 <Compass className="h-4 w-4 text-[#B8944F] shrink-0" />
-                {!isSidebarCollapsed && <span>Create Trip Blueprint</span>}
+                {!isSidebarCollapsed && <span>Trips & Itineraries</span>}
               </Link>
             </div>
 
@@ -277,11 +273,11 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
           <div className="p-4 border-t border-zinc-100 text-center">
             {!isSidebarCollapsed ? (
               <div className="text-[11px] text-zinc-400">
-                <p className="font-semibold text-zinc-600">TripCraft Workspace</p>
+                <p className="font-semibold text-zinc-600">TripPlanner Workspace</p>
                 <p>Internal Travel Operations</p>
               </div>
             ) : (
-              <div className="text-[10px] font-bold text-[#B8944F]">TC</div>
+              <div className="text-[10px] font-bold text-[#B8944F]">TP</div>
             )}
           </div>
         </aside>

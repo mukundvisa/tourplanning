@@ -22,7 +22,7 @@ import { getGeneralSettings } from "@/actions/settings";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "TripCraft Workspace | Unified Operations Dashboard",
+  title: "TripPlanner Workspace | Unified Operations Dashboard",
   description: "Unified travel agency operations for master data, proposals, cost engine, and performance analytics.",
 };
 

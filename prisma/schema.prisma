@@ -363,6 +363,14 @@ model GeneralSettings {
   address          String?  @default("Level 4, Horizon Travel Tower, Financial District")
   watermarkOpacity Float    @default(0.06)
   createdAt        DateTime @default(now())
-  updatedAt        DateTime @default(now()) @updatedAt
+  updatedAt        DateTime @updatedAt
 }
 
+model StorageFile {
+  id         String   @id @default(uuid())
+  filename   String
+  mimeType   String
+  dataBase64 String   @db.Text
+  fileSize   Int?     @default(0)
+  createdAt  DateTime @default(now())
+}

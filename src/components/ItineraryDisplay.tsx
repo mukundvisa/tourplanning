@@ -426,7 +426,7 @@ export function ItineraryDisplay({ trip }: ItineraryDisplayProps) {
         <section className="space-y-6">
           <div>
             <h2 className="text-2xl font-black text-[#1E3B39]">Premium Accommodation Stays</h2>
-            <p className="text-xs text-zinc-500 mt-1">Details of stays handpicked by the TripCraft team.</p>
+            <p className="text-xs text-zinc-500 mt-1">Details of stays handpicked by the TripPlanner team.</p>
           </div>
 
           {trip.accommodations.length === 0 ? (
