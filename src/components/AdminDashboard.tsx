@@ -22,8 +22,9 @@ import {
   X,
   LayoutDashboard,
   ExternalLink,
+  Copy,
 } from "lucide-react";
-import { deleteTrip, getTripDetails } from "@/actions/trips";
+import { deleteTrip, getTripDetails, duplicateTrip } from "@/actions/trips";
 import { format } from "date-fns";
 import { DayWiseTripSummary, TripFullData } from "@/components/admin/DayWiseTripSummary";
 import { downloadTripPdf } from "@/lib/download-pdf";
@@ -129,6 +130,26 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
       alert("Error deleting trip");
     } finally {
       setBusyTripId(null);
+    }
+  };
+
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+
+  const handleDuplicate = async (tripId: string) => {
+    setDuplicatingId(tripId);
+    try {
+      const res = await duplicateTrip(tripId);
+      if (res.success && res.newTrip) {
+        setTrips((prev) => [res.newTrip, ...prev]);
+        router.refresh();
+      } else {
+        alert(res.error || "Failed to duplicate trip.");
+      }
+    } catch (err) {
+      console.error("Duplicate trip error:", err);
+      alert("Error duplicating trip.");
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -422,10 +443,22 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
                       </div>
 
                       <div className="flex items-center space-x-1">
+                        <button
+                          onClick={() => handleDuplicate(trip.id)}
+                          disabled={duplicatingId === trip.id || isBusy}
+                          className="p-1.5 rounded hover:bg-white text-zinc-500 hover:text-[#B8944F] border border-transparent hover:border-zinc-200 transition-all cursor-pointer disabled:opacity-50"
+                          title="Duplicate / Copy Itinerary"
+                        >
+                          {duplicatingId === trip.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-[#B8944F]" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
                         <Link
-                          href={`/trips/${trip.id}/edit`}
+                          href="/"
                           className="p-1.5 rounded hover:bg-white text-zinc-500 hover:text-[#B8944F] border border-transparent hover:border-zinc-200 transition-all cursor-pointer"
-                          title="Edit Itinerary"
+                          title="Edit Trip Blueprint"
                         >
                           <Edit className="h-4 w-4" />
                         </Link>

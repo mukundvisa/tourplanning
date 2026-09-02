@@ -19,6 +19,8 @@ interface HotelItem {
   nearbyAttractions: any;
   nearbyRestaurants: any;
   photos: string[];
+  pricePerNight?: number | null;
+  pricePerPerson?: number | null;
   titleTemplateId: string | null;
 }
 
@@ -47,6 +49,8 @@ export function HotelsTab({
     name: "",
     cityId: "",
     starRating: 4,
+    pricePerNight: "0",
+    pricePerPerson: "0",
     roomTypes: [] as string[],
     mealPlans: [] as string[],
     guestScore: "4.5",
@@ -83,6 +87,8 @@ export function HotelsTab({
       name: "",
       cityId: selectedCityId !== "all" ? selectedCityId : (cities[0]?.id || ""),
       starRating: 4,
+      pricePerNight: "3500",
+      pricePerPerson: "1750",
       roomTypes: ["Standard Room"],
       mealPlans: ["CP (Breakfast Included)"],
       guestScore: "4.5",
@@ -101,6 +107,8 @@ export function HotelsTab({
       name: item.name,
       cityId: item.cityId || "",
       starRating: item.starRating,
+      pricePerNight: item.pricePerNight?.toString() || "0",
+      pricePerPerson: item.pricePerPerson?.toString() || "0",
       roomTypes: item.roomTypes || [],
       mealPlans: item.mealPlans || [],
       guestScore: item.guestScore?.toString() || "4.5",
@@ -151,6 +159,8 @@ export function HotelsTab({
         name: formData.name,
         cityId: formData.cityId || undefined,
         starRating: Number(formData.starRating),
+        pricePerNight: parseFloat(formData.pricePerNight) || 0,
+        pricePerPerson: parseFloat(formData.pricePerPerson) || 0,
         roomTypes: formData.roomTypes,
         mealPlans: formData.mealPlans,
         guestScore: parseFloat(formData.guestScore) || undefined,
@@ -211,41 +221,41 @@ export function HotelsTab({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Hotels & Resorts Inventory
+          <h2 className="text-xl font-bold text-[#14213D] font-fraunces flex items-center">
+            <BedDouble className="h-5 w-5 mr-2 text-[#B8944F]" /> Master Hotel Catalog
           </h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Manage verified properties and accommodations across destinations
+          <p className="text-xs text-zinc-500 mt-1">
+            Configure premium stays, room types, meal plans, and pricing per night / per person.
           </p>
         </div>
+
         <button
           onClick={openCreate}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          className="px-3.5 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center shrink-0"
         >
-          <Plus className="h-4 w-4" />
-          <span>Add Master Hotel</span>
+          <Plus className="h-4 w-4 mr-1.5" /> Add Master Hotel
         </button>
       </div>
 
       {/* Filter and Search */}
-      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="sm:col-span-2 relative">
+          <Search className="h-4 w-4 text-zinc-400 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Search hotels by property name or location..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+            placeholder="Search hotels by property name, city..."
+            className="w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
           />
         </div>
 
         <select
           value={selectedCityId}
           onChange={(e) => setSelectedCityId(e.target.value)}
-          className="px-3.5 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+          className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
         >
           <option value="all">📍 All Destinations & Cities</option>
           {cities.map((c) => (
@@ -311,6 +321,16 @@ export function HotelsTab({
                       )}
                     </button>
                   </div>
+                </div>
+
+                {/* Pricing Badges */}
+                <div className="flex items-center gap-2 my-2.5">
+                  <span className="inline-flex items-center text-[11px] font-bold px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    💰 ₹{(hotel.pricePerNight || 0).toLocaleString()} / night
+                  </span>
+                  <span className="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                    👤 ₹{(hotel.pricePerPerson || 0).toLocaleString()} / person
+                  </span>
                 </div>
 
                 {/* Photos preview */}
@@ -418,6 +438,36 @@ export function HotelsTab({
                     <option value={4}>4 Star Deluxe Hotel</option>
                     <option value={5}>5 Star Luxury Resort / Villa</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Price Per Night (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    value={formData.pricePerNight}
+                    onChange={(e) => setFormData({ ...formData, pricePerNight: e.target.value })}
+                    placeholder="e.g. 4500"
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-emerald-800 focus:ring-1 focus:ring-[#B8944F] outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                    Price Per Person (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    value={formData.pricePerPerson}
+                    onChange={(e) => setFormData({ ...formData, pricePerPerson: e.target.value })}
+                    placeholder="e.g. 2250"
+                    className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-blue-800 focus:ring-1 focus:ring-[#B8944F] outline-none"
+                  />
                 </div>
 
                 <div>

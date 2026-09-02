@@ -4,10 +4,10 @@ import { UnifiedDashboard } from "@/components/UnifiedDashboard";
 import {
   getOverviewStats,
   getMasterCities,
+  getMasterPlaces,
   getMasterConsultants,
   getMasterTaxSettings,
   getMasterPricingLabels,
-  getMasterActivities,
   getMasterHotels,
   getMasterFlightRoutes,
   getMasterAddOns,
@@ -17,12 +17,13 @@ import {
   getTripsForCostCalculation,
   getMasterCostRates,
 } from "@/actions/master-data";
+import { getGeneralSettings } from "@/actions/settings";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Master Data Management | TripCraft Workspace",
-  description: "Centralized configuration of cities, hotels, flight routes, activities, and internal margins.",
+  description: "Centralized configuration of cities, places, hotels, transportation, add-ons, restaurants, and policies.",
 };
 
 export default async function MasterDataPage() {
@@ -30,10 +31,10 @@ export default async function MasterDataPage() {
     tripsRes,
     statsRes,
     citiesRes,
+    placesRes,
     consultantsRes,
     taxRes,
     pricingRes,
-    activitiesRes,
     hotelsRes,
     flightsRes,
     addonsRes,
@@ -42,6 +43,7 @@ export default async function MasterDataPage() {
     bannersRes,
     tripsCostRes,
     costRatesRes,
+    settingsRes,
   ] = await Promise.all([
     db.trip.findMany({
       orderBy: { createdAt: "desc" },
@@ -61,10 +63,10 @@ export default async function MasterDataPage() {
     }),
     getOverviewStats(),
     getMasterCities(),
+    getMasterPlaces(),
     getMasterConsultants(),
     getMasterTaxSettings(),
     getMasterPricingLabels(),
-    getMasterActivities(),
     getMasterHotels(),
     getMasterFlightRoutes(),
     getMasterAddOns(),
@@ -73,6 +75,7 @@ export default async function MasterDataPage() {
     getMasterBannerImages(),
     getTripsForCostCalculation(),
     getMasterCostRates(),
+    getGeneralSettings(),
   ]);
 
   return (
@@ -89,10 +92,10 @@ export default async function MasterDataPage() {
         }
       }
       cities={citiesRes.data || []}
+      places={placesRes.data || []}
       consultants={consultantsRes.data || []}
       taxSettings={taxRes.data || []}
       pricingLabels={pricingRes.data || []}
-      activities={activitiesRes.data || []}
       hotels={hotelsRes.data || []}
       flightRoutes={flightsRes.data || []}
       addOns={addonsRes.data || []}
@@ -101,6 +104,7 @@ export default async function MasterDataPage() {
       bannerImages={bannersRes.data || []}
       tripsForCost={tripsCostRes.data || []}
       costRates={costRatesRes.data || []}
+      generalSettings={settingsRes.data}
     />
   );
 }

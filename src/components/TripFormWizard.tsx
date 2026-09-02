@@ -32,8 +32,19 @@ import {
   ExternalLink,
   ChevronDown,
   Eye,
+  Landmark,
+  BedDouble,
+  Building2,
+  SlidersHorizontal,
+  CheckCircle2,
+  AlertCircle,
+  Table2,
+  CalendarDays,
+  Hotel,
+  Info,
+  Copy,
 } from "lucide-react";
-import { createTrip, updateTrip } from "@/actions/trips";
+import { createTrip, updateTrip, getTripsListForSelector, getTripDetails } from "@/actions/trips";
 import { getAllMasterDataForSelectors } from "@/actions/master-data";
 import { RichTextEditor } from "./RichTextEditor";
 import { downloadTripPdf } from "@/lib/download-pdf";
@@ -41,20 +52,23 @@ import { downloadTripPdf } from "@/lib/download-pdf";
 interface TripFormWizardProps {
   initialData?: any;
   tripId?: string;
+  onClose?: () => void;
+  onSaved?: (tripId: string) => void;
 }
 
 const STEPS = [
   { number: 1, name: "Core Trip & Consultant", icon: MapPin },
-  { number: 2, name: "Day-by-Day Itinerary", icon: Calendar },
-  { number: 3, name: "Stays & Accommodations", icon: Coffee },
-  { number: 4, name: "Flight Details", icon: Plane },
-  { number: 5, name: "Optional Add-ons & Visa", icon: PlusCircle },
-  { number: 6, name: "Restaurant & Club Suggestions", icon: Utensils },
-  { number: 7, name: "Master Policies & Guidelines", icon: FileText },
-  { number: 8, name: "Price Quotes & Financials", icon: DollarSign },
+  { number: 2, name: "Day-wise Planning", icon: Table2 },
+  { number: 3, name: "Day-by-Day Itinerary", icon: Calendar },
+  { number: 4, name: "Stays & Accommodations", icon: Coffee },
+  { number: 5, name: "Flight Details", icon: Plane },
+  { number: 6, name: "Optional Add-ons & Visa", icon: PlusCircle },
+  { number: 7, name: "Restaurant & Club Suggestions", icon: Utensils },
+  { number: 8, name: "Master Policies & Guidelines", icon: FileText },
+  { number: 9, name: "Price Quotes & Financials", icon: DollarSign },
 ];
 
-export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
+export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFormWizardProps) {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -65,10 +79,10 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   // Master Data Cache
   const [masterData, setMasterData] = useState<{
     cities: any[];
+    places: any[];
     consultants: any[];
     taxSetting: any;
     pricingLabels: any[];
-    activities: any[];
     hotels: any[];
     flightRoutes: any[];
     addOns: any[];
@@ -77,10 +91,10 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     bannerImages: any[];
   }>({
     cities: [],
+    places: [],
     consultants: [],
     taxSetting: { currentTcsPercentage: 5.0 },
     pricingLabels: [],
-    activities: [],
     hotels: [],
     flightRoutes: [],
     addOns: [],
@@ -109,41 +123,45 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     loadMasterData();
   }, [initialData]);
 
-  // Form State
+  // Main Form Data State
   const [formData, setFormData] = useState<any>(() => {
     if (initialData) {
-      const data = { ...initialData };
-      if (data.startDate) data.startDate = new Date(data.startDate).toISOString().split("T")[0];
-      if (data.endDate) data.endDate = new Date(data.endDate).toISOString().split("T")[0];
-      
-      data.accommodations = (data.accommodations || []).map((acc: any) => ({
-        ...acc,
-        checkInDate: acc.checkInDate ? new Date(acc.checkInDate).toISOString().split("T")[0] : "",
-        checkOutDate: acc.checkOutDate ? new Date(acc.checkOutDate).toISOString().split("T")[0] : "",
-      }));
-
-      data.flightDetails = (data.flightDetails || []).map((f: any) => ({
-        ...f,
-        departureDateTime: f.departureDateTime ? new Date(f.departureDateTime).toISOString().slice(0, 16) : "",
-        arrivalDateTime: f.arrivalDateTime ? new Date(f.arrivalDateTime).toISOString().slice(0, 16) : "",
-        type: f.type || "Flight",
-        travelTime: f.travelTime || "",
-        isStartingTransfer: f.isStartingTransfer || false,
-        isPackageIncluded: f.isPackageIncluded || false,
-      }));
-
-      if (!data.pricingTitle) data.pricingTitle = "";
-      if (!data.transportationArrangement) data.transportationArrangement = "Planner";
-      if (!data.startingTransferDetails) data.startingTransferDetails = "";
-      if (!data.packageTransportationDetails) data.packageTransportationDetails = "";
-      return data;
+      return {
+        ...initialData,
+        destination: initialData.destination || "",
+        departureCity: initialData.departureCity || "",
+        startDate: initialData.startDate
+          ? new Date(initialData.startDate).toISOString().split("T")[0]
+          : "",
+        endDate: initialData.endDate
+          ? new Date(initialData.endDate).toISOString().split("T")[0]
+          : "",
+        itineraryDays: initialData.itineraryDays || [],
+        accommodations: initialData.accommodations || [],
+        flightDetails: initialData.flightDetails || [],
+        addOns: initialData.addOns || [],
+        restaurantSuggestions: initialData.restaurantSuggestions || [],
+        priceQuoteItems: initialData.priceQuoteItems || [],
+        tripFinancials: initialData.tripFinancials || {
+          tcsPercentage: 5.0,
+          tcsAmount: 0,
+          totalWithTcs: 0,
+          notes: "",
+        },
+        tripTerms: initialData.tripTerms || {
+          paymentPolicy: "",
+          cancellationPolicy: "",
+          visaRules: "",
+          generalNotes: "",
+        },
+      };
     }
-
     return {
       title: "",
-      pricingTitle: "",
       destination: "",
       departureCity: "",
+      coverImage: null,
+      pricingPlanTitle: "Luxury Standard Plan",
       startDate: "",
       endDate: "",
       durationDays: 1,
@@ -151,32 +169,164 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       numTravellers: 2,
       consultantName: "",
       consultantPhone: "",
-      coverImage: null,
-      priceQuoteItems: [] as any[],
+      transportationArrangement: "Planner",
+      startingTransferDetails: "",
+      packageTransportationDetails: "",
+      priceQuoteItems: [],
       tripFinancials: {
-        tcsPercentage: 5,
+        tcsPercentage: 5.0,
         tcsAmount: 0,
         totalWithTcs: 0,
-        notes: "*Govt TCS is fully refundable and adjustable against annual income tax returns.",
+        notes: "",
       },
-      itineraryDays: [] as any[],
-      accommodations: [] as any[],
-      flightDetails: [] as any[],
-      addOns: [] as any[],
-      restaurantSuggestions: [] as any[],
+      itineraryDays: [],
+      accommodations: [],
+      flightDetails: [],
+      addOns: [],
+      restaurantSuggestions: [],
       tripTerms: {
         paymentPolicy: "",
         cancellationPolicy: "",
         visaRules: "",
         generalNotes: "",
       },
-      transportationArrangement: "Planner",
-      startingTransferDetails: "",
-      packageTransportationDetails: "",
     };
   });
 
-  // Auto-calculate Duration Days and Nights from Start and End Dates
+  // Sync formData whenever initialData updates (e.g. switching trips inside dashboard)
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        ...initialData,
+        destination: initialData.destination || "",
+        departureCity: initialData.departureCity || "",
+        startDate: initialData.startDate
+          ? new Date(initialData.startDate).toISOString().split("T")[0]
+          : "",
+        endDate: initialData.endDate
+          ? new Date(initialData.endDate).toISOString().split("T")[0]
+          : "",
+        itineraryDays: initialData.itineraryDays || [],
+        accommodations: initialData.accommodations || [],
+        flightDetails: initialData.flightDetails || [],
+        addOns: initialData.addOns || [],
+        restaurantSuggestions: initialData.restaurantSuggestions || [],
+        priceQuoteItems: initialData.priceQuoteItems || [],
+        tripFinancials: initialData.tripFinancials || {
+          tcsPercentage: 5.0,
+          tcsAmount: 0,
+          totalWithTcs: 0,
+          notes: "",
+        },
+        tripTerms: initialData.tripTerms || {
+          paymentPolicy: "",
+          cancellationPolicy: "",
+          visaRules: "",
+          generalNotes: "",
+        },
+      });
+    }
+  }, [initialData]);
+
+  // Date formatted helper (e.g. "03 Sep 2026")
+  const formatDayDate = (startDateStr: string, dayOffset: number) => {
+    if (!startDateStr) return null;
+    const d = new Date(startDateStr);
+    d.setDate(d.getDate() + dayOffset);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  // Helper for synchronizing dynamic Accommodations from Itinerary Day selections
+  const syncAccommodationsFromDays = (days: any[], startDateStr: string, endDateStr: string) => {
+    return days
+      .filter((d: any) => d.hotelName)
+      .map((d: any) => {
+        const matchedHotel = masterData.hotels.find(
+          (h) => h.name === d.hotelName || h.id === d.hotelId
+        );
+        return {
+          dayNumber: d.dayNumber,
+          hotelName: d.hotelName,
+          location:
+            d.cityOrStay ||
+            (matchedHotel?.city
+              ? `${matchedHotel.city.name}, ${matchedHotel.city.country}`
+              : ""),
+          checkInDate: startDateStr || "",
+          checkOutDate: endDateStr || "",
+          starRating: matchedHotel?.starRating || 4,
+          roomType: matchedHotel?.roomTypes?.[0] || "Luxury Deluxe Room",
+          mealPlan: matchedHotel?.mealPlans?.[0] || "Daily Buffet Breakfast (CP)",
+          ratingScore: matchedHotel?.guestScore || 4.8,
+          ratingLabel: matchedHotel?.guestScoreLabel || "Very Good",
+          facilities: matchedHotel?.facilities || [],
+          nearbyAttractions: matchedHotel?.nearbyAttractions || [],
+          nearbyRestaurants: matchedHotel?.nearbyRestaurants || [],
+          photos: matchedHotel?.photos || [],
+          pricePerNight: d.hotelPricePerNight || matchedHotel?.pricePerNight || null,
+          pricePerPerson: d.hotelPricePerPerson || matchedHotel?.pricePerPerson || null,
+        };
+      });
+  };
+
+  // Sync Start Date & End Date with dynamic Days & Nights
+  const syncDatesAndDuration = (startDateStr: string, endDateStr: string) => {
+    let daysCount = formData.durationDays || 1;
+    let nightsCount = formData.durationNights || 0;
+
+    if (startDateStr && endDateStr) {
+      const start = new Date(startDateStr);
+      const end = new Date(endDateStr);
+      const diffTime = end.getTime() - start.getTime();
+      daysCount = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1);
+      nightsCount = Math.max(0, daysCount - 1);
+    }
+
+    setFormData((prev: any) => {
+      let currentDays = [...(prev.itineraryDays || [])];
+      if (currentDays.length < daysCount) {
+        for (let i = currentDays.length; i < daysCount; i++) {
+          const defaultCity = prev.destination ? prev.destination.split(",")[0].trim() : "";
+          currentDays.push({
+            dayNumber: i + 1,
+            cityOrStay: defaultCity,
+            title: `Day ${i + 1} - ${defaultCity || "Destination Exploration"}`,
+            durationHours: "Full Day (8-9 hrs)",
+            description: "",
+            places: [] as string[],
+            hotelId: null,
+            hotelName: null,
+            hotelPricePerNight: null,
+            hotelPricePerPerson: null,
+            inclusions: [] as string[],
+            exclusions: [] as string[],
+            sortOrder: i + 1,
+          });
+        }
+      } else if (currentDays.length > daysCount) {
+        currentDays = currentDays.slice(0, daysCount);
+      }
+
+      const syncedAccommodations = syncAccommodationsFromDays(currentDays, startDateStr, endDateStr);
+
+      return {
+        ...prev,
+        startDate: startDateStr,
+        endDate: endDateStr,
+        durationDays: daysCount,
+        durationNights: nightsCount,
+        itineraryDays: currentDays,
+        accommodations: syncedAccommodations,
+      };
+    });
+  };
+
+  // Auto-calculate Duration Days and Nights from Start and End Dates on change
   useEffect(() => {
     if (formData.startDate && formData.endDate) {
       const start = new Date(formData.startDate);
@@ -184,12 +334,8 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       const diffTime = end.getTime() - start.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
       
-      if (diffDays >= 1) {
-        setFormData((prev: any) => ({
-          ...prev,
-          durationDays: diffDays,
-          durationNights: Math.max(0, diffDays - 1),
-        }));
+      if (diffDays >= 1 && diffDays !== formData.durationDays) {
+        syncDatesAndDuration(formData.startDate, formData.endDate);
       }
     }
   }, [formData.startDate, formData.endDate]);
@@ -231,23 +377,17 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     if (!cleanInputCity) return;
 
     const matched = masterData.consultants.find((c: any) => {
-      if (!c.departureCity) return false;
-      const cCity = c.departureCity.split("(")[0].trim().toLowerCase();
-      return cCity === cleanInputCity || cleanInputCity.includes(cCity) || cCity.includes(cleanInputCity);
+      const consultantCity = (c.hubCity || "").toLowerCase();
+      return consultantCity.includes(cleanInputCity) || cleanInputCity.includes(consultantCity);
     });
 
     if (matched) {
-      setAutoMatchedConsultant(`${matched.name} (${matched.departureCity})`);
-      setFormData((prev: any) => {
-        if (prev.consultantName === matched.name && prev.consultantPhone === matched.phone) {
-          return prev;
-        }
-        return {
-          ...prev,
-          consultantName: matched.name,
-          consultantPhone: matched.phone,
-        };
-      });
+      setAutoMatchedConsultant(`${matched.name} (${matched.hubCity})`);
+      setFormData((prev: any) => ({
+        ...prev,
+        consultantName: matched.name,
+        consultantPhone: matched.phone || prev.consultantPhone,
+      }));
     } else {
       setAutoMatchedConsultant(null);
     }
@@ -256,12 +396,14 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
-    const { name, value, type } = e.target;
-    let finalVal: any = value;
-    if (type === "number") {
-      finalVal = value === "" ? "" : Number(value);
+    const { name, value } = e.target;
+    if (name === "startDate") {
+      syncDatesAndDuration(value, formData.endDate);
+    } else if (name === "endDate") {
+      syncDatesAndDuration(formData.startDate, value);
+    } else {
+      setFormData((prev: any) => ({ ...prev, [name]: value }));
     }
-    setFormData((prev: any) => ({ ...prev, [name]: finalVal }));
   };
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -269,22 +411,25 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     if (!file) return;
 
     setUploadingCover(true);
-    const fd = new FormData();
-    fd.append("file", file);
-
+    setError(null);
     try {
+      const uploadFormData = new FormData();
+      uploadFormData.append("file", file);
+
       const res = await fetch("/api/upload", {
         method: "POST",
-        body: fd,
+        body: uploadFormData,
       });
+
       const data = await res.json();
-      if (data.url) {
-        setFormData((prev: any) => ({ ...prev, coverImage: data.url }));
-      } else {
-        alert("Upload failed: " + data.error);
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to upload cover image.");
       }
-    } catch (err) {
-      alert("Error uploading cover image");
+
+      setFormData((prev: any) => ({ ...prev, coverImage: data.url }));
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Failed to upload image. Please try again.");
     } finally {
       setUploadingCover(false);
     }
@@ -324,6 +469,143 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     window.scrollTo(0, 0);
   };
 
+  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [availableTrips, setAvailableTrips] = useState<any[]>([]);
+  const [loadingTrips, setLoadingTrips] = useState(false);
+  const [cloningTripId, setCloningTripId] = useState<string | null>(null);
+
+  const openDuplicateModal = async () => {
+    setDuplicateModalOpen(true);
+    setLoadingTrips(true);
+    try {
+      const res = await getTripsListForSelector();
+      if (res.success && res.data) {
+        setAvailableTrips(res.data);
+      }
+    } catch (err) {
+      console.error("Error loading trips for duplicate selector:", err);
+    } finally {
+      setLoadingTrips(false);
+    }
+  };
+
+  const handleCopyTripData = async (sourceTripId: string) => {
+    setCloningTripId(sourceTripId);
+    try {
+      const res = await getTripDetails(sourceTripId);
+      if (res.success && res.data) {
+        const src = res.data;
+        setFormData({
+          title: `${src.title} (Copy)`,
+          pricingPlanTitle: src.pricingTitle || "Luxury Standard Plan",
+          destination: src.destination || "",
+          departureCity: src.departureCity || "",
+          coverImage: src.coverImage || null,
+          startDate: src.startDate ? new Date(src.startDate).toISOString().split("T")[0] : "",
+          endDate: src.endDate ? new Date(src.endDate).toISOString().split("T")[0] : "",
+          durationDays: src.durationDays || 1,
+          durationNights: src.durationNights || 0,
+          numTravellers: src.numTravellers || 2,
+          consultantName: src.consultantName || "",
+          consultantPhone: src.consultantPhone || "",
+          transportationArrangement: src.transportationArrangement || "Planner",
+          startingTransferDetails: src.startingTransferDetails || "",
+          packageTransportationDetails: src.packageTransportationDetails || "",
+          priceQuoteItems: (src.priceQuoteItems || []).map((item: any) => ({
+            label: item.label,
+            amount: item.amount,
+            sortOrder: item.sortOrder,
+          })),
+          tripFinancials: src.tripFinancials || {
+            tcsPercentage: 5.0,
+            tcsAmount: 0,
+            totalWithTcs: 0,
+            notes: "",
+          },
+          itineraryDays: (src.itineraryDays || []).map((day: any) => ({
+            dayNumber: day.dayNumber,
+            cityOrStay: day.cityOrStay,
+            title: day.title,
+            durationHours: day.durationHours || "Full Day (8-9 hrs)",
+            description: day.description || "",
+            places: day.places || [],
+            hotelId: day.hotelId || null,
+            hotelName: day.hotelName || null,
+            hotelPricePerNight: day.hotelPricePerNight || null,
+            hotelPricePerPerson: day.hotelPricePerPerson || null,
+            inclusions: day.inclusions || [],
+            exclusions: day.exclusions || [],
+            sortOrder: day.sortOrder || day.dayNumber,
+          })),
+          accommodations: (src.accommodations || []).map((acc: any) => ({
+            location: acc.location,
+            checkInDate: acc.checkInDate ? new Date(acc.checkInDate).toISOString().split("T")[0] : "",
+            checkOutDate: acc.checkOutDate ? new Date(acc.checkOutDate).toISOString().split("T")[0] : "",
+            hotelName: acc.hotelName,
+            starRating: acc.starRating || 4,
+            roomType: acc.roomType || "Luxury Deluxe Room",
+            mealPlan: acc.mealPlan || "Daily Buffet Breakfast (CP)",
+            ratingScore: acc.ratingScore || 4.8,
+            ratingLabel: acc.ratingLabel || "Very Good",
+            facilities: acc.facilities || [],
+            nearbyAttractions: acc.nearbyAttractions || [],
+            nearbyRestaurants: acc.nearbyRestaurants || [],
+            photos: acc.photos || [],
+          })),
+          flightDetails: (src.flightDetails || []).map((f: any) => ({
+            sector: f.sector,
+            airline: f.airline,
+            departureDateTime: f.departureDateTime ? new Date(f.departureDateTime).toISOString().slice(0, 16) : "",
+            arrivalDateTime: f.arrivalDateTime ? new Date(f.arrivalDateTime).toISOString().slice(0, 16) : "",
+            durationText: f.durationText || "Direct",
+            stops: f.stops || 0,
+            layoverInfo: f.layoverInfo || "",
+            carryOnBaggageKg: f.carryOnBaggageKg || 7,
+            checkInBaggageKg: f.checkInBaggageKg || 20,
+            cancellationPolicy: f.cancellationPolicy || "",
+            flightNotes: f.flightNotes || "",
+            type: f.type || "Flight",
+            travelTime: f.travelTime || "",
+            isStartingTransfer: Boolean(f.isStartingTransfer),
+            isPackageIncluded: Boolean(f.isPackageIncluded),
+          })),
+          addOns: (src.addOns || []).map((a: any) => ({
+            name: a.name,
+            detailsJson: a.detailsJson || {},
+            price: a.price,
+            priceType: a.priceType || "per person",
+          })),
+          restaurantSuggestions: (src.restaurantSuggestions || []).map((r: any) => ({
+            location: r.location,
+            cuisineType: r.cuisineType,
+            name: r.name,
+            rating: r.rating || 4.5,
+            reviewCount: r.reviewCount || 100,
+            isVeg: Boolean(r.isVeg),
+            category: r.category || "Restaurant",
+          })),
+          tripTerms: src.tripTerms || {
+            paymentPolicy: "",
+            cancellationPolicy: "",
+            visaRules: "",
+            generalNotes: "",
+          },
+        });
+        setDuplicateModalOpen(false);
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 3000);
+      } else {
+        alert(res.error || "Failed to load trip to duplicate.");
+      }
+    } catch (err) {
+      console.error("Error duplicating trip data into form:", err);
+      alert("Error copying trip details.");
+    } finally {
+      setCloningTripId(null);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validateStep()) return;
     setLoading(true);
@@ -338,8 +620,14 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       }
 
       if (res.success) {
-        router.push("/");
-        router.refresh();
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 3500);
+        const savedId = (res as any).tripId || tripId;
+        if (onSaved && savedId) {
+          onSaved(savedId);
+        } else {
+          router.refresh();
+        }
       } else {
         setError(res.error || "An error occurred saving itinerary.");
       }
@@ -354,7 +642,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   // DYNAMIC REPEATERS STATE
   // ==========================================
 
-  // Step 2: Price Quotes
+  // Step 9: Price Quotes
   const [newPriceLabel, setNewPriceLabel] = useState("");
   const [newPriceAmt, setNewPriceAmt] = useState("");
 
@@ -380,23 +668,39 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     }));
   };
 
-  // Step 3: Days
+  // Step 2: Day Addition & Removal Helpers
   const addDay = () => {
     const nextDayNum = formData.itineraryDays.length + 1;
+    const defaultCity = formData.destination ? formData.destination.split(",")[0].trim() : "";
+    
+    // Calculate new end date if start date is present
+    let newEndDate = formData.endDate;
+    if (formData.startDate) {
+      const start = new Date(formData.startDate);
+      start.setDate(start.getDate() + nextDayNum - 1);
+      newEndDate = start.toISOString().split("T")[0];
+    }
+
     const newDay = {
       dayNumber: nextDayNum,
-      cityOrStay: "",
-      title: "",
-      durationHours: null,
+      cityOrStay: defaultCity,
+      title: `Day ${nextDayNum} - ${defaultCity || "Tour & Sightseeing"}`,
+      durationHours: "Full Day (8-9 hrs)",
       description: "",
+      places: [] as string[],
+      hotelId: null,
+      hotelName: null,
+      hotelPricePerNight: null,
+      hotelPricePerPerson: null,
       inclusions: [] as string[],
       exclusions: [] as string[],
-      customerLovedTips: [] as string[],
-      customerWatchOutTips: [] as string[],
       sortOrder: nextDayNum,
     };
     setFormData((prev: any) => ({
       ...prev,
+      durationDays: nextDayNum,
+      durationNights: Math.max(0, nextDayNum - 1),
+      endDate: newEndDate || prev.endDate,
       itineraryDays: [...prev.itineraryDays, newDay],
     }));
   };
@@ -405,7 +709,29 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     const updated = formData.itineraryDays
       .filter((_: any, i: number) => i !== index)
       .map((day: any, i: number) => ({ ...day, dayNumber: i + 1, sortOrder: i + 1 }));
-    setFormData((prev: any) => ({ ...prev, itineraryDays: updated }));
+    
+    let newEndDate = formData.endDate;
+    if (formData.startDate && updated.length > 0) {
+      const start = new Date(formData.startDate);
+      start.setDate(start.getDate() + updated.length - 1);
+      newEndDate = start.toISOString().split("T")[0];
+    }
+
+    setFormData((prev: any) => {
+      const syncedAccommodations = syncAccommodationsFromDays(
+        updated,
+        prev.startDate,
+        newEndDate || prev.endDate
+      );
+      return {
+        ...prev,
+        durationDays: Math.max(1, updated.length),
+        durationNights: Math.max(0, updated.length - 1),
+        endDate: newEndDate || prev.endDate,
+        itineraryDays: updated,
+        accommodations: syncedAccommodations,
+      };
+    });
   };
 
   const updateDayField = (index: number, field: string, value: any) => {
@@ -414,6 +740,130 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       days[index] = { ...days[index], [field]: value };
       return { ...prev, itineraryDays: days };
     });
+  };
+
+  const handleDayCityChange = (dIdx: number, newCityName: string) => {
+    setFormData((prev: any) => {
+      const days = [...prev.itineraryDays];
+      const currentDay = { ...days[dIdx] };
+      days[dIdx] = {
+        ...currentDay,
+        cityOrStay: newCityName,
+        hotelId: null,
+        hotelName: null,
+        hotelPricePerNight: null,
+        hotelPricePerPerson: null,
+        places: [],
+        inclusions: [],
+        exclusions: [],
+        description: "",
+        title: `Day ${currentDay.dayNumber} - ${newCityName || "Exploration"}`,
+      };
+
+      const syncedAccommodations = syncAccommodationsFromDays(days, prev.startDate, prev.endDate);
+      return { ...prev, itineraryDays: days, accommodations: syncedAccommodations };
+    });
+  };
+
+  const handleDayHotelChange = (dIdx: number, hotelName: string) => {
+    const hotelObj = masterData.hotels.find((h) => h.name === hotelName);
+    setFormData((prev: any) => {
+      const days = [...prev.itineraryDays];
+      if (hotelObj) {
+        days[dIdx] = {
+          ...days[dIdx],
+          hotelId: hotelObj.id,
+          hotelName: hotelObj.name,
+          hotelPricePerNight: hotelObj.pricePerNight || null,
+          hotelPricePerPerson: hotelObj.pricePerPerson || null,
+        };
+      } else {
+        days[dIdx] = {
+          ...days[dIdx],
+          hotelId: null,
+          hotelName: null,
+          hotelPricePerNight: null,
+          hotelPricePerPerson: null,
+        };
+      }
+
+      const syncedAccommodations = syncAccommodationsFromDays(days, prev.startDate, prev.endDate);
+      return { ...prev, itineraryDays: days, accommodations: syncedAccommodations };
+    });
+  };
+
+  const handleToggleDayPlace = (dIdx: number, placeName: string) => {
+    setFormData((prev: any) => {
+      const updatedDays = [...prev.itineraryDays];
+      const currentDay = { ...updatedDays[dIdx] };
+      let currentPlaces = [...(currentDay.places || [])];
+
+      if (currentPlaces.includes(placeName)) {
+        currentPlaces = currentPlaces.filter((p) => p !== placeName);
+      } else {
+        currentPlaces.push(placeName);
+      }
+
+      // Match place objects from masterData
+      const selectedPlaceObjs = currentPlaces
+        .map((pName) =>
+          masterData.places.find(
+            (p) =>
+              p.name.toLowerCase() === pName.toLowerCase() &&
+              (!currentDay.cityOrStay ||
+                p.city?.name?.toLowerCase() === currentDay.cityOrStay.toLowerCase())
+          ) || masterData.places.find((p) => p.name.toLowerCase() === pName.toLowerCase())
+        )
+        .filter(Boolean);
+
+      // Aggregate Inclusions from all selected places
+      const aggregatedInclusions = Array.from(
+        new Set(selectedPlaceObjs.flatMap((p) => p.inclusions || []))
+      );
+
+      // Aggregate Exclusions from all selected places
+      const aggregatedExclusions = Array.from(
+        new Set(selectedPlaceObjs.flatMap((p) => p.exclusions || []))
+      );
+
+      // Aggregate Descriptions
+      const aggregatedDescription = selectedPlaceObjs
+        .filter((p) => p.description)
+        .map((p) => `• ${p.name}: ${p.description}`)
+        .join("\n\n");
+
+      const newTitle =
+        currentPlaces.length > 0
+          ? `${currentDay.cityOrStay || "Tour"}: ${currentPlaces.slice(0, 2).join(" & ")}${
+              currentPlaces.length > 2 ? ` (+${currentPlaces.length - 2} more)` : ""
+            }`
+          : currentDay.title;
+
+      updatedDays[dIdx] = {
+        ...currentDay,
+        places: currentPlaces,
+        title: newTitle || currentDay.title,
+        description: aggregatedDescription || currentDay.description,
+        inclusions:
+          aggregatedInclusions.length > 0
+            ? aggregatedInclusions
+            : currentDay.inclusions || [],
+        exclusions:
+          aggregatedExclusions.length > 0
+            ? aggregatedExclusions
+            : currentDay.exclusions || [],
+      };
+
+      return { ...prev, itineraryDays: updatedDays };
+    });
+  };
+
+  const handleRemoveDayPlace = (dayIndex: number, placeIndex: number) => {
+    const currentPlaces = formData.itineraryDays[dayIndex]?.places || [];
+    const placeToRemove = currentPlaces[placeIndex];
+    if (placeToRemove) {
+      handleToggleDayPlace(dayIndex, placeToRemove);
+    }
   };
 
   const [dayInputTags, setDayInputTags] = useState<{ [key: string]: string }>({});
@@ -434,90 +884,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
     const currentTags = formData.itineraryDays[dayIndex][field] || [];
     const updatedTags = currentTags.filter((_: any, i: number) => i !== tagIndex);
     updateDayField(dayIndex, field, updatedTags);
-  };
-
-  // Step 4: Accommodations
-  const [editingAccIndex, setEditingAccIndex] = useState<number | null>(null);
-  const [newAcc, setNewAcc] = useState({
-    location: "",
-    checkInDate: "",
-    checkOutDate: "",
-    hotelName: "",
-    starRating: 4,
-    roomType: "",
-    mealPlan: "",
-    ratingScore: 4.8,
-    ratingLabel: "Very Good",
-    facilities: [] as string[],
-    nearbyAttractions: [] as { name: string; distanceKm: number }[],
-    nearbyRestaurants: [] as { name: string; distance: string }[],
-    photos: [] as string[],
-  });
-
-  const [scopedHotel, setScopedHotel] = useState<any | null>(null);
-  const [newAccPhotoUrl, setNewAccPhotoUrl] = useState("");
-  const [uploadingAccPhoto, setUploadingAccPhoto] = useState(false);
-
-  const startEditAcc = (idx: number) => {
-    const acc = formData.accommodations[idx];
-    setNewAcc({
-      location: acc.location || "",
-      checkInDate: acc.checkInDate || "",
-      checkOutDate: acc.checkOutDate || "",
-      hotelName: acc.hotelName || "",
-      starRating: acc.starRating || 4,
-      roomType: acc.roomType || "",
-      mealPlan: acc.mealPlan || "",
-      ratingScore: acc.ratingScore || 4.8,
-      ratingLabel: acc.ratingLabel || "Very Good",
-      facilities: acc.facilities || [],
-      nearbyAttractions: acc.nearbyAttractions || [],
-      nearbyRestaurants: acc.nearbyRestaurants || [],
-      photos: acc.photos || [],
-    });
-    const matched = masterData.hotels.find((h) => h.name === acc.hotelName);
-    setScopedHotel(matched || null);
-    setEditingAccIndex(idx);
-  };
-
-  const addAcc = () => {
-    if (!newAcc.hotelName || !newAcc.location || !newAcc.checkInDate || !newAcc.checkOutDate) {
-      alert("Check-in, Check-out, Hotel Name, and Location are required.");
-      return;
-    }
-    setFormData((prev: any) => {
-      const list = [...prev.accommodations];
-      if (editingAccIndex !== null) {
-        list[editingAccIndex] = newAcc;
-      } else {
-        list.push(newAcc);
-      }
-      return { ...prev, accommodations: list };
-    });
-    setEditingAccIndex(null);
-    setScopedHotel(null);
-    setNewAcc({
-      location: "",
-      checkInDate: "",
-      checkOutDate: "",
-      hotelName: "",
-      starRating: 4,
-      roomType: "",
-      mealPlan: "",
-      ratingScore: 4.8,
-      ratingLabel: "Very Good",
-      facilities: [],
-      nearbyAttractions: [],
-      nearbyRestaurants: [],
-      photos: [],
-    });
-  };
-
-  const removeAcc = (index: number) => {
-    setFormData((prev: any) => ({
-      ...prev,
-      accommodations: prev.accommodations.filter((_: any, i: number) => i !== index),
-    }));
   };
 
   // Step 5: Flights
@@ -1012,339 +1378,278 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       case 2:
         return (
           <div className="space-y-6">
-            <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
-              <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-                Step 2: Day-by-Day Itinerary Builder
-              </h2>
-              <button
-                type="button"
-                onClick={addDay}
-                className="px-3.5 py-1.5 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center"
-              >
-                <Plus className="h-3.5 w-3.5 mr-1" /> Add Day
-              </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
+              <div>
+                <h2 className="text-xl font-bold text-[#14213D] font-fraunces flex items-center gap-2">
+                  <Table2 className="h-5 w-5 text-[#B8944F]" />
+                  <span>Step 2: Day-wise Planning</span>
+                </h2>
+              </div>
+              {formData.startDate && formData.endDate && (
+                <div className="flex items-center gap-2 bg-[#FAF8F5] border border-[#B8944F]/30 px-3 py-1.5 rounded-lg text-xs font-medium text-[#14213D] shrink-0">
+                  <CalendarDays className="h-3.5 w-3.5 text-[#B8944F]" />
+                  <span>
+                    {formatDayDate(formData.startDate, 0)} &ndash; {formatDayDate(formData.endDate, 0)} ({formData.durationDays} Days / {formData.durationNights} Nights)
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-6">
+            {/* Dynamic Day-wise Planning (Vertical Layout) */}
+            <div className="space-y-4">
               {formData.itineraryDays.length === 0 ? (
-                <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
-                  No itinerary days added yet. Click &quot;Add Day&quot; to build your itinerary.
+                <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-xl p-8">
+                  No itinerary days configured. Please set your Trip Start Date and End Date in Step 1.
                 </div>
               ) : (
-                formData.itineraryDays.map((day: any, dIdx: number) => (
-                  <div
-                    key={dIdx}
-                    className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card space-y-4"
-                  >
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                      <div className="flex items-center space-x-2">
-                        <span className="h-6 w-6 rounded-full bg-[#B8944F] text-white text-xs font-bold flex items-center justify-center">
-                          {day.dayNumber}
-                        </span>
-                        <span className="text-xs font-bold text-[#14213D]">
-                          Day {day.dayNumber} Itinerary
-                        </span>
-                      </div>
+                <div className="space-y-4">
+                  {formData.itineraryDays.map((day: any, dIdx: number) => {
+                    const dayDateStr = formatDayDate(formData.startDate, dIdx);
+                    const currentCity = masterData.cities.find(
+                      (c) => c.name.toLowerCase() === (day.cityOrStay || "").toLowerCase()
+                    );
+                    const cityHotels = currentCity
+                      ? masterData.hotels.filter((h) => h.cityId === currentCity.id)
+                      : masterData.hotels;
+                    const cityPlaces = currentCity
+                      ? masterData.places.filter((p) => p.cityId === currentCity.id)
+                      : masterData.places;
 
-                      <div className="flex items-center space-x-2">
-                        {/* Select from Activity Library Picker */}
-                        {masterData.activities.length > 0 && (
-                          <select
-                            onChange={(e) => {
-                              const act = masterData.activities.find(
-                                (a) => a.title === e.target.value
-                              );
-                              if (act) {
-                                setFormData((prev: any) => {
-                                  const updatedDays = [...prev.itineraryDays];
-                                  updatedDays[dIdx] = {
-                                    ...updatedDays[dIdx],
-                                    title: act.title,
-                                    durationHours: act.defaultDurationHours,
-                                    description: act.description,
-                                    inclusions: act.inclusions || [],
-                                    exclusions: act.exclusions || [],
-                                    customerLovedTips: act.loveTips || [],
-                                    customerWatchOutTips: act.watchOutTips || [],
-                                  };
-                                  return { ...prev, itineraryDays: updatedDays };
-                                });
-                              }
-                            }}
-                            value=""
-                            className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/10 border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
-                          >
-                            <option value="">⚡ Select from Activity Library...</option>
-                            {masterData.activities.map((a) => (
-                              <option key={a.id} value={a.title}>
-                                {a.title}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => removeDay(dIdx)}
-                          className="text-zinc-400 hover:text-red-600 p-1 cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          City / Stay Location *
-                        </label>
-                        <input
-                          type="text"
-                          value={day.cityOrStay}
-                          onChange={(e) => updateDayField(dIdx, "cityOrStay", e.target.value)}
-                          placeholder="e.g. Seminyak, Ubud, Dubai"
-                          className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          Day Theme / Title *
-                        </label>
-                        <input
-                          type="text"
-                          value={day.title}
-                          onChange={(e) => updateDayField(dIdx, "title", e.target.value)}
-                          placeholder="e.g. Uluwatu Cliff Sunset & Jimbaran Seafood Dinner"
-                          className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Day Description *
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={day.description}
-                        onChange={(e) => updateDayField(dIdx, "description", e.target.value)}
-                        placeholder="Detailed chronological plan of activities, sightseeing spots, and timings..."
-                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none leading-relaxed"
-                      />
-                    </div>
-
-                    {/* Inclusions & Exclusions */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          Inclusions
-                        </label>
-                        <div className="flex gap-1 mb-2">
-                          <input
-                            type="text"
-                            value={dayInputTags[`${dIdx}-inclusions`] || ""}
-                            onChange={(e) =>
-                              setDayInputTags((prev) => ({
-                                ...prev,
-                                [`${dIdx}-inclusions`]: e.target.value,
-                              }))
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleAddDayTag(dIdx, "inclusions");
-                              }
-                            }}
-                            placeholder="Add inclusion tag..."
-                            className="flex-1 px-2.5 py-1.5 border border-zinc-200 rounded text-xs outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleAddDayTag(dIdx, "inclusions")}
-                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-xs font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {(day.inclusions || []).map((tag: string, tIdx: number) => (
-                            <span
-                              key={tIdx}
-                              className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200"
-                            >
-                              {tag}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveDayTag(dIdx, "inclusions", tIdx)}
-                                className="ml-1 text-emerald-600"
-                              >
-                                ×
-                              </button>
+                    return (
+                      <div
+                        key={dIdx}
+                        className="bg-white border border-zinc-200/90 hover:border-[#B8944F]/60 rounded-xl shadow-xs transition-all overflow-hidden"
+                      >
+                        {/* Day Card Header */}
+                        <div className="bg-[#FAF8F5] px-4 py-3 border-b border-zinc-200/80 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center space-x-3">
+                            <span className="h-7 w-7 rounded-full bg-[#B8944F] text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-xs">
+                              {day.dayNumber}
                             </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          Exclusions
-                        </label>
-                        <div className="flex gap-1 mb-2">
-                          <input
-                            type="text"
-                            value={dayInputTags[`${dIdx}-exclusions`] || ""}
-                            onChange={(e) =>
-                              setDayInputTags((prev) => ({
-                                ...prev,
-                                [`${dIdx}-exclusions`]: e.target.value,
-                              }))
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleAddDayTag(dIdx, "exclusions");
-                              }
-                            }}
-                            placeholder="Add exclusion tag..."
-                            className="flex-1 px-2.5 py-1.5 border border-zinc-200 rounded text-xs outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleAddDayTag(dIdx, "exclusions")}
-                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-xs font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {(day.exclusions || []).map((tag: string, tIdx: number) => (
-                            <span
-                              key={tIdx}
-                              className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200"
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-[#14213D] font-fraunces">
+                                Day {day.dayNumber}
+                              </span>
+                              {dayDateStr && (
+                                <span className="text-[11px] font-mono text-[#8F6F33] font-semibold bg-[#B8944F]/10 px-2 py-0.5 rounded-md border border-[#B8944F]/20">
+                                  📅 {dayDateStr}
+                                </span>
+                              )}
+                              {day.cityOrStay && (
+                                <span className="text-[11px] font-semibold text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded-md">
+                                  📍 {day.cityOrStay}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {formData.itineraryDays.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeDay(dIdx)}
+                              className="text-zinc-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                              title={`Remove Day ${day.dayNumber}`}
                             >
-                              {tag}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveDayTag(dIdx, "exclusions", tIdx)}
-                                className="ml-1 text-red-600"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
-                      </div>
-                    </div>
 
-                    {/* Tips fields */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          ❤️ Love Tips (Traveler Highlights)
-                        </label>
-                        <div className="flex gap-1 mb-2">
-                          <input
-                            type="text"
-                            value={dayInputTags[`${dIdx}-customerLovedTips`] || ""}
-                            onChange={(e) =>
-                              setDayInputTags((prev) => ({
-                                ...prev,
-                                [`${dIdx}-customerLovedTips`]: e.target.value,
-                              }))
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleAddDayTag(dIdx, "customerLovedTips");
-                              }
-                            }}
-                            placeholder="Add highlight tip..."
-                            className="flex-1 px-2.5 py-1.5 border border-zinc-200 rounded text-xs outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleAddDayTag(dIdx, "customerLovedTips")}
-                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-xs font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {(day.customerLovedTips || []).map((tag: string, tIdx: number) => (
-                            <span
-                              key={tIdx}
-                              className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-pink-50 text-pink-800 border border-pink-200"
-                            >
-                              {tag}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleRemoveDayTag(dIdx, "customerLovedTips", tIdx)
-                                }
-                                className="ml-1 text-pink-600"
+                        {/* Day Card Body */}
+                        <div className="p-4 sm:p-5 space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* City Selection */}
+                            <div className="space-y-1.5">
+                              <label className="block text-xs font-bold text-zinc-700 flex items-center gap-1.5">
+                                <MapPin className="h-3.5 w-3.5 text-[#B8944F]" />
+                                <span>City / Destination *</span>
+                              </label>
+                              <select
+                                value={day.cityOrStay || ""}
+                                onChange={(e) => handleDayCityChange(dIdx, e.target.value)}
+                                className="w-full px-3 py-2.5 bg-zinc-50 hover:bg-white border border-zinc-200 focus:border-[#B8944F] focus:ring-1 focus:ring-[#B8944F] rounded-lg text-xs font-semibold text-[#14213D] outline-none cursor-pointer transition-colors"
                               >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                                <option value="">-- Select Master City --</option>
+                                {masterData.cities.map((c) => (
+                                  <option key={c.id} value={c.name}>
+                                    📍 {c.name}, {c.country}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="text-[10px] text-zinc-400">
+                                Filters available hotels and places from Master Data Hub.
+                              </p>
+                            </div>
 
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          ⚠️ Watch-out Tips (Advisory & Rules)
-                        </label>
-                        <div className="flex gap-1 mb-2">
-                          <input
-                            type="text"
-                            value={dayInputTags[`${dIdx}-customerWatchOutTips`] || ""}
-                            onChange={(e) =>
-                              setDayInputTags((prev) => ({
-                                ...prev,
-                                [`${dIdx}-customerWatchOutTips`]: e.target.value,
-                              }))
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleAddDayTag(dIdx, "customerWatchOutTips");
-                              }
-                            }}
-                            placeholder="Add advisory warning..."
-                            className="flex-1 px-2.5 py-1.5 border border-zinc-200 rounded text-xs outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleAddDayTag(dIdx, "customerWatchOutTips")}
-                            className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded text-xs font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {(day.customerWatchOutTips || []).map((tag: string, tIdx: number) => (
-                            <span
-                              key={tIdx}
-                              className="inline-flex items-center text-[10px] px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200"
-                            >
-                              {tag}
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleRemoveDayTag(dIdx, "customerWatchOutTips", tIdx)
-                                }
-                                className="ml-1 text-amber-600"
+                            {/* Hotel Selection */}
+                            <div className="space-y-1.5">
+                              <label className="block text-xs font-bold text-zinc-700 flex items-center gap-1.5">
+                                <Hotel className="h-3.5 w-3.5 text-[#B8944F]" />
+                                <span>Hotel Stay *</span>
+                              </label>
+                              <select
+                                value={day.hotelName || ""}
+                                onChange={(e) => handleDayHotelChange(dIdx, e.target.value)}
+                                className="w-full px-3 py-2.5 bg-zinc-50 hover:bg-white border border-zinc-200 focus:border-[#B8944F] focus:ring-1 focus:ring-[#B8944F] rounded-lg text-xs font-semibold text-[#14213D] outline-none cursor-pointer transition-colors"
                               >
-                                ×
-                              </button>
-                            </span>
-                          ))}
+                                <option value="">-- Select Hotel (or Day Trip / Transit) --</option>
+                                {cityHotels.map((h) => (
+                                  <option key={h.id} value={h.name}>
+                                    🏨 {h.name} ({h.starRating}★)
+                                    {h.pricePerNight ? ` - ₹${h.pricePerNight.toLocaleString("en-IN")}/nt` : ""}
+                                    {h.pricePerPerson ? ` | ₹${h.pricePerPerson.toLocaleString("en-IN")}/pax` : ""}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {/* Hotel badge preview if selected */}
+                              {day.hotelName && (
+                                <div className="p-2 bg-amber-50/80 border border-amber-200/80 rounded-lg text-[11px] flex items-center justify-between">
+                                  <span className="font-bold text-[#14213D] truncate">
+                                    🏨 {day.hotelName}
+                                  </span>
+                                  <div className="flex items-center gap-2 text-[10px] font-mono font-bold text-[#8F6F33] shrink-0">
+                                    {day.hotelPricePerNight && (
+                                      <span>₹{day.hotelPricePerNight.toLocaleString("en-IN")}/nt</span>
+                                    )}
+                                    {day.hotelPricePerPerson && (
+                                      <span>₹{day.hotelPricePerPerson.toLocaleString("en-IN")}/pax</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Places Selection & Auto-Summary */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-zinc-100">
+                            {/* Places Multi-Select */}
+                            <div className="space-y-2">
+                              <label className="block text-xs font-bold text-zinc-700 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <Landmark className="h-3.5 w-3.5 text-[#B8944F]" />
+                                  <span>Places Selection *</span>
+                                </span>
+                                <span className="text-[10px] text-zinc-400 font-normal">
+                                  {(day.places || []).length} Selected
+                                </span>
+                              </label>
+
+                              {/* Selected Places Badges */}
+                              <div className="flex flex-wrap gap-1.5 min-h-[34px] p-2 bg-zinc-50 border border-zinc-200 rounded-lg">
+                                {(day.places || []).length === 0 ? (
+                                  <span className="text-[10px] text-zinc-400 italic py-0.5">
+                                    No places selected yet. Pick from available places below.
+                                  </span>
+                                ) : (
+                                  (day.places || []).map((pName: string, pIdx: number) => (
+                                    <span
+                                      key={pIdx}
+                                      className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-md bg-[#B8944F]/15 text-[#8F6F33] font-bold border border-[#B8944F]/30"
+                                    >
+                                      {pName}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveDayPlace(dIdx, pIdx)}
+                                        className="ml-1.5 text-[#8F6F33] hover:text-red-600 font-bold cursor-pointer"
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))
+                                )}
+                              </div>
+
+                              {/* Available Places Selection */}
+                              {cityPlaces.length > 0 ? (
+                                <div className="space-y-1">
+                                  <span className="text-[9px] uppercase font-bold text-zinc-400 tracking-wider block">
+                                    Available in {day.cityOrStay || "Hub"}:
+                                  </span>
+                                  <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 border border-zinc-100 rounded-md bg-zinc-50/50">
+                                    {cityPlaces.map((cp: any) => {
+                                      const isSelected = (day.places || []).includes(cp.name);
+                                      return (
+                                        <button
+                                          key={cp.id}
+                                          type="button"
+                                          onClick={() => handleToggleDayPlace(dIdx, cp.name)}
+                                          className={`text-[10px] px-2 py-0.5 rounded border transition-all cursor-pointer text-left ${
+                                            isSelected
+                                              ? "bg-[#B8944F] text-white border-[#B8944F] font-bold shadow-xs"
+                                              : "bg-white text-zinc-700 border-zinc-200 hover:border-[#B8944F]"
+                                          }`}
+                                        >
+                                          {isSelected ? "✓ " : "+ "}
+                                          {cp.name}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-[10px] text-zinc-400 italic">
+                                  {day.cityOrStay
+                                    ? `No places found in Master Data for ${day.cityOrStay}.`
+                                    : "Select a city above to load master places."}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Auto-Populated Summary Preview */}
+                            <div className="space-y-2 bg-[#FAF8F5]/80 p-3 rounded-lg border border-zinc-200/70 text-xs">
+                              <div className="flex items-center gap-1.5 font-bold text-zinc-700">
+                                <Sparkles className="h-3.5 w-3.5 text-[#B8944F]" />
+                                <span>Auto-Generated Day Summary</span>
+                              </div>
+
+                              <div className="text-[11px] font-semibold text-[#14213D] truncate">
+                                🏷️ {day.title || `Day ${day.dayNumber}`}
+                              </div>
+
+                              {day.inclusions && day.inclusions.length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="font-bold text-[10px] text-emerald-800">Inclusions:</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {day.inclusions.map((inc: string, i: number) => (
+                                      <span
+                                        key={i}
+                                        className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded text-[9px]"
+                                      >
+                                        ✓ {inc}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {day.exclusions && day.exclusions.length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="font-bold text-[10px] text-red-800">Exclusions:</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {day.exclusions.map((exc: string, i: number) => (
+                                      <span
+                                        key={i}
+                                        className="bg-red-50 text-red-800 border border-red-200 px-1.5 py-0.5 rounded text-[9px]"
+                                      >
+                                        ✗ {exc}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {day.description && (
+                                <p className="text-zinc-500 line-clamp-2 italic text-[10px] pt-1">
+                                  {day.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                ))
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
@@ -1353,279 +1658,366 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
       case 3:
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 3: Stays & Accommodations
-            </h2>
-
-            {/* Hotel Entry Form */}
-            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                  {editingAccIndex !== null ? "Edit Hotel Stay" : "Add Hotel Stay"}
-                </span>
-
-                {/* Master Hotel Selector */}
-                {masterData.hotels.length > 0 && (
-                  <select
-                    onChange={(e) => {
-                      const h = masterData.hotels.find((item) => item.name === e.target.value);
-                      if (h) {
-                        setScopedHotel(h);
-                        setNewAcc((prev) => ({
-                          ...prev,
-                          hotelName: h.name,
-                          location: h.city ? `${h.city.name}, ${h.city.country}` : prev.location,
-                          starRating: h.starRating || 4,
-                          ratingScore: h.guestScore || 4.8,
-                          ratingLabel: h.guestScoreLabel || "Very Good",
-                          roomType: h.roomTypes?.[0] || prev.roomType,
-                          mealPlan: h.mealPlans?.[0] || prev.mealPlan,
-                          facilities: h.facilities || [],
-                          nearbyAttractions: h.nearbyAttractions || [],
-                          nearbyRestaurants: h.nearbyRestaurants || [],
-                          photos: h.photos || [],
-                        }));
-                      }
-                    }}
-                    value=""
-                    className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
-                  >
-                    <option value="">⚡ Pre-fill from Master Hotel Catalog...</option>
-                    {masterData.hotels.map((h) => (
-                      <option key={h.id} value={h.name}>
-                        {h.name} ({h.city ? h.city.name : ""})
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Hotel Location/City *
-                  </label>
-                  <input
-                    type="text"
-                    value={newAcc.location}
-                    onChange={(e) => setNewAcc({ ...newAcc, location: e.target.value })}
-                    placeholder="e.g. Seminyak, Bali"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Hotel Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={newAcc.hotelName}
-                    onChange={(e) => setNewAcc({ ...newAcc, hotelName: e.target.value })}
-                    placeholder="e.g. The Seminyak Beach Resort & Spa"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Check-in Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={newAcc.checkInDate}
-                    onChange={(e) => setNewAcc({ ...newAcc, checkInDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Check-out Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={newAcc.checkOutDate}
-                    onChange={(e) => setNewAcc({ ...newAcc, checkOutDate: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                {/* Scoped Room Type and Meal Plan */}
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Room Type *
-                  </label>
-                  {scopedHotel && scopedHotel.roomTypes?.length > 0 ? (
-                    <select
-                      value={newAcc.roomType}
-                      onChange={(e) => setNewAcc({ ...newAcc, roomType: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                    >
-                      <option value="">-- Select Available Room Type --</option>
-                      {scopedHotel.roomTypes.map((r: string, i: number) => (
-                        <option key={i} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={newAcc.roomType}
-                      onChange={(e) => setNewAcc({ ...newAcc, roomType: e.target.value })}
-                      placeholder="e.g. Deluxe Garden Villa with Private Pool"
-                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                    />
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Meal Plan *
-                  </label>
-                  {scopedHotel && scopedHotel.mealPlans?.length > 0 ? (
-                    <select
-                      value={newAcc.mealPlan}
-                      onChange={(e) => setNewAcc({ ...newAcc, mealPlan: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                    >
-                      <option value="">-- Select Available Meal Plan --</option>
-                      {scopedHotel.mealPlans.map((m: string, i: number) => (
-                        <option key={i} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={newAcc.mealPlan}
-                      onChange={(e) => setNewAcc({ ...newAcc, mealPlan: e.target.value })}
-                      placeholder="e.g. Daily Buffet Breakfast (CP)"
-                      className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Photos upload / URL */}
+            <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Stay Photos (URLs)
-                </label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={newAccPhotoUrl}
-                    onChange={(e) => setNewAccPhotoUrl(e.target.value)}
-                    placeholder="Paste image URL..."
-                    className="flex-1 px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (newAccPhotoUrl.trim()) {
-                        setNewAcc((prev) => ({
-                          ...prev,
-                          photos: [...prev.photos, newAccPhotoUrl.trim()],
-                        }));
-                        setNewAccPhotoUrl("");
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-zinc-200 hover:bg-zinc-300 rounded-lg text-xs font-bold"
-                  >
-                    + Add URL
-                  </button>
-                </div>
-                {newAcc.photos.length > 0 && (
-                  <div className="flex space-x-2 overflow-x-auto py-1">
-                    {newAcc.photos.map((p, idx) => (
-                      <div
-                        key={idx}
-                        className="relative h-16 w-24 rounded-lg overflow-hidden border border-zinc-200 shrink-0 group"
-                      >
-                        <img src={p} alt="Preview" className="h-full w-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setNewAcc((prev) => ({
-                              ...prev,
-                              photos: prev.photos.filter((_, i) => i !== idx),
-                            }))
-                          }
-                          className="absolute inset-0 bg-red-600/80 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2">
-                {editingAccIndex !== null && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingAccIndex(null);
-                      setScopedHotel(null);
-                    }}
-                    className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={addAcc}
-                  className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                >
-                  {editingAccIndex !== null ? "Update Stay" : "+ Add Stay to Trip"}
-                </button>
+                <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
+                  Step 3: Day-by-Day Itinerary Builder
+                </h2>
               </div>
             </div>
 
-            {/* Stays List */}
-            <div className="space-y-3">
-              {formData.accommodations.map((acc: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
-                >
-                  <div>
-                    <h4 className="font-bold text-[#14213D] text-sm">{acc.hotelName}</h4>
-                    <p className="text-zinc-500 mt-0.5">
-                      📍 {acc.location} &bull; {acc.roomType} ({acc.mealPlan})
-                    </p>
-                    <p className="text-[11px] text-zinc-400 mt-0.5">
-                      📅 {acc.checkInDate} to {acc.checkOutDate} &bull; {acc.starRating}★
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => startEditAcc(idx)}
-                      className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeAcc(idx)}
-                      className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+            <div className="space-y-6">
+              {formData.itineraryDays.length === 0 ? (
+                <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+                  No itinerary days added yet. Configure trip dates in Step 1 or click &quot;Add Day&quot;.
                 </div>
-              ))}
+              ) : (
+                formData.itineraryDays.map((day: any, dIdx: number) => {
+                  const currentCity = masterData.cities.find(
+                    (c) =>
+                      c.name.toLowerCase() === (day.cityOrStay || "").toLowerCase()
+                  );
+                  const cityPlaces = currentCity
+                    ? masterData.places.filter((p) => p.cityId === currentCity.id)
+                    : masterData.places;
+
+                  return (
+                    <div
+                      key={dIdx}
+                      className="bg-white border border-[#B8944F]/20 rounded-xl p-5 craft-card space-y-5"
+                    >
+                      {/* Top Header of Day */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+                        <div className="flex items-center space-x-2">
+                          <span className="h-6 w-6 rounded-full bg-[#B8944F] text-white text-xs font-bold flex items-center justify-center shrink-0">
+                            {day.dayNumber}
+                          </span>
+                          <span className="text-xs font-bold text-[#14213D]">
+                            Day {day.dayNumber} Itinerary Details
+                          </span>
+                          {formatDayDate(formData.startDate, dIdx) && (
+                            <span className="text-xs bg-[#B8944F]/10 text-[#B8944F] font-mono font-bold px-2 py-0.5 rounded">
+                              📅 {formatDayDate(formData.startDate, dIdx)}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => removeDay(dIdx)}
+                            className="text-zinc-400 hover:text-red-600 p-1 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Row 1: Title & Duration */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                            Day Theme / Title *
+                          </label>
+                          <input
+                            type="text"
+                            value={day.title || ""}
+                            onChange={(e) => updateDayField(dIdx, "title", e.target.value)}
+                            placeholder="e.g. Mahakaleshwar Temple Trails"
+                            className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                            Duration
+                          </label>
+                          <input
+                            type="text"
+                            value={day.durationHours || ""}
+                            onChange={(e) => updateDayField(dIdx, "durationHours", e.target.value)}
+                            placeholder="e.g. Full Day (8-9 hrs)"
+                            className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Row 2: Places Badges */}
+                      <div className="space-y-2 bg-zinc-50/70 p-3 rounded-lg border border-zinc-200/80">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold text-zinc-700 flex items-center space-x-1.5">
+                            <Landmark className="h-3.5 w-3.5 text-[#B8944F]" />
+                            <span>Places & Sights Included</span>
+                          </label>
+                          <span className="text-[10px] text-zinc-400 font-medium">
+                            {(day.places || []).length} places assigned
+                          </span>
+                        </div>
+
+                        {/* Selected Places Pills */}
+                        <div className="flex flex-wrap gap-1.5 min-h-7 p-2 bg-white border border-zinc-200 rounded-lg">
+                          {(day.places || []).map((pName: string, pIdx: number) => (
+                            <span
+                              key={pIdx}
+                              className="inline-flex items-center text-xs px-2.5 py-0.5 rounded-md bg-[#B8944F]/15 text-[#8F6F33] font-semibold border border-[#B8944F]/30"
+                            >
+                              {pName}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDayPlace(dIdx, pIdx)}
+                                className="ml-1.5 text-[#8F6F33] hover:text-red-600 font-bold cursor-pointer"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* Quick City Places Picker */}
+                        {cityPlaces.length > 0 && (
+                          <div className="pt-1">
+                            <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+                              Quick Add Place ({day.cityOrStay || "All"}):
+                            </span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {cityPlaces.map((cp: any) => {
+                                const isSelected = (day.places || []).includes(cp.name);
+                                return (
+                                  <button
+                                    key={cp.id}
+                                    type="button"
+                                    onClick={() => handleToggleDayPlace(dIdx, cp.name)}
+                                    className={`text-[11px] px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                      isSelected
+                                        ? "bg-[#B8944F] text-white border-[#B8944F] font-bold"
+                                        : "bg-white text-zinc-600 border-zinc-200"
+                                    }`}
+                                  >
+                                    {isSelected ? "✓ " : "+ "}
+                                    {cp.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Row 3: Hotel Stay Badge */}
+                      {day.hotelName && (
+                        <div className="flex items-center justify-between p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs">
+                          <div className="flex items-center space-x-2">
+                            <BedDouble className="h-4 w-4 text-[#B8944F]" />
+                            <div>
+                              <span className="font-bold text-[#14213D]">{day.hotelName}</span>
+                              <span className="text-zinc-500 ml-2">Day {day.dayNumber} Stay</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-3 text-xs font-mono font-bold text-[#8F6F33]">
+                            {day.hotelPricePerNight && (
+                              <span>₹{day.hotelPricePerNight.toLocaleString("en-IN")} / night</span>
+                            )}
+                            {day.hotelPricePerPerson && (
+                              <span>₹{day.hotelPricePerPerson.toLocaleString("en-IN")} / person</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Row 4: Day Description */}
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          Day Description *
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={day.description || ""}
+                          onChange={(e) => updateDayField(dIdx, "description", e.target.value)}
+                          placeholder="Detailed chronological plan of activities..."
+                          className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none leading-relaxed"
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         );
 
-      case 4: {
+      case 4:
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
+              <div>
+                <h2 className="text-xl font-bold text-[#14213D] font-fraunces flex items-center gap-2">
+                  <Hotel className="h-5 w-5 text-[#B8944F]" />
+                  <span>Step 4: Stays & Accommodations</span>
+                </h2>
+              </div>
+            </div>
+
+            {/* Day-wise Hotel Itinerary Breakdown Cards */}
+            {formData.itineraryDays.length === 0 ? (
+              <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+                No itinerary days configured. Please set your trip duration and dates in Step 2.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Day-by-Day Accommodation Schedule */}
+                <div className="space-y-4">
+                  {formData.itineraryDays.map((day: any, idx: number) => {
+                    const matchedHotel = masterData.hotels.find(
+                      (h) => h.name === day.hotelName || h.id === day.hotelId
+                    );
+                    const dayDateStr = formatDayDate(formData.startDate, idx);
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`rounded-xl border p-5 craft-card transition-all ${
+                          day.hotelName
+                            ? "bg-white border-[#B8944F]/30 shadow-xs"
+                            : "bg-zinc-50/70 border-zinc-200"
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-3">
+                          <div className="flex items-center space-x-2.5">
+                            <span className="h-6 w-6 rounded-full bg-[#B8944F] text-white text-xs font-bold flex items-center justify-center shrink-0">
+                              {day.dayNumber}
+                            </span>
+                            <div>
+                              <h4 className="text-sm font-bold text-[#14213D] flex items-center gap-2">
+                                <span>Day {day.dayNumber} Overnight Stay</span>
+                                {matchedHotel && (
+                                  <span className="text-xs text-amber-600 font-bold bg-amber-50 border border-amber-200 px-2 py-0.2 rounded">
+                                    {matchedHotel.starRating}★ Star Property
+                                  </span>
+                                )}
+                              </h4>
+                              <p className="text-[11px] text-zinc-500">
+                                📍 {day.cityOrStay || "Destination"} {dayDateStr ? `• 📅 ${dayDateStr}` : ""}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Pricing badges */}
+                          {day.hotelName && (
+                            <div className="flex items-center space-x-3 text-xs font-mono font-bold text-[#8F6F33]">
+                              {day.hotelPricePerNight && (
+                                <span className="bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                                  ₹{day.hotelPricePerNight.toLocaleString("en-IN")} / night
+                                </span>
+                              )}
+                              {day.hotelPricePerPerson && (
+                                <span className="bg-[#B8944F]/10 border border-[#B8944F]/20 px-2.5 py-1 rounded-lg">
+                                  ₹{day.hotelPricePerPerson.toLocaleString("en-IN")} / person
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Hotel details or Empty state */}
+                        {day.hotelName && matchedHotel ? (
+                          <div className="pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-2 space-y-2.5">
+                              <h5 className="font-bold text-[#14213D] text-base">
+                                {matchedHotel.name}
+                              </h5>
+                              <p className="text-xs text-zinc-600 leading-relaxed">
+                                {matchedHotel.overviewDescription ||
+                                  "Luxury accommodation with premium hospitality amenities and curated guest services."}
+                              </p>
+
+                              {/* Room & Meal Details */}
+                              <div className="flex flex-wrap gap-2 pt-1">
+                                {matchedHotel.roomTypes?.length > 0 && (
+                                  <span className="text-xs bg-zinc-100 text-zinc-700 px-2.5 py-1 rounded-md font-semibold border border-zinc-200">
+                                    🛏️ {matchedHotel.roomTypes[0]}
+                                  </span>
+                                )}
+                                {matchedHotel.mealPlans?.length > 0 && (
+                                  <span className="text-xs bg-zinc-100 text-zinc-700 px-2.5 py-1 rounded-md font-semibold border border-zinc-200">
+                                    🍽️ {matchedHotel.mealPlans[0]}
+                                  </span>
+                                )}
+                                {matchedHotel.guestScore && (
+                                  <span className="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md font-bold">
+                                    ★ {matchedHotel.guestScore}/5 ({matchedHotel.guestScoreLabel || "Excellent"})
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Facilities Badges */}
+                              {matchedHotel.facilities?.length > 0 && (
+                                <div className="pt-1">
+                                  <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider block mb-1">
+                                    Property Highlights & Amenities:
+                                  </span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {matchedHotel.facilities.map((fac: string, fIdx: number) => (
+                                      <span
+                                        key={fIdx}
+                                        className="text-[10px] bg-zinc-50 border border-zinc-200 text-zinc-600 px-2 py-0.5 rounded"
+                                      >
+                                        ✓ {fac}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Photos preview */}
+                            <div>
+                              {matchedHotel.photos && matchedHotel.photos.length > 0 ? (
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {matchedHotel.photos.slice(0, 4).map((p: string, pIdx: number) => (
+                                    <div
+                                      key={pIdx}
+                                      className="relative h-20 rounded-lg overflow-hidden border border-zinc-200"
+                                    >
+                                      <img
+                                        src={p}
+                                        alt={matchedHotel.name}
+                                        className="h-full w-full object-cover"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="h-28 rounded-lg bg-zinc-100 border border-zinc-200 flex items-center justify-center text-xs text-zinc-400">
+                                  🏨 Master Hotel Photo
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : day.hotelName ? (
+                          <div className="pt-3 text-xs text-zinc-700">
+                            <p className="font-bold text-sm text-[#14213D]">{day.hotelName}</p>
+                            <p className="text-zinc-500 mt-1">
+                              Assigned for Day {day.dayNumber} in {day.cityOrStay}.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="pt-3 text-xs text-zinc-400 italic flex items-center gap-1.5">
+                            <Info className="h-3.5 w-3.5 text-zinc-400" />
+                            <span>
+                              No overnight stay assigned for Day {day.dayNumber} (Day Trip / Transit / Departure).
+                              To assign a hotel, select one in Step 2 Day-wise Planning Table.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 5: {
         const TRANSPORT_TYPES = ["Flight", "Train", "Bus", "Car", "Sedan", "SUV", "Other"];
         const getTransportIcon = (type: string) => {
           switch (type) {
@@ -1647,7 +2039,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces flex items-center justify-between">
-              <span>Step 4: Transportation & Transit arrangements</span>
+              <span>Step 5: Transportation & Transit arrangements</span>
               <span className="text-xs bg-[#B8944F]/10 text-[#B8944F] font-bold px-2 py-1 rounded">
                 Master Catalog Linked
               </span>
@@ -1750,7 +2142,7 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                               cancellationPolicy: route.cancellationPolicy || "",
                               flightNotes: route.flightNotes || "",
                               type: route.type || "Flight",
-                              travelTime: route.travelTime || "12:00 PM",
+                              travelTime: route.travelTime || prev.travelTime,
                             }));
                           }
                         }}
@@ -1772,11 +2164,6 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                     <div className="bg-white border border-[#B8944F]/20 rounded-lg p-3 text-xs space-y-2">
                       <div className="font-bold text-[#14213D] flex items-center justify-between">
                         <span>💡 Timing-Matched Master Suggestions for "{newFlight.sector}":</span>
-                        {newFlight.travelTime && (
-                          <span className="text-[10px] bg-[#B8944F]/10 text-[#B8944F] px-1.5 py-0.5 rounded font-mono">
-                            Target Time: {newFlight.travelTime}
-                          </span>
-                        )}
                       </div>
                       {(() => {
                         const matched = masterData.flightRoutes.filter(
@@ -1804,13 +2191,18 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                                     cancellationPolicy: r.cancellationPolicy || "",
                                     flightNotes: r.flightNotes || "",
                                     type: r.type || "Flight",
-                                    travelTime: r.travelTime || "12:00 PM",
+                                    travelTime: r.travelTime || prev.travelTime,
                                   }));
                                 }}
-                                className="bg-zinc-50 hover:bg-[#B8944F]/10 border border-zinc-200 hover:border-[#B8944F] rounded p-2 text-left text-[11px] transition-all cursor-pointer flex flex-col"
+                                className="text-[11px] bg-zinc-100 hover:bg-[#B8944F]/10 border border-zinc-200 rounded px-2 py-1 text-left cursor-pointer transition-colors"
                               >
-                                <span className="font-bold text-zinc-700">[{r.type}] {r.airline}</span>
-                                <span className="text-[10px] text-[#B8944F] font-semibold mt-0.5">🕒 Time: {r.travelTime || "Any"}</span>
+                                <span className="font-bold text-[#14213D]">{r.airline}</span>
+                                {r.travelTime && (
+                                  <span className="text-[#B8944F] font-semibold ml-1">({r.travelTime})</span>
+                                )}
+                                <span className="text-zinc-400 text-[10px] ml-1">
+                                  {r.typicalStops === 0 ? "Non-stop" : `${r.typicalStops} stop`}
+                                </span>
                               </button>
                             ))}
                           </div>
@@ -1819,15 +2211,16 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Form fields for single flight entry */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Transportation Type *
+                        Transit Type
                       </label>
                       <select
-                        value={newFlight.type}
+                        value={newFlight.type || "Flight"}
                         onChange={(e) => setNewFlight({ ...newFlight, type: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       >
                         {TRANSPORT_TYPES.map((t) => (
                           <option key={t} value={t}>
@@ -1839,124 +2232,84 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
 
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Preferred Travel Timing (e.g. 08:00 PM)
-                      </label>
-                      <input
-                        type="text"
-                        value={newFlight.travelTime}
-                        onChange={(e) => setNewFlight({ ...newFlight, travelTime: e.target.value })}
-                        placeholder="e.g. 08:00 PM"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Sector * (e.g. Vadodara to Ahmedabad)
+                        Sector / Route *
                       </label>
                       <input
                         type="text"
                         value={newFlight.sector}
                         onChange={(e) => setNewFlight({ ...newFlight, sector: e.target.value })}
-                        placeholder="e.g. Ahmedabad to Udaipur"
+                        placeholder="e.g. Ahmedabad (AMD) - Denpasar Bali (DPS)"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Carrier / Provider Name *
+                        Carrier / Airline *
                       </label>
                       <input
                         type="text"
                         value={newFlight.airline}
                         onChange={(e) => setNewFlight({ ...newFlight, airline: e.target.value })}
-                        placeholder="e.g. Indigo, Indian Railways, Private Vendor"
+                        placeholder="e.g. Singapore Airlines"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Route Code / Flight Number / Plate
+                        Preferred Travel Time *
                       </label>
                       <input
                         type="text"
-                        value={newFlight.flightCodeDefault || ""}
-                        onChange={(e) => setNewFlight({ ...newFlight, flightCodeDefault: e.target.value })}
-                        placeholder="e.g. Train-12952, Indigo PNR"
+                        value={newFlight.travelTime || ""}
+                        onChange={(e) => setNewFlight({ ...newFlight, travelTime: e.target.value })}
+                        placeholder="e.g. 10:30 AM or Morning slot"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Transit Details / Layovers
+                        Estimated Departure
                       </label>
                       <input
                         type="text"
-                        value={newFlight.layoverInfo}
-                        onChange={(e) => setNewFlight({ ...newFlight, layoverInfo: e.target.value })}
-                        placeholder="e.g. Non-stop, or Layover at BOM"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Departure Date & Time
-                      </label>
-                      <input
-                        type="datetime-local"
                         value={newFlight.departureDateTime}
-                        onChange={(e) => setNewFlight({ ...newFlight, departureDateTime: e.target.value })}
+                        onChange={(e) =>
+                          setNewFlight({ ...newFlight, departureDateTime: e.target.value })
+                        }
+                        placeholder="e.g. 12 Oct, 10:45 AM"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Arrival Date & Time
+                        Estimated Arrival
                       </label>
                       <input
-                        type="datetime-local"
+                        type="text"
                         value={newFlight.arrivalDateTime}
-                        onChange={(e) => setNewFlight({ ...newFlight, arrivalDateTime: e.target.value })}
+                        onChange={(e) =>
+                          setNewFlight({ ...newFlight, arrivalDateTime: e.target.value })
+                        }
+                        placeholder="e.g. 12 Oct, 08:30 PM"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
 
-                    <div className="col-span-2 flex flex-wrap gap-4 pt-2">
-                      <label className="flex items-center space-x-2 text-xs font-semibold text-zinc-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={newFlight.isStartingTransfer}
-                          onChange={(e) => setNewFlight({ ...newFlight, isStartingTransfer: e.target.checked })}
-                          className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F]"
-                        />
-                        <span>Starting point hub transfer (e.g. Vadodara → Ahmedabad)</span>
-                      </label>
-
-                      <label className="flex items-center space-x-2 text-xs font-semibold text-zinc-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={newFlight.isPackageIncluded}
-                          onChange={(e) => setNewFlight({ ...newFlight, isPackageIncluded: e.target.checked })}
-                          className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F]"
-                        />
-                        <span>Package Included Transportation</span>
-                      </label>
-                    </div>
-
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2 md:col-span-3">
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Route Advisory Notes & Policies
+                        Transit Notes / Instructions
                       </label>
                       <input
                         type="text"
-                        value={newFlight.flightNotes}
-                        onChange={(e) => setNewFlight({ ...newFlight, flightNotes: e.target.value })}
-                        placeholder="e.g. Includes private AC vehicle, road toll charges and driver allowance."
+                        value={newFlight.flightNotes || ""}
+                        onChange={(e) =>
+                          setNewFlight({ ...newFlight, flightNotes: e.target.value })
+                        }
+                        placeholder="e.g. Dynamic airfare subject to change upon final confirmation."
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
@@ -1993,31 +2346,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
                         <h4 className="font-bold text-[#14213D] text-sm flex items-center">
                           {getTransportIcon(f.type || "Flight")}
                           <span>{f.sector} ({f.airline})</span>
-                          {f.isStartingTransfer && (
-                            <span className="ml-2 bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.2 rounded text-[9px] font-bold">
-                              Starting Transfer
-                            </span>
-                          )}
-                          {f.isPackageIncluded && (
-                            <span className="ml-2 bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded text-[9px] font-bold">
-                              Package Included
-                            </span>
-                          )}
                         </h4>
                         <p className="text-zinc-500 mt-0.5 font-semibold text-[11px] flex items-center">
                           <Clock className="h-3 w-3 mr-1 text-[#B8944F]" />
-                          Preferred Travel Time: {f.travelTime || "Anytime"} &bull; Type: <span className="capitalize ml-1 text-[#14213D]">{f.type || "Flight"}</span>
+                          Preferred Travel Time: {f.travelTime || "Anytime"}
                         </p>
-                        {(f.departureDateTime || f.arrivalDateTime) && (
-                          <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
-                            📅 Dep: {f.departureDateTime || "N/A"} &bull; Arr: {f.arrivalDateTime || "N/A"}
-                          </p>
-                        )}
-                        {f.flightNotes && (
-                          <p className="text-[11px] text-zinc-400 mt-0.5 italic">
-                            Notes: {f.flightNotes}
-                          </p>
-                        )}
                       </div>
                       <div className="flex items-center space-x-2">
                         <button
@@ -2044,11 +2377,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
         );
       }
 
-      case 5:
+      case 6:
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 5: Optional Add-ons & Visa
+              Step 6: Optional Add-ons & Visa
             </h2>
 
             {/* Add-on Entry Form with Master AddOn picker */}
@@ -2225,11 +2558,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         );
 
-      case 6:
+      case 7:
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 6: Restaurant & Club Suggestions
+              Step 7: Restaurant & Club Suggestions
             </h2>
 
             {/* Restaurant Form with Master Restaurant Selector */}
@@ -2400,12 +2733,12 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         );
 
-      case 7:
+      case 8:
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
               <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-                Step 7: Master Policies & Guidelines
+                Step 8: Master Policies & Guidelines
               </h2>
 
               {/* Master Policy Template Loader */}
@@ -2508,11 +2841,11 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         );
 
-      case 8:
+      case 9:
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 8: Price Quotes & Financials
+              Step 9: Price Quotes & Financials
             </h2>
 
             {/* Price line items repeater */}
@@ -2696,26 +3029,55 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#FAF8F5] py-8 px-4 sm:px-6 lg:px-8 font-sans text-[#14213D]">
-      <div className="max-w-6xl mx-auto">
+    <div className="w-full bg-[#FAF8F5] py-4 px-2 sm:px-6 font-sans text-[#14213D]">
+      <div className="w-full mx-auto">
         {/* Nav Header */}
-        <div className="flex items-center justify-between mb-8 pb-5 border-b border-zinc-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-zinc-200">
           <div className="flex items-center space-x-3">
-            <Link
-              href="/"
-              className="flex items-center text-xs font-bold text-zinc-600 hover:text-[#14213D] transition-colors cursor-pointer"
-            >
-              <ArrowLeft className="h-4 w-4 mr-1.5 text-[#B8944F]" /> Back to Workspace Console
-            </Link>
+            {onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex items-center text-xs font-bold text-zinc-600 hover:text-[#14213D] transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1.5 text-[#B8944F]" /> Back to Workspace Console
+              </button>
+            ) : (
+              <Link
+                href="/"
+                className="flex items-center text-xs font-bold text-zinc-600 hover:text-[#14213D] transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1.5 text-[#B8944F]" /> Back to Workspace Console
+              </Link>
+            )}
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center flex-wrap gap-2.5">
+            {/* Live Save Success Badge */}
+            {savedSuccess && (
+              <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 animate-in fade-in">
+                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Blueprint Saved to Database!</span>
+              </span>
+            )}
+
+            {/* Duplicate / Clone Existing Trip Button */}
+            <button
+              type="button"
+              onClick={openDuplicateModal}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-bold text-zinc-700 transition-all shadow-2xs cursor-pointer"
+              title="Duplicate and import an existing trip proposal"
+            >
+              <Copy className="h-3.5 w-3.5 text-[#B8944F]" />
+              <span>Duplicate Trip</span>
+            </button>
+
             {/* View Day-Wise Trip Summary if editing existing trip */}
             {tripId && (
               <Link
                 href={`/admin/summary/${tripId}`}
                 target="_blank"
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-[#B8944F]/40 bg-white hover:bg-[#B8944F]/10 text-xs font-bold text-[#B8944F] transition-all shadow-2xs cursor-pointer"
+                className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg border border-[#B8944F]/40 bg-white hover:bg-[#B8944F]/10 text-xs font-bold text-[#B8944F] transition-all shadow-2xs cursor-pointer"
                 title="Open Day-Wise Trip Summary"
               >
                 <Eye className="h-3.5 w-3.5" />
@@ -2723,18 +3085,34 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
               </Link>
             )}
 
-            {/* Manage Master Data Button (Spec Requirement) */}
+            {/* Manage Master Data Button */}
             <Link
               href="/master-data"
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-bold text-zinc-700 transition-all shadow-2xs cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-bold text-zinc-700 transition-all shadow-2xs cursor-pointer"
             >
               <Database className="h-3.5 w-3.5 text-zinc-500" />
               <span>Master Data</span>
             </Link>
 
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#14213D] text-[#FAF8F5]">
-              {tripId ? "Edit Travel Blueprint" : "Create Travel Blueprint"}
-            </span>
+            {/* Top-Right Save Blueprint Button (Outside the tabs) */}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="inline-flex items-center space-x-1.5 px-4 py-2 bg-[#14213D] hover:bg-[#2B2E36] text-white text-xs font-bold rounded-lg shadow-sm disabled:opacity-50 transition-all cursor-pointer"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin h-3.5 w-3.5 text-[#B8944F]" />
+                  <span>Saving Blueprint...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="h-3.5 w-3.5 text-[#B8944F]" />
+                  <span>Save Blueprint</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -2868,6 +3246,93 @@ export function TripFormWizard({ initialData, tripId }: TripFormWizardProps) {
           </div>
         </div>
       </div>
+
+      {/* Duplicate / Clone Trip Selection Modal */}
+      {duplicateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl border border-zinc-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col my-8">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 shrink-0">
+              <div className="flex items-center space-x-2">
+                <Copy className="h-4 w-4 text-[#B8944F]" />
+                <h3 className="text-sm font-bold text-[#14213D] font-fraunces">
+                  Duplicate Existing Trip Blueprint
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicateModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3 overflow-y-auto flex-1">
+              <p className="text-xs text-zinc-500">
+                Select an existing trip proposal to copy all its itinerary days, stays, flight details, add-ons, and policies into this new blueprint.
+              </p>
+
+              {loadingTrips ? (
+                <div className="py-12 text-center text-zinc-400 space-y-2">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-[#B8944F]" />
+                  <p className="text-xs">Loading available trip blueprints...</p>
+                </div>
+              ) : availableTrips.length === 0 ? (
+                <div className="py-12 text-center text-zinc-400 text-xs bg-zinc-50 rounded-lg border border-dashed border-zinc-200">
+                  No existing trips available to duplicate.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {availableTrips.map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-3.5 bg-zinc-50 hover:bg-[#FAF8F5] border border-zinc-200 hover:border-[#B8944F]/50 rounded-lg transition-all flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <h4 className="text-xs font-bold text-[#14213D] truncate">{t.title}</h4>
+                        <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-medium">
+                          <span>📍 {t.destination}</span>
+                          <span>&bull;</span>
+                          <span>{t.durationDays}D / {t.durationNights}N</span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCopyTripData(t.id)}
+                        disabled={cloningTripId === t.id}
+                        className="px-3 py-1.5 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-md text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 disabled:opacity-50 flex items-center gap-1.5"
+                      >
+                        {cloningTripId === t.id ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Copying...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            <span>Copy into Form</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end p-4 border-t border-zinc-100 bg-zinc-50/50 shrink-0">
+              <button
+                type="button"
+                onClick={() => setDuplicateModalOpen(false)}
+                className="px-4 py-2 border border-zinc-200 text-zinc-600 rounded-lg text-xs font-semibold hover:bg-white cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

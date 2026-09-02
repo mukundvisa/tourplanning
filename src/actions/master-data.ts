@@ -27,7 +27,7 @@ export async function getOverviewStats() {
       consultantsCount,
       taxCount,
       pricingLabelsCount,
-      activitiesCount,
+      placesCount,
       hotelsCount,
       flightsCount,
       addonsCount,
@@ -41,7 +41,7 @@ export async function getOverviewStats() {
       db.masterConsultant.count(),
       db.masterTaxSetting.count(),
       db.masterPricingLabel.count(),
-      db.masterActivity.count(),
+      db.masterPlace.count(),
       db.masterHotel.count(),
       db.masterFlightRoute.count(),
       db.masterAddOn.count(),
@@ -57,7 +57,7 @@ export async function getOverviewStats() {
       consultantsCount +
       taxCount +
       pricingLabelsCount +
-      activitiesCount +
+      placesCount +
       hotelsCount +
       flightsCount +
       addonsCount +
@@ -343,43 +343,148 @@ export async function deleteMasterPricingLabel(id: string) {
 }
 
 // ==========================================
-// 5. ACTIVITIES LIBRARY
+// 5. PLACES (City-Wise Attractions & Sights)
 // ==========================================
-export async function getMasterActivities() {
+export async function getMasterPlaceDefaults() {
   try {
-    const data = await db.masterActivity.findMany({
-      include: { suggestedCity: true },
-      orderBy: { title: "asc" },
-    });
-    return { success: true, data };
+    const records = await db.$queryRaw<any[]>`
+      SELECT id, "defaultInclusions", "defaultExclusions", "createdAt", "updatedAt"
+      FROM "MasterPlaceDefault"
+      LIMIT 1
+    `;
+    if (records && records.length > 0) {
+      return {
+        success: true,
+        data: {
+          id: records[0].id,
+          defaultInclusions: Array.isArray(records[0].defaultInclusions) ? records[0].defaultInclusions : [],
+          defaultExclusions: Array.isArray(records[0].defaultExclusions) ? records[0].defaultExclusions : [],
+        },
+      };
+    }
+
+    const fallbackDefaults = {
+      defaultInclusions: [
+        "Entry Ticket & Monument Access",
+        "Professional Local Tour Guide",
+        "Private Air-Conditioned Vehicle Transfers",
+        "Complimentary Bottled Drinking Water",
+      ],
+      defaultExclusions: [
+        "Personal Souvenirs & Shopping Expenses",
+        "Optional Adventure / Special Activity Upgrades",
+        "Meals, Snacks & Beverages (unless specified)",
+        "Special Camera / Video Recording Permissions",
+      ],
+    };
+
+    return {
+      success: true,
+      data: {
+        id: "default",
+        ...fallbackDefaults,
+      },
+    };
+  } catch (err: any) {
+    console.error("Error in getMasterPlaceDefaults:", err);
+    return {
+      success: true,
+      data: {
+        id: "default",
+        defaultInclusions: [
+          "Entry Ticket & Monument Access",
+          "Professional Local Tour Guide",
+          "Private Air-Conditioned Vehicle Transfers",
+          "Complimentary Bottled Drinking Water",
+        ],
+        defaultExclusions: [
+          "Personal Souvenirs & Shopping Expenses",
+          "Optional Adventure / Special Activity Upgrades",
+          "Meals, Snacks & Beverages (unless specified)",
+          "Special Camera / Video Recording Permissions",
+        ],
+      },
+    };
+  }
+}
+
+export async function updateMasterPlaceDefaults(formData: {
+  defaultInclusions: string[];
+  defaultExclusions: string[];
+}) {
+  try {
+    const existing = await db.$queryRaw<any[]>`
+      SELECT id FROM "MasterPlaceDefault" LIMIT 1
+    `;
+    if (existing && existing.length > 0) {
+      await db.$executeRaw`
+        UPDATE "MasterPlaceDefault"
+        SET "defaultInclusions" = ${formData.defaultInclusions},
+            "defaultExclusions" = ${formData.defaultExclusions},
+            "updatedAt" = NOW()
+        WHERE id = ${existing[0].id}
+      `;
+    } else {
+      await db.$executeRaw`
+        INSERT INTO "MasterPlaceDefault" (id, "defaultInclusions", "defaultExclusions", "createdAt", "updatedAt")
+        VALUES (gen_random_uuid(), ${formData.defaultInclusions}, ${formData.defaultExclusions}, NOW(), NOW())
+      `;
+    }
+    revalidatePath("/master-data");
+    revalidatePath("/");
+    return { success: true };
+  } catch (err: any) {
+    console.error("Error updating place defaults:", err);
+    return { success: false, error: err.message || "Failed to update place defaults" };
+  }
+}
+
+export async function getMasterPlaces(cityId?: string) {
+  try {
+    const where = cityId && cityId !== "all" ? { cityId } : {};
+    const [rawPlaces, defaultsRes] = await Promise.all([
+      db.masterPlace.findMany({
+        where,
+        include: { city: true },
+        orderBy: { name: "asc" },
+      }),
+      getMasterPlaceDefaults(),
+    ]);
+
+    const defaultInc = defaultsRes.data?.defaultInclusions || [];
+    const defaultExc = defaultsRes.data?.defaultExclusions || [];
+
+    const data = rawPlaces.map((p) => ({
+      ...p,
+      inclusions: Array.from(new Set([...defaultInc, ...(p.inclusions || [])])),
+      exclusions: Array.from(new Set([...defaultExc, ...(p.exclusions || [])])),
+      placeSpecificInclusions: p.inclusions || [],
+      placeSpecificExclusions: p.exclusions || [],
+    }));
+
+    return { success: true, data, placeDefaults: defaultsRes.data };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
 }
 
-export async function createMasterActivity(formData: {
-  title: string;
-  suggestedCityId?: string;
-  defaultDurationHours?: string;
-  description: string;
-  inclusions: string[];
-  exclusions: string[];
-  loveTips: string[];
-  watchOutTips: string[];
-  titleTemplateId?: string;
+export async function createMasterPlace(formData: {
+  name: string;
+  cityId: string;
+  category?: string;
+  description?: string;
+  inclusions?: string[];
+  exclusions?: string[];
 }) {
   try {
-    const data = await db.masterActivity.create({
+    const data = await db.masterPlace.create({
       data: {
-        title: formData.title.trim(),
-        suggestedCityId: formData.suggestedCityId || null,
-        defaultDurationHours: formData.defaultDurationHours?.trim() || null,
-        description: formData.description.trim(),
+        name: formData.name.trim(),
+        cityId: formData.cityId,
+        category: formData.category?.trim() || "Sightseeing",
+        description: formData.description?.trim() || null,
         inclusions: formData.inclusions || [],
         exclusions: formData.exclusions || [],
-        loveTips: formData.loveTips || [],
-        watchOutTips: formData.watchOutTips || [],
-        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -389,30 +494,27 @@ export async function createMasterActivity(formData: {
   }
 }
 
-export async function updateMasterActivity(id: string, formData: {
-  title: string;
-  suggestedCityId?: string;
-  defaultDurationHours?: string;
-  description: string;
-  inclusions: string[];
-  exclusions: string[];
-  loveTips: string[];
-  watchOutTips: string[];
-  titleTemplateId?: string;
-}) {
+export async function updateMasterPlace(
+  id: string,
+  formData: {
+    name: string;
+    cityId: string;
+    category?: string;
+    description?: string;
+    inclusions?: string[];
+    exclusions?: string[];
+  }
+) {
   try {
-    const data = await db.masterActivity.update({
+    const data = await db.masterPlace.update({
       where: { id },
       data: {
-        title: formData.title.trim(),
-        suggestedCityId: formData.suggestedCityId || null,
-        defaultDurationHours: formData.defaultDurationHours?.trim() || null,
-        description: formData.description.trim(),
+        name: formData.name.trim(),
+        cityId: formData.cityId,
+        category: formData.category?.trim() || "Sightseeing",
+        description: formData.description?.trim() || null,
         inclusions: formData.inclusions || [],
         exclusions: formData.exclusions || [],
-        loveTips: formData.loveTips || [],
-        watchOutTips: formData.watchOutTips || [],
-        titleTemplateId: formData.titleTemplateId || null,
       },
     });
     revalidatePath("/master-data");
@@ -422,9 +524,9 @@ export async function updateMasterActivity(id: string, formData: {
   }
 }
 
-export async function deleteMasterActivity(id: string) {
+export async function deleteMasterPlace(id: string) {
   try {
-    await db.masterActivity.delete({ where: { id } });
+    await db.masterPlace.delete({ where: { id } });
     revalidatePath("/master-data");
     return { success: true };
   } catch (err: any) {
@@ -433,11 +535,13 @@ export async function deleteMasterActivity(id: string) {
 }
 
 // ==========================================
-// 6. HOTELS
+// 11. HOTELS
 // ==========================================
-export async function getMasterHotels() {
+export async function getMasterHotels(cityId?: string) {
   try {
+    const where = cityId && cityId !== "all" ? { cityId } : {};
     const data = await db.masterHotel.findMany({
+      where,
       include: { city: true },
       orderBy: { name: "asc" },
     });
@@ -459,6 +563,8 @@ export async function createMasterHotel(formData: {
   nearbyAttractions: any;
   nearbyRestaurants: any;
   photos: string[];
+  pricePerNight?: number;
+  pricePerPerson?: number;
   titleTemplateId?: string;
 }) {
   try {
@@ -475,6 +581,8 @@ export async function createMasterHotel(formData: {
         nearbyAttractions: formData.nearbyAttractions || [],
         nearbyRestaurants: formData.nearbyRestaurants || [],
         photos: formData.photos || [],
+        pricePerNight: formData.pricePerNight !== undefined ? Number(formData.pricePerNight) : 0,
+        pricePerPerson: formData.pricePerPerson !== undefined ? Number(formData.pricePerPerson) : 0,
         titleTemplateId: formData.titleTemplateId || null,
       },
     });
@@ -485,20 +593,25 @@ export async function createMasterHotel(formData: {
   }
 }
 
-export async function updateMasterHotel(id: string, formData: {
-  name: string;
-  cityId?: string;
-  starRating: number;
-  roomTypes: string[];
-  mealPlans: string[];
-  guestScore?: number;
-  guestScoreLabel?: string;
-  facilities: string[];
-  nearbyAttractions: any;
-  nearbyRestaurants: any;
-  photos: string[];
-  titleTemplateId?: string;
-}) {
+export async function updateMasterHotel(
+  id: string,
+  formData: {
+    name: string;
+    cityId?: string;
+    starRating: number;
+    roomTypes: string[];
+    mealPlans: string[];
+    guestScore?: number;
+    guestScoreLabel?: string;
+    facilities: string[];
+    nearbyAttractions: any;
+    nearbyRestaurants: any;
+    photos: string[];
+    pricePerNight?: number;
+    pricePerPerson?: number;
+    titleTemplateId?: string;
+  }
+) {
   try {
     const data = await db.masterHotel.update({
       where: { id },
@@ -514,6 +627,8 @@ export async function updateMasterHotel(id: string, formData: {
         nearbyAttractions: formData.nearbyAttractions || [],
         nearbyRestaurants: formData.nearbyRestaurants || [],
         photos: formData.photos || [],
+        pricePerNight: formData.pricePerNight !== undefined ? Number(formData.pricePerNight) : 0,
+        pricePerPerson: formData.pricePerPerson !== undefined ? Number(formData.pricePerPerson) : 0,
         titleTemplateId: formData.titleTemplateId || null,
       },
     });
@@ -1156,7 +1271,7 @@ export async function getAllMasterDataForSelectors() {
       consultants,
       taxSetting,
       pricingLabels,
-      activities,
+      placesRaw,
       hotels,
       flightRoutes,
       addOns,
@@ -1164,20 +1279,33 @@ export async function getAllMasterDataForSelectors() {
       policyTemplates,
       titleTemplates,
       bannerImages,
+      placeDefaultsRes,
     ] = await Promise.all([
       db.masterCity.findMany({ orderBy: [{ country: "asc" }, { name: "asc" }] }),
       db.masterConsultant.findMany({ orderBy: { name: "asc" } }),
       db.masterTaxSetting.findFirst({ where: { isActive: true }, orderBy: { effectiveFrom: "desc" } }),
       db.masterPricingLabel.findMany({ orderBy: { name: "asc" } }),
-      db.masterActivity.findMany({ orderBy: { title: "asc" } }),
-      db.masterHotel.findMany({ orderBy: { name: "asc" } }),
+      db.masterPlace.findMany({ include: { city: true }, orderBy: { name: "asc" } }),
+      db.masterHotel.findMany({ include: { city: true }, orderBy: { name: "asc" } }),
       db.masterFlightRoute.findMany({ orderBy: { sector: "asc" } }),
       db.masterAddOn.findMany({ orderBy: { name: "asc" } }),
       db.masterRestaurant.findMany({ orderBy: { name: "asc" } }),
       db.masterPolicyTemplate.findMany({ orderBy: { name: "asc" } }),
       db.masterTitleTemplate.findMany({ orderBy: { title: "asc" } }),
       db.masterBannerImage.findMany({ orderBy: { label: "asc" } }),
+      getMasterPlaceDefaults(),
     ]);
+
+    const defaultInc = placeDefaultsRes.data?.defaultInclusions || [];
+    const defaultExc = placeDefaultsRes.data?.defaultExclusions || [];
+
+    const places = placesRaw.map((p) => ({
+      ...p,
+      inclusions: Array.from(new Set([...defaultInc, ...(p.inclusions || [])])),
+      exclusions: Array.from(new Set([...defaultExc, ...(p.exclusions || [])])),
+      placeSpecificInclusions: p.inclusions || [],
+      placeSpecificExclusions: p.exclusions || [],
+    }));
 
     return {
       success: true,
@@ -1186,7 +1314,7 @@ export async function getAllMasterDataForSelectors() {
         consultants,
         taxSetting: taxSetting || { currentTcsPercentage: 5.0 },
         pricingLabels,
-        activities,
+        places,
         hotels,
         flightRoutes,
         addOns,
@@ -1194,6 +1322,7 @@ export async function getAllMasterDataForSelectors() {
         policyTemplates,
         titleTemplates,
         bannerImages,
+        placeDefaults: placeDefaultsRes.data,
       },
     };
   } catch (err: any) {

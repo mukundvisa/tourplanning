@@ -65,6 +65,11 @@ model ItineraryDay {
   title                String
   durationHours        String?
   description          String
+  places               String[] @default([])
+  hotelId              String?
+  hotelName            String?
+  hotelPricePerNight   Float?
+  hotelPricePerPerson  Float?
   inclusions           String[]
   exclusions           String[]
   customerLovedTips    String[]
@@ -150,16 +155,16 @@ model TripTerms {
 // ==========================================
 
 model MasterCity {
-  id          String                  @id @default(uuid())
-  name        String
-  state       String
-  country     String
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @default(now()) @updatedAt
-  activities  MasterActivity[]
-  hotels      MasterHotel[]
-  restaurants MasterRestaurant[]
-  banners     MasterBannerImage[]
+  id           String              @id @default(uuid())
+  name         String
+  state        String
+  country      String
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @default(now()) @updatedAt
+  places       MasterPlace[]
+  hotels       MasterHotel[]
+  restaurants  MasterRestaurant[]
+  banners      MasterBannerImage[]
 
   @@unique([name, country])
 }
@@ -194,21 +199,25 @@ model MasterPricingLabel {
   updatedAt       DateTime             @default(now()) @updatedAt
 }
 
-model MasterActivity {
-  id                   String      @id @default(uuid())
-  title                String
-  suggestedCityId      String?
-  suggestedCity        MasterCity? @relation(fields: [suggestedCityId], references: [id], onDelete: SetNull)
-  defaultDurationHours String?
-  description          String
-  inclusions           String[]
-  exclusions           String[]
-  loveTips             String[]
-  watchOutTips         String[]
-  titleTemplateId      String?
-  titleTemplate        MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @default(now()) @updatedAt
+model MasterPlace {
+  id          String      @id @default(uuid())
+  name        String
+  cityId      String
+  city        MasterCity  @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  category    String?     @default("Sightseeing") // Sightseeing, Temple, Heritage, Nature, Market, Activity, Beach
+  description String?
+  inclusions  String[]    @default([])
+  exclusions  String[]    @default([])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @default(now()) @updatedAt
+}
+
+model MasterPlaceDefault {
+  id                 String   @id @default(uuid())
+  defaultInclusions  String[] @default([])
+  defaultExclusions  String[] @default([])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
 }
 
 model MasterHotel {
@@ -225,6 +234,8 @@ model MasterHotel {
   nearbyAttractions Json        @default("[]") // [{name: string, distanceKm: number}]
   nearbyRestaurants Json        @default("[]") // [{name: string, distance: string}]
   photos            String[]
+  pricePerNight     Float?      @default(0)
+  pricePerPerson    Float?      @default(0)
   titleTemplateId   String?
   titleTemplate     MasterTitleTemplate? @relation(fields: [titleTemplateId], references: [id], onDelete: SetNull)
   createdAt         DateTime    @default(now())
@@ -298,7 +309,6 @@ model MasterTitleTemplate {
   id            String               @id @default(uuid())
   title         String               @unique
   pricingLabels MasterPricingLabel[]
-  activities    MasterActivity[]
   hotels        MasterHotel[]
   restaurants   MasterRestaurant[]
   flightRoutes  MasterFlightRoute[]
@@ -341,3 +351,18 @@ model TripCostCalculation {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now()) @updatedAt
 }
+
+model GeneralSettings {
+  id               String   @id @default("default")
+  companyName      String   @default("TripCraft")
+  companyLogo      String?
+  companyTagline   String?  @default("Curated Luxury Journeys & Travel Design")
+  contactEmail     String?  @default("concierge@tripcraft.com")
+  contactPhone     String?  @default("+91 98765 43210")
+  websiteUrl       String?  @default("https://tripcraft.com")
+  address          String?  @default("Level 4, Horizon Travel Tower, Financial District")
+  watermarkOpacity Float    @default(0.06)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+}
+

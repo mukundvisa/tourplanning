@@ -4,10 +4,10 @@ import { UnifiedDashboard } from "@/components/UnifiedDashboard";
 import {
   getOverviewStats,
   getMasterCities,
+  getMasterPlaces,
   getMasterConsultants,
   getMasterTaxSettings,
   getMasterPricingLabels,
-  getMasterActivities,
   getMasterHotels,
   getMasterFlightRoutes,
   getMasterAddOns,
@@ -30,10 +30,10 @@ export default async function NewTripPage() {
     tripsRes,
     statsRes,
     citiesRes,
+    placesRes,
     consultantsRes,
     taxRes,
     pricingRes,
-    activitiesRes,
     hotelsRes,
     flightsRes,
     addonsRes,
@@ -61,10 +61,10 @@ export default async function NewTripPage() {
     }),
     getOverviewStats(),
     getMasterCities(),
+    getMasterPlaces(),
     getMasterConsultants(),
     getMasterTaxSettings(),
     getMasterPricingLabels(),
-    getMasterActivities(),
     getMasterHotels(),
     getMasterFlightRoutes(),
     getMasterAddOns(),
@@ -89,10 +89,10 @@ export default async function NewTripPage() {
         }
       }
       cities={citiesRes.data || []}
+      places={placesRes.data || []}
       consultants={consultantsRes.data || []}
       taxSettings={taxRes.data || []}
       pricingLabels={pricingRes.data || []}
-      activities={activitiesRes.data || []}
       hotels={hotelsRes.data || []}
       flightRoutes={flightsRes.data || []}
       addOns={addonsRes.data || []}

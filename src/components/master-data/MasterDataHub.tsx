@@ -27,13 +27,20 @@ import {
   DollarSign,
   Briefcase,
   X,
+  Landmark,
+  Calendar,
+  CheckCircle2,
+  AlertCircle,
+  Heart,
+  ShieldAlert,
+  Settings,
 } from "lucide-react";
 import { OverviewTab } from "./OverviewTab";
 import { CitiesTab } from "./CitiesTab";
+import { PlacesTab } from "./PlacesTab";
 import { ConsultantsTab } from "./ConsultantsTab";
 import { TaxSettingsTab } from "./TaxSettingsTab";
 import { PricingLabelsTab } from "./PricingLabelsTab";
-import { ActivitiesTab } from "./ActivitiesTab";
 import { HotelsTab } from "./HotelsTab";
 import { FlightRoutesTab } from "./FlightRoutesTab";
 import { AddOnsTab } from "./AddOnsTab";
@@ -41,14 +48,16 @@ import { RestaurantsTab } from "./RestaurantsTab";
 import { PolicyTemplatesTab } from "./PolicyTemplatesTab";
 import { BannerImagesTab } from "./BannerImagesTab";
 import { AdminCostCalculationTab } from "./AdminCostCalculationTab";
+import { GeneralSettingsTab } from "./GeneralSettingsTab";
+import { MasterDataTabSlider } from "./MasterDataTabSlider";
 
 interface MasterDataHubProps {
   overviewStats: any;
   cities: any[];
+  places: any[];
   consultants: any[];
   taxSettings: any[];
   pricingLabels: any[];
-  activities: any[];
   hotels: any[];
   flightRoutes: any[];
   addOns: any[];
@@ -57,21 +66,23 @@ interface MasterDataHubProps {
   bannerImages: any[];
   tripsForCost: any[];
   costRates: any[];
+  generalSettings?: any;
 }
 
 const TABS = [
   { id: "banners", label: "Banner Images", icon: ImageIcon },
   { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "settings", label: "General Settings", icon: Settings },
   { id: "cities", label: "Cities & States", icon: MapPin },
   { id: "consultants", label: "Consultants", icon: User },
-  { id: "tax", label: "Tax Settings", icon: Percent },
-  { id: "activities", label: "Activities", icon: Compass },
+  { id: "places", label: "Places", icon: Landmark },
   { id: "hotels", label: "Hotels", icon: BedDouble },
   { id: "flights", label: "Transportation", icon: Bus },
   { id: "addons", label: "Add-ons & Visa", icon: Ticket },
   { id: "restaurants", label: "Restaurants", icon: UtensilsCrossed },
   { id: "policies", label: "Policy Templates", icon: FileText },
   { id: "pricing", label: "Pricing", icon: Tag },
+  { id: "tax", label: "Tax Settings", icon: Percent },
 ];
 
 function MasterDataHubContent(props: MasterDataHubProps) {
@@ -235,40 +246,21 @@ function MasterDataHubContent(props: MasterDataHubProps) {
 
         {/* Content Area */}
         <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-          {/* Horizontal Icon-Tab Strip (Master Data Tabs only - No Cost Calculation in Header Tabs) */}
-          <div className="bg-white border-b border-zinc-200/80 px-4 sm:px-6 sticky top-0 z-20 shadow-2xs">
-            <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar py-2.5">
-              {TABS.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                let activeStyles = "text-zinc-500 hover:text-[#14213D] hover:bg-zinc-50";
-                if (isActive) {
-                  activeStyles = "text-[#B8944F] font-bold border-b-2 border-[#B8944F] bg-[#B8944F]/8 rounded-b-none";
-                }
-
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer ${activeStyles}`}
-                  >
-                    <Icon
-                      className={`h-3.5 w-3.5 ${
-                        isActive
-                          ? "text-[#B8944F]"
-                          : "text-zinc-400"
-                      }`}
-                    />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+          {/* Horizontal Icon-Tab Strip Slider */}
+          <div className="bg-white border-b border-zinc-200/80 sticky top-0 z-20 shadow-2xs">
+            <MasterDataTabSlider
+              tabs={TABS}
+              activeTab={activeTab}
+              onSelectTab={setActiveTab}
+            />
           </div>
 
           {/* Active Tab Panel Content */}
           <div className="p-4 sm:p-8 max-w-7xl w-full mx-auto">
             {activeTab === "overview" && <OverviewTab stats={props.overviewStats} />}
+            {activeTab === "settings" && (
+              <GeneralSettingsTab initialSettings={props.generalSettings} />
+            )}
             {activeTab === "costing" && (
               <AdminCostCalculationTab
                 trips={props.tripsForCost}
@@ -276,15 +268,15 @@ function MasterDataHubContent(props: MasterDataHubProps) {
               />
             )}
             {activeTab === "cities" && <CitiesTab initialData={props.cities} />}
+            {activeTab === "places" && (
+              <PlacesTab initialData={props.places} cities={props.cities} />
+            )}
             {activeTab === "consultants" && (
               <ConsultantsTab initialData={props.consultants} cities={props.cities} />
             )}
             {activeTab === "tax" && <TaxSettingsTab initialData={props.taxSettings} />}
             {activeTab === "pricing" && (
               <PricingLabelsTab initialData={props.pricingLabels} />
-            )}
-            {activeTab === "activities" && (
-              <ActivitiesTab initialData={props.activities} cities={props.cities} />
             )}
             {activeTab === "hotels" && (
               <HotelsTab initialData={props.hotels} cities={props.cities} />

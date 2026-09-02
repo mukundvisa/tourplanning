@@ -34,8 +34,14 @@ import {
   Tag,
   User,
   Check,
+  Landmark,
+  CheckCircle2,
+  AlertCircle,
+  Heart,
+  ShieldAlert,
+  Copy,
 } from "lucide-react";
-import { deleteTrip, getTripDetails } from "@/actions/trips";
+import { deleteTrip, getTripDetails, duplicateTrip } from "@/actions/trips";
 import { format } from "date-fns";
 import { DayWiseTripSummary, TripFullData } from "@/components/admin/DayWiseTripSummary";
 import { downloadTripPdf } from "@/lib/download-pdf";
@@ -43,10 +49,10 @@ import { downloadTripPdf } from "@/lib/download-pdf";
 // Master Data Tab Components
 import { OverviewTab } from "./master-data/OverviewTab";
 import { CitiesTab } from "./master-data/CitiesTab";
+import { PlacesTab } from "./master-data/PlacesTab";
 import { ConsultantsTab } from "./master-data/ConsultantsTab";
 import { TaxSettingsTab } from "./master-data/TaxSettingsTab";
 import { PricingLabelsTab } from "./master-data/PricingLabelsTab";
-import { ActivitiesTab } from "./master-data/ActivitiesTab";
 import { HotelsTab } from "./master-data/HotelsTab";
 import { FlightRoutesTab } from "./master-data/FlightRoutesTab";
 import { AddOnsTab } from "./master-data/AddOnsTab";
@@ -54,9 +60,12 @@ import { RestaurantsTab } from "./master-data/RestaurantsTab";
 import { PolicyTemplatesTab } from "./master-data/PolicyTemplatesTab";
 import { BannerImagesTab } from "./master-data/BannerImagesTab";
 import { AdminCostCalculationTab } from "./master-data/AdminCostCalculationTab";
+import { GeneralSettingsTab } from "./master-data/GeneralSettingsTab";
+import { MasterDataTabSlider } from "./master-data/MasterDataTabSlider";
 import { TripFormWizard } from "./TripFormWizard";
+import { Settings } from "lucide-react";
 
-export type DashboardView = "console" | "create" | "analytics" | "costing" | "master-data";
+export type DashboardView = "console" | "create" | "edit" | "analytics" | "costing" | "master-data";
 
 interface TripData {
   id: string;
@@ -77,10 +86,10 @@ interface UnifiedDashboardProps {
   initialTrips: TripData[];
   overviewStats: any;
   cities: any[];
+  places: any[];
   consultants: any[];
   taxSettings: any[];
   pricingLabels: any[];
-  activities: any[];
   hotels: any[];
   flightRoutes: any[];
   addOns: any[];
@@ -89,20 +98,22 @@ interface UnifiedDashboardProps {
   bannerImages: any[];
   tripsForCost: any[];
   costRates: any[];
+  generalSettings?: any;
 }
 
 const MASTER_DATA_TABS = [
+  { id: "settings", label: "General Settings", icon: Settings },
   { id: "banners", label: "Banner Images", icon: ImageIcon },
   { id: "cities", label: "Cities & States", icon: MapPin },
   { id: "consultants", label: "Consultants", icon: User },
-  { id: "tax", label: "Tax Settings", icon: Percent },
-  { id: "activities", label: "Activities", icon: Compass },
+  { id: "places", label: "Places", icon: Landmark },
   { id: "hotels", label: "Hotels", icon: BedDouble },
   { id: "flights", label: "Transportation", icon: Bus },
   { id: "addons", label: "Add-ons & Visa", icon: Ticket },
   { id: "restaurants", label: "Restaurants", icon: UtensilsCrossed },
   { id: "policies", label: "Policy Templates", icon: FileText },
   { id: "pricing", label: "Pricing", icon: Tag },
+  { id: "tax", label: "Tax Settings", icon: Percent },
 ];
 
 function UnifiedDashboardContent(props: UnifiedDashboardProps) {
@@ -136,27 +147,74 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
   const [summaryTrip, setSummaryTrip] = useState<TripFullData | null>(null);
   const [loadingSummaryId, setLoadingSummaryId] = useState<string | null>(null);
 
-  // Sync state with URL search params
+  // In-Dashboard Trip Editing State
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
+  const [editingTripData, setEditingTripData] = useState<any | null>(null);
+  const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
+
+  const handleEditTrip = async (tripId: string) => {
+    setLoadingEditId(tripId);
+    try {
+      const res = await getTripDetails(tripId);
+      if (res.success && res.data) {
+        setEditingTripId(tripId);
+        setEditingTripData(res.data);
+        setActiveView("edit");
+      } else {
+        alert(res.error || "Failed to load trip details for editing.");
+      }
+    } catch (err: any) {
+      console.error("Failed to load trip details:", err);
+      alert("Error loading trip details.");
+    } finally {
+      setLoadingEditId(null);
+    }
+  };
+
+  const exitEditMode = () => {
+    setEditingTripId(null);
+    setEditingTripData(null);
+    setActiveView("console");
+    window.history.replaceState(null, "", "/");
+  };
+
+  // Sync state with URL search params (Never auto-opens edit screen on refresh)
   useEffect(() => {
     const v = searchParams.get("view") as DashboardView | null;
     const t = searchParams.get("tab");
-    if (v) {
-      setActiveView(v);
-    } else if (t === "costing") {
-      setActiveView("costing");
-    } else if (t === "overview") {
+
+    if (v === "create") {
+      setEditingTripId(null);
+      setEditingTripData(null);
+      setActiveView("create");
+    } else if (v === "analytics" || t === "overview") {
+      setEditingTripId(null);
+      setEditingTripData(null);
       setActiveView("analytics");
-    } else if (t) {
+    } else if (v === "costing" || t === "costing") {
+      setEditingTripId(null);
+      setEditingTripData(null);
+      setActiveView("costing");
+    } else if (v === "master-data" || t) {
+      setEditingTripId(null);
+      setEditingTripData(null);
       setActiveView("master-data");
-      setMasterDataTab(t);
+      setMasterDataTab(t || "banners");
+    } else {
+      // Default to clean console view
+      setEditingTripId(null);
+      setEditingTripData(null);
+      setActiveView("console");
     }
   }, [searchParams]);
 
   const switchView = (newView: DashboardView, extraTab?: string) => {
+    setEditingTripId(null);
+    setEditingTripData(null);
     setActiveView(newView);
     setIsMobileSidebarOpen(false);
 
-    // Update URL shallowly
+    // Update URL shallowly and cleanly
     let newUrl = "/";
     if (newView === "console") {
       newUrl = "/";
@@ -167,12 +225,12 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
     } else if (newView === "costing") {
       newUrl = "/?view=costing";
     } else if (newView === "master-data") {
-      const targetTab = extraTab || masterDataTab || "titles";
+      const targetTab = extraTab || masterDataTab || "banners";
       setMasterDataTab(targetTab);
       newUrl = `/?view=master-data&tab=${targetTab}`;
     }
 
-    window.history.pushState(null, "", newUrl);
+    window.history.replaceState(null, "", newUrl);
   };
 
   const handleOpenSummary = async (tripId: string) => {
@@ -245,6 +303,26 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
     }
   };
 
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+
+  const handleDuplicate = async (tripId: string) => {
+    setDuplicatingId(tripId);
+    try {
+      const res = await duplicateTrip(tripId);
+      if (res.success && res.newTrip) {
+        setTrips((prev) => [res.newTrip, ...prev]);
+        router.refresh();
+      } else {
+        alert(res.error || "Failed to duplicate trip.");
+      }
+    } catch (err) {
+      console.error("Duplicate trip error:", err);
+      alert("Error duplicating trip.");
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
+
   // Dynamic Header Title & Breadcrumb mapping
   const getHeaderInfo = () => {
     switch (activeView) {
@@ -254,9 +332,17 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
         return { breadcrumb: "Trip Itineraries Console", title: "Travel Blueprints & Client Proposals" };
       case "create":
         return { breadcrumb: "Create Trip Blueprint", title: "New Itinerary Proposal Builder" };
+      case "edit":
+        return { 
+          breadcrumb: "Blueprint Studio", 
+          title: editingTripData?.title ? `Editing: ${editingTripData.title}` : "Edit Travel Blueprint" 
+        };
       case "costing":
         return { breadcrumb: "Admin Cost Engine", title: "Confidential Costing & Margin Control" };
       case "master-data":
+        if (masterDataTab === "settings") {
+          return { breadcrumb: "Enterprise Settings", title: "General Settings & PDF Watermarking" };
+        }
         return { breadcrumb: "Master Data Hub", title: "Centralized Catalogues & Master Configuration" };
       default:
         return { breadcrumb: "Dashboard", title: "TripCraft Unified Workspace" };
@@ -423,7 +509,19 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                 {!isSidebarCollapsed && <span>Admin Cost Engine</span>}
               </button>
 
-           
+              {/* 6. General Settings & Logo */}
+              <button
+                onClick={() => switchView("master-data", "settings")}
+                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  activeView === "master-data" && masterDataTab === "settings"
+                    ? "bg-[#B8944F]/15 text-[#B8944F] font-bold"
+                    : "text-zinc-700 hover:bg-zinc-50 hover:text-[#14213D]"
+                }`}
+                title="General Settings & Logo Watermark"
+              >
+                <Settings className={`h-4 w-4 shrink-0 ${activeView === "master-data" && masterDataTab === "settings" ? "text-[#B8944F]" : "text-zinc-500"}`} />
+                {!isSidebarCollapsed && <span>General Settings</span>}
+              </button>
             </div>
           </div>
 
@@ -602,13 +700,30 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                           </div>
 
                           <div className="flex items-center space-x-1">
-                            <Link
-                              href={`/trips/${trip.id}/edit`}
-                              className="p-1.5 rounded hover:bg-white text-zinc-500 hover:text-[#B8944F] border border-transparent hover:border-zinc-200 transition-all cursor-pointer"
-                              title="Edit Itinerary"
+                            <button
+                              onClick={() => handleDuplicate(trip.id)}
+                              disabled={duplicatingId === trip.id || isBusy}
+                              className="p-1.5 rounded hover:bg-white text-zinc-500 hover:text-[#B8944F] border border-transparent hover:border-zinc-200 transition-all cursor-pointer disabled:opacity-50"
+                              title="Duplicate / Copy Trip Itinerary"
                             >
-                              <Edit className="h-4 w-4" />
-                            </Link>
+                              {duplicatingId === trip.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-[#B8944F]" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleEditTrip(trip.id)}
+                              disabled={loadingEditId === trip.id || isBusy}
+                              className="p-1.5 rounded hover:bg-white text-zinc-500 hover:text-[#B8944F] border border-transparent hover:border-zinc-200 transition-all cursor-pointer disabled:opacity-50"
+                              title="Edit Trip Blueprint"
+                            >
+                              {loadingEditId === trip.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-[#B8944F]" />
+                              ) : (
+                                <Edit className="h-4 w-4" />
+                              )}
+                            </button>
                             <button
                               onClick={() => handleDelete(trip.id, trip.title)}
                               disabled={isBusy}
@@ -628,11 +743,26 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
           )}
 
           {/* ========================================================= */}
-          {/* VIEW 2: CREATE TRIP BLUEPRINT */}
+          {/* VIEW 2: CREATE / EDIT TRIP BLUEPRINT */}
           {/* ========================================================= */}
-          {activeView === "create" && (
+          {(activeView === "create" || activeView === "edit") && (
             <div className="w-full">
-              <TripFormWizard />
+              <TripFormWizard
+                key={editingTripId || "new-blueprint"}
+                initialData={editingTripData || undefined}
+                tripId={editingTripId || undefined}
+                onClose={exitEditMode}
+                onSaved={async (savedTripId) => {
+                  if (savedTripId) {
+                    setEditingTripId(savedTripId);
+                    const res = await getTripDetails(savedTripId);
+                    if (res.success && res.data) {
+                      setEditingTripData(res.data);
+                    }
+                  }
+                  router.refresh();
+                }}
+              />
             </div>
           )}
 
@@ -662,46 +792,37 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
           {/* ========================================================= */}
           {activeView === "master-data" && (
             <div className="w-full flex flex-col">
-              {/* Horizontal Tab Strip for 12 Master Data Catalogues */}
-              <div className="bg-white border-b border-zinc-200/80 px-4 sm:px-6 sticky top-0 z-20 shadow-2xs">
-                <div className="flex items-center space-x-1 overflow-x-auto no-scrollbar py-2.5">
-                  {MASTER_DATA_TABS.map((tab) => {
-                    const Icon = tab.icon;
-                    const isActive = masterDataTab === tab.id;
-                    let activeStyles = "text-zinc-500 hover:text-[#14213D] hover:bg-zinc-50";
-                    if (isActive) {
-                      activeStyles = "text-[#B8944F] font-bold border-b-2 border-[#B8944F] bg-[#B8944F]/8 rounded-b-none";
-                    }
-
-                    return (
-                      <button
-                        key={tab.id}
-                        onClick={() => {
-                          setMasterDataTab(tab.id);
-                          window.history.pushState(null, "", `/?view=master-data&tab=${tab.id}`);
-                        }}
-                        className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs whitespace-nowrap transition-all cursor-pointer ${activeStyles}`}
-                      >
-                        <Icon className={`h-3.5 w-3.5 ${isActive ? "text-[#B8944F]" : "text-zinc-400"}`} />
-                        <span>{tab.label}</span>
-                      </button>
+              {/* Horizontal Tab Slider for Master Data Catalogues */}
+              <div className="bg-white border-b border-zinc-200/80 sticky top-0 z-20 shadow-2xs">
+                <MasterDataTabSlider
+                  tabs={MASTER_DATA_TABS}
+                  activeTab={masterDataTab}
+                  onSelectTab={(tabId) => {
+                    setMasterDataTab(tabId);
+                    window.history.pushState(
+                      null,
+                      "",
+                      `/?view=master-data&tab=${tabId}`
                     );
-                  })}
-                </div>
+                  }}
+                />
               </div>
 
               {/* Master Data Tab Content Panels */}
               <div className="p-4 sm:p-8 max-w-7xl w-full mx-auto">
+                {masterDataTab === "settings" && (
+                  <GeneralSettingsTab initialSettings={props.generalSettings} />
+                )}
                 {masterDataTab === "cities" && <CitiesTab initialData={props.cities} />}
+                {masterDataTab === "places" && (
+                  <PlacesTab initialData={props.places} cities={props.cities} />
+                )}
                 {masterDataTab === "consultants" && (
                   <ConsultantsTab initialData={props.consultants} cities={props.cities} />
                 )}
                 {masterDataTab === "tax" && <TaxSettingsTab initialData={props.taxSettings} />}
                 {masterDataTab === "pricing" && (
                   <PricingLabelsTab initialData={props.pricingLabels} />
-                )}
-                {masterDataTab === "activities" && (
-                  <ActivitiesTab initialData={props.activities} cities={props.cities} />
                 )}
                 {masterDataTab === "hotels" && (
                   <HotelsTab initialData={props.hotels} cities={props.cities} />
