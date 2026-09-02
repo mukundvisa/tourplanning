@@ -1421,53 +1421,45 @@ export async function GET(
         };
       } else {
         // Vercel / AWS Lambda Linux Environment
+        const CHROMIUM_TAR_URL =
+          "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar";
+
         let execPath = process.env.CHROMIUM_EXECUTABLE_PATH || "";
 
+        // 1. Check if already unpacked in /tmp/chromium
         if (!execPath) {
-          // Check if already unpacked in /tmp
           const tmpChromium = "/tmp/chromium";
           if (existsSync(tmpChromium)) {
             execPath = tmpChromium;
           }
         }
 
+        // 2. Check if local bin exists in serverless package
         if (!execPath) {
-          // Check if local bin exists in serverless package
           const possibleBinPaths = [
             join(process.cwd(), "node_modules", "@sparticuz", "chromium", "bin"),
             "/var/task/node_modules/@sparticuz/chromium/bin",
           ];
           const localBin = possibleBinPaths.find((p) => existsSync(p));
-
           if (localBin) {
             try {
               execPath = await chromium.executablePath(localBin);
             } catch (localErr) {
-              console.warn("Failed local bin extraction:", localErr);
+              console.warn("Local bin extraction failed, will use remote pack URL:", localErr);
             }
           }
         }
 
-        // If local bin not found on Vercel, load via remote Sparticuz pack URL
+        // 3. Guaranteed Vercel serverless resolution via Sparticuz verified release pack
         if (!execPath) {
-          const packUrls = [
-            "https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar",
-            "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar",
-            "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar",
-          ];
-
-          for (const url of packUrls) {
-            try {
-              execPath = await chromium.executablePath(url);
-              if (execPath) break;
-            } catch (remoteErr) {
-              console.warn(`Remote pack failed for ${url}:`, remoteErr);
-            }
+          try {
+            execPath = await chromium.executablePath(CHROMIUM_TAR_URL);
+          } catch (tarErr) {
+            console.warn("Primary tar pack URL failed, trying secondary:", tarErr);
+            execPath = await chromium.executablePath(
+              "https://github.com/Sparticuz/chromium/releases/download/v126.0.0/chromium-v126.0.0-pack.tar"
+            );
           }
-        }
-
-        if (!execPath) {
-          execPath = await chromium.executablePath();
         }
 
         options = {
