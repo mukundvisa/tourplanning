@@ -1402,10 +1402,11 @@ export async function GET(
       </html>
     `;
 
-    // 3. Launch Puppeteer
+    // 3. Launch Puppeteer (Local Dev & Vercel Serverless Safe)
     let browser;
     try {
-      let options = {};
+      let options: any = {};
+      
       if (
         process.env.NODE_ENV === "development" ||
         process.env.IS_LOCAL === "true" ||
@@ -1419,15 +1420,54 @@ export async function GET(
           headless: true,
         };
       } else {
-        let execPath: string;
-        try {
+        // Vercel / AWS Lambda Linux Environment
+        let execPath = process.env.CHROMIUM_EXECUTABLE_PATH || "";
+
+        if (!execPath) {
+          // Check if already unpacked in /tmp
+          const tmpChromium = "/tmp/chromium";
+          if (existsSync(tmpChromium)) {
+            execPath = tmpChromium;
+          }
+        }
+
+        if (!execPath) {
+          // Check if local bin exists in serverless package
+          const possibleBinPaths = [
+            join(process.cwd(), "node_modules", "@sparticuz", "chromium", "bin"),
+            "/var/task/node_modules/@sparticuz/chromium/bin",
+          ];
+          const localBin = possibleBinPaths.find((p) => existsSync(p));
+
+          if (localBin) {
+            try {
+              execPath = await chromium.executablePath(localBin);
+            } catch (localErr) {
+              console.warn("Failed local bin extraction:", localErr);
+            }
+          }
+        }
+
+        // If local bin not found on Vercel, load via remote Sparticuz pack URL
+        if (!execPath) {
+          const packUrls = [
+            "https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar",
+            "https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar",
+            "https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar",
+          ];
+
+          for (const url of packUrls) {
+            try {
+              execPath = await chromium.executablePath(url);
+              if (execPath) break;
+            } catch (remoteErr) {
+              console.warn(`Remote pack failed for ${url}:`, remoteErr);
+            }
+          }
+        }
+
+        if (!execPath) {
           execPath = await chromium.executablePath();
-        } catch (execErr) {
-          console.warn("Local chromium.executablePath failed, fetching fallback binary:", execErr);
-          // Fallback to official Sparticuz Chromium v149 tarball on Vercel Serverless
-          execPath = await chromium.executablePath(
-            "https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar"
-          );
         }
 
         options = {
