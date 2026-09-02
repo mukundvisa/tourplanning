@@ -1419,10 +1419,29 @@ export async function GET(
           headless: true,
         };
       } else {
+        let execPath: string;
+        try {
+          execPath = await chromium.executablePath();
+        } catch (execErr) {
+          console.warn("Local chromium.executablePath failed, fetching fallback binary:", execErr);
+          // Fallback to official Sparticuz Chromium v149 tarball on Vercel Serverless
+          execPath = await chromium.executablePath(
+            "https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar"
+          );
+        }
+
         options = {
-          args: [...(chromium as any).args, "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+          args: [
+            ...(chromium as any).args,
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--single-process",
+            "--no-zygote",
+          ],
           defaultViewport: (chromium as any).defaultViewport,
-          executablePath: await chromium.executablePath(),
+          executablePath: execPath,
           headless: (chromium as any).headless,
         };
       }
