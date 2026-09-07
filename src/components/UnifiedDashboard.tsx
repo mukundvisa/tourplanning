@@ -41,7 +41,7 @@ import {
   ShieldAlert,
   Copy,
 } from "lucide-react";
-import { deleteTrip, getTripDetails, duplicateTrip } from "@/actions/trips";
+import { deleteTrip, getTripDetails, duplicateTrip, getTripsListForConsole } from "@/actions/trips";
 import { format } from "date-fns";
 import { DayWiseTripSummary, TripFullData } from "@/components/admin/DayWiseTripSummary";
 import { downloadTripPdf } from "@/lib/download-pdf";
@@ -233,6 +233,14 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
     setEditingTripData(null);
     setActiveView(newView);
     setIsMobileSidebarOpen(false);
+
+    if (newView === "console") {
+      getTripsListForConsole().then((res) => {
+        if (res.success && res.data) {
+          setTrips(res.data);
+        }
+      });
+    }
 
     // Update URL shallowly and cleanly
     let newUrl = "/";
@@ -823,33 +831,16 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                   setPrefillTripData(null);
                   if (savedTripId) {
                     setEditingTripId(savedTripId);
-                    const res = await getTripDetails(savedTripId);
-                    if (res.success && res.data) {
-                      setEditingTripData(res.data);
-                      // Real-time client-side update for Itineraries Console
-                      const savedSummary: TripData = {
-                        id: res.data.id,
-                        title: res.data.title,
-                        destination: res.data.destination,
-                        departureCity: res.data.departureCity,
-                        startDate: res.data.startDate,
-                        endDate: res.data.endDate,
-                        durationDays: res.data.durationDays,
-                        durationNights: res.data.durationNights,
-                        numTravellers: res.data.numTravellers,
-                        consultantName: res.data.consultantName || "Senior Consultant",
-                        updatedAt: res.data.updatedAt || new Date().toISOString(),
-                      };
-                      setTrips((prev) => {
-                        const exists = prev.findIndex((t) => t.id === savedSummary.id);
-                        if (exists >= 0) {
-                          const updated = [...prev];
-                          updated[exists] = savedSummary;
-                          return updated;
-                        } else {
-                          return [savedSummary, ...prev];
-                        }
-                      });
+                    const [detailsRes, freshTripsRes] = await Promise.all([
+                      getTripDetails(savedTripId),
+                      getTripsListForConsole(),
+                    ]);
+
+                    if (detailsRes.success && detailsRes.data) {
+                      setEditingTripData(detailsRes.data);
+                    }
+                    if (freshTripsRes.success && freshTripsRes.data) {
+                      setTrips(freshTripsRes.data);
                     }
                   }
                   router.refresh();

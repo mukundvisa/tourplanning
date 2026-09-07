@@ -123,6 +123,8 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
     loadMasterData();
   }, [initialData]);
 
+  const [isTitleCustomized, setIsTitleCustomized] = useState<boolean>(Boolean(initialData?.title));
+
   // Main Form Data State
   const [formData, setFormData] = useState<any>(() => {
     if (initialData) {
@@ -393,14 +395,77 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
     }
   }, [formData.departureCity, masterData.consultants]);
 
+  const generateAutoTitle = (origin: string, dest: string, itineraryDays: any[] = []) => {
+    const cleanOrigin = origin ? origin.split("(")[0].trim() : "";
+    const cleanDest = dest ? dest.split(",")[0].trim() : "";
+    if (!cleanOrigin && !cleanDest) return "";
+
+    const text = JSON.stringify(itineraryDays || []).toLowerCase();
+    let tripType = "Getaway";
+    if (
+      text.includes("safari") ||
+      text.includes("trek") ||
+      text.includes("adventure") ||
+      text.includes("hike") ||
+      text.includes("rafting")
+    ) {
+      tripType = "Adventure";
+    } else if (
+      text.includes("heritage") ||
+      text.includes("temple") ||
+      text.includes("fort") ||
+      text.includes("palace")
+    ) {
+      tripType = "Heritage Tour";
+    } else if (
+      text.includes("beach") ||
+      text.includes("honeymoon") ||
+      text.includes("luxury") ||
+      text.includes("resort")
+    ) {
+      tripType = "Getaway";
+    } else if (text.includes("family") || text.includes("vacation")) {
+      tripType = "Vacation";
+    }
+
+    if (!cleanOrigin) return `${cleanDest} ${tripType}`;
+    if (!cleanDest) return `Trip from ${cleanOrigin}`;
+    return `${cleanOrigin} to ${cleanDest} ${tripType}`;
+  };
+
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    if (name === "startDate") {
+    if (name === "title") {
+      setIsTitleCustomized(true);
+      setFormData((prev: any) => ({ ...prev, title: value }));
+    } else if (name === "startDate") {
       syncDatesAndDuration(value, formData.endDate);
     } else if (name === "endDate") {
       syncDatesAndDuration(formData.startDate, value);
+    } else if (name === "destination") {
+      setFormData((prev: any) => {
+        const newTitle = !isTitleCustomized
+          ? generateAutoTitle(prev.departureCity, value, prev.itineraryDays)
+          : prev.title;
+        return {
+          ...prev,
+          destination: value,
+          title: newTitle || prev.title,
+        };
+      });
+    } else if (name === "departureCity") {
+      setFormData((prev: any) => {
+        const newTitle = !isTitleCustomized
+          ? generateAutoTitle(value, prev.destination, prev.itineraryDays)
+          : prev.title;
+        return {
+          ...prev,
+          departureCity: value,
+          title: newTitle || prev.title,
+        };
+      });
     } else {
       setFormData((prev: any) => ({ ...prev, [name]: value }));
     }
@@ -1148,17 +1213,38 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Itinerary Title */}
               <div className="md:col-span-2 space-y-1.5">
-                <label className="block text-xs font-semibold text-zinc-700">
-                  Itinerary Title *
-                </label>
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Itinerary Title *
+                  </label>
+                  {(formData.departureCity || formData.destination) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const auto = generateAutoTitle(formData.departureCity, formData.destination, formData.itineraryDays);
+                        if (auto) {
+                          setFormData((prev: any) => ({ ...prev, title: auto }));
+                          setIsTitleCustomized(false);
+                        }
+                      }}
+                      className="text-[11px] font-bold text-[#B8944F] hover:text-[#8F6F33] flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Auto-generate title from Origin and Destination"
+                    >
+                      <span>⚡ Auto-Generate Title</span>
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   name="title"
                   value={formData.title}
                   onChange={handleInputChange}
-                  placeholder="e.g. Magical 5 Days Bali Luxury Escape"
+                  placeholder="e.g. Ahmedabad to Junagadh Adventure"
                   className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
+                <p className="text-[10px] text-zinc-400">
+                  Format: [Origin City] to [Destination City] [Trip Type] (Editable).
+                </p>
               </div>
 
               {/* Main Tour Planner Image with Banner Picker */}

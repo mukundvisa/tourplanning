@@ -544,4 +544,33 @@ export async function getTripsListForSelector() {
   }
 }
 
+/**
+ * Fetch complete trips list for Itineraries Console real-time synchronization.
+ */
+export async function getTripsListForConsole() {
+  try {
+    const trips = await db.trip.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        destination: true,
+        departureCity: true,
+        startDate: true,
+        endDate: true,
+        durationDays: true,
+        durationNights: true,
+        numTravellers: true,
+        consultantName: true,
+        updatedAt: true,
+      },
+    });
+    return { success: true, data: JSON.parse(JSON.stringify(trips)) };
+  } catch (error: any) {
+    console.error("Error fetching trips for console:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+
 
