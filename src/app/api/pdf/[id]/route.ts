@@ -43,11 +43,22 @@ export async function GET(
         process.env.IS_LOCAL === "true" ||
         process.platform === "win32"
       ) {
+        const possibleWindowsPaths = [
+          process.env.CHROME_PATH,
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+          process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe") : "",
+          "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+          "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+          process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe") : "",
+          process.env["PROGRAMFILES(X86)"] ? join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe") : "",
+        ].filter(Boolean) as string[];
+
+        const detectedExecutable = possibleWindowsPaths.find((p) => existsSync(p)) || "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+
         options = {
           args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-          executablePath:
-            process.env.CHROME_PATH ||
-            "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          executablePath: detectedExecutable,
           headless: true,
         };
       } else {

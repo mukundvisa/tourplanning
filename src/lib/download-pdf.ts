@@ -58,26 +58,38 @@ export async function downloadTripPdf(tripId: string, title?: string): Promise<v
   }
   const htmlString = await htmlRes.text();
 
-  // Create isolated off-screen container for high-DPI rendering
-  const container = document.createElement("div");
-  container.style.position = "fixed";
-  container.style.left = "-9999px";
-  container.style.top = "0";
-  container.style.width = "794px"; // Standard A4 width at 96 DPI
-  container.style.backgroundColor = "#ffffff";
-  container.style.zIndex = "-1000";
+  // Create isolated iframe so modern parent Tailwind oklab styles do not interfere
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.left = "-9999px";
+  iframe.style.top = "0";
+  iframe.style.width = "794px"; // A4 width at 96 DPI
+  iframe.style.height = "1123px";
+  iframe.style.border = "0";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
 
-  // Clean HTML from any print triggers
-  const cleanHtml = htmlString
-    .replace(/<script[\s\S]*?window\.print[\s\S]*?<\/script>/gi, "")
-    .replace(/onload="window\.print\(\)"/gi, "");
-
-  container.innerHTML = cleanHtml;
-  document.body.appendChild(container);
+  document.body.appendChild(iframe);
 
   try {
-    // Wait for embedded images/fonts to render
-    const images = Array.from(container.querySelectorAll("img"));
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!iframeDoc) throw new Error("Could not initialize PDF renderer.");
+
+    // Clean HTML from any window.print triggers and replace modern oklab/oklch with standard hex/rgb
+    const cleanHtml = htmlString
+      .replace(/<script[\s\S]*?window\.print[\s\S]*?<\/script>/gi, "")
+      .replace(/onload="window\.print\(\)"/gi, "")
+      .replace(/oklab\([^)]+\)/gi, "#14213d")
+      .replace(/oklch\([^)]+\)/gi, "#b8944f");
+
+    iframeDoc.open();
+    iframeDoc.write(cleanHtml);
+    iframeDoc.close();
+
+    // Wait for iframe resources and fonts to settle
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    const images = Array.from(iframeDoc.querySelectorAll("img"));
     await Promise.all(
       images.map(
         (img) =>
@@ -91,12 +103,31 @@ export async function downloadTripPdf(tripId: string, title?: string): Promise<v
       )
     );
 
-    const canvas = await html2canvas(container, {
+    const targetElement = iframeDoc.body || iframeDoc.documentElement;
+
+    const canvas = await html2canvas(targetElement, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       logging: false,
       windowWidth: 794,
+      onclone: (clonedDoc) => {
+        // Sanitize any remaining oklab/oklch in stylesheets or inline styles
+        const allElements = clonedDoc.querySelectorAll("*");
+        allElements.forEach((el: any) => {
+          if (el.style) {
+            const styleText = el.getAttribute("style") || "";
+            if (styleText.includes("oklab") || styleText.includes("oklch")) {
+              el.setAttribute(
+                "style",
+                styleText
+                  .replace(/oklab\([^)]+\)/gi, "#14213d")
+                  .replace(/oklch\([^)]+\)/gi, "#b8944f")
+              );
+            }
+          }
+        });
+      },
     });
 
     const imgData = canvas.toDataURL("image/jpeg", 0.95);
@@ -124,8 +155,8 @@ export async function downloadTripPdf(tripId: string, title?: string): Promise<v
 
     pdf.save(filename);
   } finally {
-    if (container.parentNode) {
-      container.parentNode.removeChild(container);
+    if (iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe);
     }
   }
 }
