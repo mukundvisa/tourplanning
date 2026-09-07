@@ -1198,6 +1198,90 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
     (c) => c.country.toLowerCase() === "india"
   );
 
+  // Helper to extract individual destination cities from formData.destination
+  const selectedDestinationCities = React.useMemo(() => {
+    if (!formData.destination) return [];
+    const destStr = String(formData.destination);
+    const rawTokens = destStr
+      .split(/[,;&+]+|\band\b/i)
+      .map((s) => s.trim().replace(/\s*\(Current\)$/i, "").trim())
+      .filter((s) => s.length > 0 && s.toLowerCase() !== "india");
+
+    const result: Array<{ id: string; name: string; country: string; state?: string | null }> = [];
+    const seen = new Set<string>();
+
+    for (const tok of rawTokens) {
+      const cleanTok = tok.replace(/,\s*India$/i, "").trim();
+      if (!cleanTok) continue;
+
+      const matched = masterData.cities.find(
+        (c) =>
+          c.name.toLowerCase() === cleanTok.toLowerCase() ||
+          `${c.name}, ${c.country}`.toLowerCase() === cleanTok.toLowerCase() ||
+          cleanTok.toLowerCase().includes(c.name.toLowerCase())
+      );
+
+      if (matched && !seen.has(matched.name.toLowerCase())) {
+        seen.add(matched.name.toLowerCase());
+        result.push(matched);
+      } else if (!matched && !seen.has(cleanTok.toLowerCase())) {
+        seen.add(cleanTok.toLowerCase());
+        result.push({ id: `custom-${cleanTok}`, name: cleanTok, country: "India" });
+      }
+    }
+
+    return result;
+  }, [formData.destination, masterData.cities]);
+
+  const handleAddDestinationCity = (cityVal: string) => {
+    if (!cityVal) return;
+    const matched = masterData.cities.find(
+      (c) => `${c.name}, ${c.country}` === cityVal || c.id === cityVal || c.name === cityVal
+    );
+    if (!matched) return;
+
+    if (!selectedDestinationCities.some((c) => c.name.toLowerCase() === matched.name.toLowerCase())) {
+      const updated = [...selectedDestinationCities, matched];
+      const newDestString = updated.map((c) => `${c.name}, ${c.country}`).join(", ");
+      const newTitle = !isTitleCustomized
+        ? generateAutoTitle(formData.departureCity, newDestString, formData.itineraryDays)
+        : formData.title;
+      setFormData((prev: any) => ({
+        ...prev,
+        destination: newDestString,
+        title: newTitle || prev.title,
+      }));
+    }
+  };
+
+  const handleRemoveDestinationCity = (cityNameToRemove: string) => {
+    const updated = selectedDestinationCities.filter(
+      (c) => c.name.toLowerCase() !== cityNameToRemove.toLowerCase()
+    );
+    const newDestString = updated.map((c) => `${c.name}, ${c.country}`).join(", ");
+    const newTitle = !isTitleCustomized
+      ? generateAutoTitle(formData.departureCity, newDestString, formData.itineraryDays)
+      : formData.title;
+    setFormData((prev: any) => ({
+      ...prev,
+      destination: newDestString,
+      title: newTitle || prev.title,
+    }));
+  };
+
+  const cleanSingleDepartureCity = React.useMemo(() => {
+    if (!formData.departureCity) return "";
+    const raw = String(formData.departureCity);
+    if (raw.includes(",") || raw.includes("&") || raw.includes(" and ") || raw.includes(";")) {
+      const parts = raw
+        .split(/[,;&+]+|\band\b/i)
+        .map((s) => s.trim().replace(/\s*\(Current\)$/i, "").trim())
+        .filter(Boolean);
+      return parts[parts.length - 1] || "";
+    }
+    return raw.replace(/\s*\(Current\)$/i, "").trim();
+  }, [formData.departureCity]);
+
   // ==========================================
   // RENDER FORM STEPS (8 EXACT STEPS)
   // ==========================================
@@ -1310,36 +1394,80 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                 </div>
               </div>
 
-              {/* Destination Country/City (Master Data Hub Only) */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-zinc-700">
-                  Destination Country/City *
-                </label>
+              {/* Destination Country/City (Multi-Select from Master Data Hub) */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Destination Country/City (Multi-Select) *
+                  </label>
+                  {selectedDestinationCities.length > 0 && (
+                    <span className="text-[10px] font-bold text-[#B8944F] bg-[#B8944F]/10 px-2 py-0.5 rounded-full">
+                      {selectedDestinationCities.length} {selectedDestinationCities.length === 1 ? "City" : "Cities"} Selected
+                    </span>
+                  )}
+                </div>
+
+                {/* Selected Cities Badges / Chips */}
+                {selectedDestinationCities.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-zinc-50 border border-zinc-200/80 rounded-lg min-h-[38px] items-center">
+                    {selectedDestinationCities.map((city) => (
+                      <span
+                        key={city.id || city.name}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#B8944F]/40 text-[#14213D] text-xs font-bold rounded-md shadow-2xs group"
+                      >
+                        <span className="text-[#B8944F]">📍</span>
+                        <span>{city.name}</span>
+                        <span className="text-[10px] text-zinc-400 font-medium">({city.country})</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDestinationCity(city.name)}
+                          className="ml-1 text-zinc-400 hover:text-red-600 cursor-pointer font-bold rounded-full p-0.5 transition-colors"
+                          title={`Remove ${city.name}`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* City Selector Dropdown to Add More */}
                 <select
-                  name="destination"
-                  value={formData.destination}
-                  onChange={handleInputChange}
+                  onChange={(e) => {
+                    handleAddDestinationCity(e.target.value);
+                    e.target.value = "";
+                  }}
+                  value=""
                   className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-medium text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
                 >
-                  <option value="">-- Select Master Destination City / Country --</option>
-                  {formData.destination &&
-                    !masterData.cities.some(
-                      (c) => `${c.name}, ${c.country}` === formData.destination || c.name === formData.destination
-                    ) && (
-                      <option value={formData.destination}>{formData.destination} (Current)</option>
-                    )}
-                  {masterData.cities.map((c) => (
-                    <option key={c.id} value={`${c.name}, ${c.country}`}>
-                      {c.name}, {c.country} {c.state ? `(${c.state})` : ""}
-                    </option>
-                  ))}
+                  <option value="">
+                    {selectedDestinationCities.length === 0
+                      ? "-- Select Destination Cities from Master Data Hub --"
+                      : "+ Add another Destination City..."}
+                  </option>
+                  {masterData.cities.map((c) => {
+                    const isAlreadySelected = selectedDestinationCities.some(
+                      (sc) => sc.name.toLowerCase() === c.name.toLowerCase()
+                    );
+                    return (
+                      <option
+                        key={c.id}
+                        value={`${c.name}, ${c.country}`}
+                        disabled={isAlreadySelected}
+                      >
+                        {isAlreadySelected
+                          ? `✓ ${c.name}, ${c.country} (Selected)`
+                          : `${c.name}, ${c.country} ${c.state ? `(${c.state})` : ""}`}
+                      </option>
+                    );
+                  })}
                 </select>
                 <p className="text-[10px] text-zinc-400">
-                  Displays only cities managed in Master Data Hub &rarr; Cities.
+                  Select one or more destination cities from Master Data Hub &rarr; Cities.
                 </p>
               </div>
 
-              {/* Departure City (India Hubs Only - Master Data Hub Only) */}
+              {/* Departure City (India Hubs Only - Single City Only) */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <label className="block text-xs font-semibold text-zinc-700">
@@ -1348,16 +1476,41 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                 </div>
                 <select
                   name="departureCity"
-                  value={formData.departureCity}
-                  onChange={handleInputChange}
+                  value={cleanSingleDepartureCity}
+                  onChange={(e) => {
+                    const chosen = e.target.value;
+                    const newTitle = !isTitleCustomized
+                      ? generateAutoTitle(chosen, formData.destination, formData.itineraryDays)
+                      : formData.title;
+                    setFormData((prev: any) => ({
+                      ...prev,
+                      departureCity: chosen,
+                      title: newTitle || prev.title,
+                    }));
+                    if (chosen && masterData.consultants.length > 0) {
+                      const matchedC = masterData.consultants.find((c: any) => {
+                        const dep = (c.hubCity || c.departureCity || "").toLowerCase();
+                        return dep.includes(chosen.toLowerCase()) || chosen.toLowerCase().includes(dep);
+                      });
+                      if (matchedC) {
+                        setFormData((prev: any) => ({
+                          ...prev,
+                          consultantName: matchedC.name,
+                          consultantPhone: matchedC.phone || prev.consultantPhone,
+                        }));
+                      }
+                    }
+                  }}
                   className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-medium text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
                 >
                   <option value="">-- Select Master Departure City (India Hub) --</option>
-                  {formData.departureCity &&
+                  {cleanSingleDepartureCity &&
                     !indianCities.some(
-                      (c) => c.name === formData.departureCity || `${c.name} (${c.state})` === formData.departureCity
-                    ) && (
-                      <option value={formData.departureCity}>{formData.departureCity} (Current)</option>
+                      (c) => c.name.toLowerCase() === cleanSingleDepartureCity.toLowerCase()
+                    ) &&
+                    !cleanSingleDepartureCity.includes("&") &&
+                    !cleanSingleDepartureCity.includes(",") && (
+                      <option value={cleanSingleDepartureCity}>{cleanSingleDepartureCity}</option>
                     )}
                   {indianCities.map((c) => (
                     <option key={c.id} value={c.name}>
@@ -1366,7 +1519,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                   ))}
                 </select>
                 <p className="text-[10px] text-zinc-400">
-                  Displays only Indian cities managed in Master Data Hub &rarr; Cities. Auto-assigns mapped consultant.
+                  Displays single return departure hub managed in Master Data Hub &rarr; Cities. Auto-assigns mapped consultant.
                 </p>
               </div>
 

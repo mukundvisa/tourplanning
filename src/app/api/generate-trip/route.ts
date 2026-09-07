@@ -544,7 +544,7 @@ Guidelines:
     }
 
     // Ensure baseline sanitized values
-    const destinationName = (parsed.destination || "Scenic Destination").trim();
+    const rawDestination = (parsed.destination || "Scenic Destination").trim();
     const originCityName = (parsed.origin_city || "Delhi").trim();
     const durationDays = Math.max(1, Number(parsed.duration_days) || 3);
     const durationNights =
@@ -555,9 +555,47 @@ Guidelines:
     const budgetLevel = parsed.budget_level || "mid";
     const flightsNeeded = Boolean(parsed.flights_needed);
 
+    // 1. EXTRACT INDIVIDUAL CITY NAMES (Never treat a multi-city phrase as one combined city string)
+    const cleanCityToken = (s: string) =>
+      s
+        .replace(/\b(trip|tour|package|vacation|holiday|itinerary|days?|nights?|budget|luxury|family)\b/gi, "")
+        .trim();
+
+    let individualCityNames: string[] = rawDestination
+      .split(/[,;&+/|]+|\band\b|\bto\b/i)
+      .map((s: string) => cleanCityToken(s))
+      .filter((s: string) => s.length > 1 && s.toLowerCase() !== originCityName.toLowerCase());
+
+    if (individualCityNames.length <= 1) {
+      const matchAfterTo = (prompt || "").match(/\bto\s+([^.\n]+)/i);
+      const promptTarget = matchAfterTo && matchAfterTo[1] ? matchAfterTo[1] : prompt;
+      const promptCities = promptTarget
+        .split(/[,;&+/|]+|\band\b|\bto\b/i)
+        .map((s: string) => cleanCityToken(s))
+        .filter(
+          (s: string) =>
+            s.length > 2 &&
+            s.toLowerCase() !== originCityName.toLowerCase() &&
+            !s.toLowerCase().includes("hotel") &&
+            !s.toLowerCase().includes("resort")
+        );
+
+      if (promptCities.length > 1) {
+        individualCityNames = promptCities;
+      }
+    }
+
+    if (individualCityNames.length === 0) {
+      individualCityNames = [cleanCityToken(rawDestination) || "Scenic Destination"];
+    }
+
+    // Deduplicate preserving sequence order
+    individualCityNames = Array.from(new Set(individualCityNames));
+    const destinationName = individualCityNames.join(", ");
+
     // 7. AUTO-DISCOVERY & MASTER DATA MATCHING ENGINE
     const matchedSummary = {
-      city: { name: destinationName, matched: false, isNewDraft: false },
+      city: { name: destinationName, matched: false, isNewDraft: false, cities: [] as any[] },
       hotelsMatched: [] as any[],
       hotelsDrafted: [] as any[],
       placesMatched: [] as any[],
@@ -568,31 +606,60 @@ Guidelines:
       flightsMatched: null as any,
     };
 
-    // A. City Matching or Auto-Drafting
-    let matchedCity = await db.masterCity.findFirst({
-      where: {
-        name: {
-          contains: destinationName,
-          mode: "insensitive",
-        },
-      },
-    });
+    // A. City Matching or Auto-Drafting for EACH INDIVIDUAL CITY
+    const resolvedCities: Array<{ id: string; name: string; state: string; country: string; isNewDraft: boolean }> = [];
 
-    if (!matchedCity) {
-      // Create new draft MasterCity
-      matchedCity = await db.masterCity.create({
-        data: {
-          name: destinationName,
-          state: destinationName,
-          country: "India", // Default country baseline
+    for (const singleCity of individualCityNames) {
+      let cityRecord = await db.masterCity.findFirst({
+        where: {
+          name: {
+            equals: singleCity,
+            mode: "insensitive",
+          },
         },
       });
-      matchedSummary.city = { name: destinationName, matched: false, isNewDraft: true };
-    } else {
-      matchedSummary.city = { name: matchedCity.name, matched: true, isNewDraft: false };
+
+      if (!cityRecord) {
+        cityRecord = await db.masterCity.findFirst({
+          where: {
+            name: {
+              contains: singleCity,
+              mode: "insensitive",
+            },
+          },
+        });
+      }
+
+      if (!cityRecord) {
+        // Create new individual MasterCity (never a combined string)
+        cityRecord = await db.masterCity.create({
+          data: {
+            name: singleCity,
+            state: singleCity,
+            country: "India",
+          },
+        });
+        resolvedCities.push({ ...cityRecord, isNewDraft: true });
+      } else {
+        resolvedCities.push({ ...cityRecord, isNewDraft: false });
+      }
     }
 
-    const cityId = matchedCity.id;
+    const primaryCity = resolvedCities[0];
+    const cityId = primaryCity.id;
+
+    matchedSummary.city = {
+      name: destinationName,
+      matched: resolvedCities.every((c) => !c.isNewDraft),
+      isNewDraft: resolvedCities.some((c) => c.isNewDraft),
+      cities: resolvedCities.map((c) => ({
+        id: c.id,
+        name: c.name,
+        country: c.country,
+        state: c.state,
+        isNewDraft: c.isNewDraft,
+      })),
+    };
 
     // B. Auto-Discovery for Minimal Prompts (Real places & POIs via live discovery)
     const isMinimalPrompt =
@@ -941,34 +1008,9 @@ Guidelines:
     const startDateStr = startDateObj.toISOString().split("T")[0];
     const endDateStr = endDateObj.toISOString().split("T")[0];
 
-    // Helper to extract ordered multi-destination cities sequence
-    const rawDestination = destinationName;
-    const splitCities = rawDestination
-      .split(/[,;\->|/]+|\band\b|\bto\b/i)
-      .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 1 && s.toLowerCase() !== originCityName.toLowerCase());
-
-    let multiCityList = splitCities;
-    if (multiCityList.length <= 1) {
-      const matchAfterTo = (prompt || "").match(/\bto\s+([^.\n]+)/i);
-      if (matchAfterTo && matchAfterTo[1]) {
-        const promptStops = matchAfterTo[1]
-          .split(/[,;\->|/]+|\band\b/i)
-          .map((s: string) => s.replace(/\b(trip|tour|package|itinerary|days?|nights?|budget|luxury|family)\b/gi, "").trim())
-          .filter((s: string) => s.length > 1 && s.toLowerCase() !== originCityName.toLowerCase());
-
-        if (promptStops.length > 1) {
-          multiCityList = promptStops;
-        }
-      }
-    }
-
-    if (multiCityList.length === 0) {
-      multiCityList = [destinationName];
-    }
-
-    // Departure City for return journey booking is set to whichever city the itinerary ends on for its final day (e.g. "Kumbhalgadh")
-    const finalDepartureCity = multiCityList[multiCityList.length - 1] || destinationName;
+    const multiCityList = resolvedCities.map((c) => c.name);
+    // Departure City for return journey booking is set to whichever city the itinerary ends on for its final day (e.g. "Mumbai")
+    const finalDepartureCity = resolvedCities[resolvedCities.length - 1]?.name || destinationName;
 
     // Distribute places and hotels across itinerary days
     const itineraryDays = [];
@@ -1047,7 +1089,7 @@ Guidelines:
     const accommodations = resolvedHotels.map((h, idx) => ({
       dayNumber: idx + 1,
       hotelName: h.name,
-      location: `${destinationName}, ${matchedCity?.country || "India"}`,
+      location: `${destinationName}, ${primaryCity?.country || "India"}`,
       checkInDate: startDateStr,
       checkOutDate: endDateStr,
       starRating: h.starRating || 4,
@@ -1171,7 +1213,7 @@ Guidelines:
           : budgetLevel === "budget"
           ? "Budget Explorer Plan"
           : "Premium Standard Plan",
-      destination: `${destinationName}, ${matchedCity?.country || "India"}`,
+      destination: resolvedCities.map((c) => `${c.name}, ${c.country || "India"}`).join(", "),
       departureCity: finalDepartureCity,
       coverImage: destinationCoverImage,
       startDate: startDateStr,
