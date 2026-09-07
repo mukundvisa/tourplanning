@@ -28,6 +28,7 @@ import { deleteTrip, getTripDetails, duplicateTrip } from "@/actions/trips";
 import { format } from "date-fns";
 import { DayWiseTripSummary, TripFullData } from "@/components/admin/DayWiseTripSummary";
 import { downloadTripPdf } from "@/lib/download-pdf";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 interface TripData {
   id: string;
@@ -108,29 +109,26 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
     );
   });
 
-  const handleDelete = async (tripId: string, title: string) => {
-    if (
-      !confirm(
-        `Are you absolutely sure you want to delete the trip "${title}"?\nThis will permanently delete all accommodations, flights, days, and addons.`
-      )
-    ) {
-      return;
-    }
-
-    setBusyTripId(tripId);
-    try {
-      const res = await deleteTrip(tripId);
-      if (res.success) {
-        setTrips((prev) => prev.filter((t) => t.id !== tripId));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete trip");
-      }
-    } catch (err) {
-      alert("Error deleting trip");
-    } finally {
-      setBusyTripId(null);
-    }
+  const handleDelete = (trip: TripData) => {
+    executeDeleteWithUndo<TripData>({
+      item: trip,
+      itemType: "Itinerary",
+      itemName: trip.title,
+      onOptimisticRemove: (t) => {
+        setTrips((prev) => prev.filter((item) => item.id !== t.id));
+      },
+      onUndo: (t) => {
+        setTrips((prev) => [t, ...prev.filter((item) => item.id !== t.id)]);
+      },
+      onPermanentDelete: async (t) => {
+        const res = await deleteTrip(t.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete itinerary");
+        }
+      },
+    });
   };
 
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
@@ -459,8 +457,7 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
                           <Edit className="h-4 w-4" />
                         </Link>
                         <button
-                          onClick={() => handleDelete(trip.id, trip.title)}
-                          disabled={isBusy}
+                          onClick={() => handleDelete(trip)}
                           className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 border border-transparent hover:border-red-100 cursor-pointer transition-all"
                           title="Delete Itinerary"
                         >

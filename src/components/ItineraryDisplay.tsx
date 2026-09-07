@@ -17,6 +17,8 @@ import {
   Briefcase, 
   ChevronDown, 
   ChevronUp, 
+  ChevronLeft,
+  ChevronRight,
   Info,
   DollarSign,
   Coffee,
@@ -436,140 +438,7 @@ export function ItineraryDisplay({ trip }: ItineraryDisplayProps) {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {trip.accommodations.map((acc: any, idx: number) => {
-                // Parse Checkin checkout dates
-                const stayDurationDays = Math.ceil((new Date(acc.checkOutDate).getTime() - new Date(acc.checkInDate).getTime()) / (1000 * 60 * 60 * 24));
-                const stayCover = acc.photos && acc.photos[0] ? acc.photos[0] : "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80";
-
-                // Parse nearby attractions JSON safely
-                let attractions = [];
-                try {
-                  attractions = typeof acc.nearbyAttractions === "string" 
-                    ? JSON.parse(acc.nearbyAttractions) 
-                    : acc.nearbyAttractions;
-                } catch(e) {}
-
-                // Parse restaurants
-                let restaurants = [];
-                try {
-                  restaurants = typeof acc.nearbyRestaurants === "string" 
-                    ? JSON.parse(acc.nearbyRestaurants) 
-                    : acc.nearbyRestaurants;
-                } catch(e) {}
-
-                return (
-                  <div 
-                    key={idx}
-                    className="flex flex-col bg-white border border-zinc-200 rounded-3xl overflow-hidden shadow-md"
-                  >
-                    {/* Stay Image Carousel preview */}
-                    <div className="relative aspect-video bg-zinc-100 w-full overflow-hidden">
-                      <img src={stayCover} alt={acc.hotelName} className="h-full w-full object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-                      
-                      {/* Photo indicator badge */}
-                      {acc.photos && acc.photos.length > 1 && (
-                        <div className="absolute top-3 right-3 bg-zinc-950/70 border border-zinc-800 px-2.5 py-0.5 rounded text-[10px] text-zinc-300 font-bold backdrop-blur-sm shadow-sm">
-                          1 / {acc.photos.length} Photos
-                        </div>
-                      )}
-
-                      <div className="absolute bottom-3 left-4">
-                        <span className="text-[10px] font-black uppercase bg-[#0DA590] text-white px-2.5 py-0.5 rounded shadow-sm">
-                          {stayDurationDays} Nights Stay
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Stay details content */}
-                    <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
-                      <div className="space-y-2.5">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="text-[10px] uppercase font-bold text-[#FF176B] tracking-wider">{acc.location}</span>
-                            <h3 className="font-extrabold text-lg text-[#1E3B39] mt-0.5 leading-snug">{acc.hotelName}</h3>
-                          </div>
-                          
-                          {/* Rating score badge */}
-                          {acc.ratingScore && (
-                            <div className="text-right">
-                              <span className="inline-flex items-center text-xs font-bold bg-[#0DA590]/10 text-[#0DA590] border border-[#0DA590]/20 px-2 py-0.5 rounded">
-                                {acc.ratingScore}★
-                              </span>
-                              <p className="text-[9px] text-zinc-450 font-bold mt-0.5 uppercase tracking-wide">{acc.ratingLabel || "Guest score"}</p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Room details */}
-                        <div className="grid grid-cols-2 gap-2 text-xs py-2 border-t border-b border-zinc-100 text-zinc-500 font-medium">
-                          <div>
-                            <p className="text-zinc-400 text-[9px] uppercase font-bold">Star Category</p>
-                            <div className="flex items-center space-x-0.5 mt-0.5 text-amber-500">
-                              {Array.from({ length: acc.starRating }).map((_, i) => (
-                                <Star key={i} className="h-3 w-3 fill-amber-500" />
-                              ))}
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-zinc-400 text-[9px] uppercase font-bold">Meal Plan Included</p>
-                            <p className="font-bold mt-0.5 text-[#1E3B39]">{acc.mealPlan}</p>
-                          </div>
-                          <div className="col-span-2 mt-1">
-                            <p className="text-zinc-400 text-[9px] uppercase font-bold">Room Category</p>
-                            <p className="font-bold text-[#1E3B39]">{acc.roomType}</p>
-                          </div>
-                        </div>
-
-                        {/* Hotel facilities list */}
-                        {acc.facilities && acc.facilities.length > 0 && (
-                          <div className="py-1">
-                            <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mb-1.5">Stay Amenities</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {acc.facilities.map((fac: string, fIdx: number) => (
-                                <span key={fIdx} className="text-[10px] px-2.5 py-0.5 rounded-full bg-[#FAF8F5] text-zinc-600 border border-zinc-200 font-medium">
-                                  {fac}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Nearby Locations JSON grid */}
-                      {((attractions && attractions.length > 0) || (restaurants && restaurants.length > 0)) && (
-                        <div className="grid grid-cols-2 gap-4 pt-3 border-t border-zinc-100 text-[11px] font-medium text-zinc-500">
-                          {/* Landmarks */}
-                          {attractions && attractions.length > 0 && (
-                            <div>
-                              <p className="text-zinc-400 font-bold uppercase mb-1 text-[9px]">Nearby Attractions</p>
-                              <ul className="space-y-1">
-                                {attractions.map((item: any, i: number) => (
-                                  <li key={i} className="truncate">
-                                    &bull; {item.name} ({item.distanceKm} km)
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          
-                          {/* Nearby Restaurants */}
-                          {restaurants && restaurants.length > 0 && (
-                            <div>
-                              <p className="text-zinc-400 font-bold uppercase mb-1 text-[9px]">Nearby Dining</p>
-                              <ul className="space-y-1">
-                                {restaurants.map((item: any, i: number) => (
-                                  <li key={i} className="truncate">
-                                    &bull; {item.name} ({item.distance})
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
+                return <HotelCardGalleryItem key={idx} acc={acc} />;
               })}
             </div>
           )}
@@ -819,3 +688,238 @@ export function ItineraryDisplay({ trip }: ItineraryDisplayProps) {
     </div>
   );
 }
+
+function HotelCardGalleryItem({ acc }: { acc: any }) {
+  const [photoIndex, setPhotoIndex] = useState(0);
+
+  const photosList: string[] =
+    Array.isArray(acc.photos) && acc.photos.length > 0
+      ? acc.photos
+      : ["https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80"];
+
+  const currentPhoto = photosList[photoIndex] || photosList[0];
+
+  const stayDurationDays = Math.ceil(
+    (new Date(acc.checkOutDate).getTime() - new Date(acc.checkInDate).getTime()) /
+      (1000 * 60 * 60 * 24)
+  );
+
+  // Parse nearby attractions JSON safely
+  let attractions = [];
+  try {
+    attractions =
+      typeof acc.nearbyAttractions === "string"
+        ? JSON.parse(acc.nearbyAttractions)
+        : acc.nearbyAttractions;
+  } catch (e) {}
+
+  // Parse restaurants
+  let restaurants = [];
+  try {
+    restaurants =
+      typeof acc.nearbyRestaurants === "string"
+        ? JSON.parse(acc.nearbyRestaurants)
+        : acc.nearbyRestaurants;
+  } catch (e) {}
+
+  return (
+    <div className="flex flex-col bg-white border border-zinc-200 rounded-3xl overflow-hidden shadow-md group">
+      {/* Stay Image Carousel preview */}
+      <div className="relative aspect-video bg-zinc-100 w-full overflow-hidden select-none">
+        <img
+          src={currentPhoto}
+          alt={`${acc.hotelName} photo ${photoIndex + 1}`}
+          className="h-full w-full object-cover transition-all duration-300"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+        {/* Carousel Prev/Next Buttons */}
+        {photosList.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPhotoIndex((prev) => (prev === 0 ? photosList.length - 1 : prev - 1));
+              }}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-md"
+              title="Previous Photo"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPhotoIndex((prev) => (prev === photosList.length - 1 ? 0 : prev + 1));
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-xs transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-md"
+              title="Next Photo"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </>
+        )}
+
+        {/* Photo indicator & Mini Thumbnail Strip */}
+        {photosList.length > 1 && (
+          <div className="absolute top-3 right-3 flex items-center space-x-1.5">
+            <span className="bg-zinc-950/70 border border-zinc-800 px-2.5 py-0.5 rounded text-[10px] text-zinc-350 font-bold backdrop-blur-sm shadow-sm">
+              {photoIndex + 1} / {photosList.length} Photos
+            </span>
+          </div>
+        )}
+
+        {/* Duration badge */}
+        <div className="absolute bottom-3 left-4 flex items-center space-x-2">
+          <span className="text-[10px] font-black uppercase bg-[#0DA590] text-white px-2.5 py-0.5 rounded shadow-sm">
+            {stayDurationDays} Nights Stay
+          </span>
+        </div>
+
+        {/* Dot Indicators */}
+        {photosList.length > 1 && (
+          <div className="absolute bottom-3 right-4 flex items-center space-x-1">
+            {photosList.map((_, pIdx) => (
+              <button
+                key={pIdx}
+                type="button"
+                onClick={() => setPhotoIndex(pIdx)}
+                className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                  pIdx === photoIndex
+                    ? "w-4 bg-white"
+                    : "w-1.5 bg-white/50 hover:bg-white/80"
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Small thumbnails row under carousel if > 1 photo */}
+      {photosList.length > 1 && (
+        <div className="px-4 py-2 bg-zinc-50 border-b border-zinc-100 flex items-center space-x-2 overflow-x-auto">
+          {photosList.map((pUrl, pIdx) => (
+            <button
+              key={pIdx}
+              type="button"
+              onClick={() => setPhotoIndex(pIdx)}
+              className={`relative h-11 w-16 rounded-md overflow-hidden shrink-0 border-2 transition-all cursor-pointer ${
+                pIdx === photoIndex
+                  ? "border-[#0DA590] shadow-xs scale-105"
+                  : "border-transparent opacity-70 hover:opacity-100"
+              }`}
+            >
+              <img src={pUrl} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Stay details content */}
+      <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
+        <div className="space-y-2.5">
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#FF176B] tracking-wider">
+                {acc.location}
+              </span>
+              <h3 className="font-extrabold text-lg text-[#1E3B39] mt-0.5 leading-snug">
+                {acc.hotelName}
+              </h3>
+            </div>
+
+            {/* Rating score badge */}
+            {acc.ratingScore && (
+              <div className="text-right">
+                <span className="inline-flex items-center text-xs font-bold bg-[#0DA590]/10 text-[#0DA590] border border-[#0DA590]/20 px-2 py-0.5 rounded">
+                  {acc.ratingScore}★
+                </span>
+                <p className="text-[9px] text-zinc-450 font-bold mt-0.5 uppercase tracking-wide">
+                  {acc.ratingLabel || "Guest score"}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Room details */}
+          <div className="grid grid-cols-2 gap-2 text-xs py-2 border-t border-b border-zinc-100 text-zinc-500 font-medium">
+            <div>
+              <p className="text-zinc-400 text-[9px] uppercase font-bold">Star Category</p>
+              <div className="flex items-center space-x-0.5 mt-0.5 text-amber-500">
+                {Array.from({ length: acc.starRating || 4 }).map((_, i) => (
+                  <Star key={i} className="h-3 w-3 fill-amber-500" />
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-zinc-400 text-[9px] uppercase font-bold">Meal Plan Included</p>
+              <p className="font-bold mt-0.5 text-[#1E3B39]">{acc.mealPlan}</p>
+            </div>
+            <div className="col-span-2 mt-1">
+              <p className="text-zinc-400 text-[9px] uppercase font-bold">Room Category</p>
+              <p className="font-bold text-[#1E3B39]">{acc.roomType}</p>
+            </div>
+          </div>
+
+          {/* Hotel facilities list */}
+          {acc.facilities && acc.facilities.length > 0 && (
+            <div className="py-1">
+              <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mb-1.5">
+                Stay Amenities
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {acc.facilities.map((fac: string, fIdx: number) => (
+                  <span
+                    key={fIdx}
+                    className="text-[10px] px-2.5 py-0.5 rounded-full bg-[#FAF8F5] text-zinc-600 border border-zinc-200 font-medium"
+                  >
+                    {fac}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Nearby Locations JSON grid */}
+        {((attractions && attractions.length > 0) || (restaurants && restaurants.length > 0)) && (
+          <div className="grid grid-cols-2 gap-4 pt-3 border-t border-zinc-100 text-[11px] font-medium text-zinc-500">
+            {/* Landmarks */}
+            {attractions && attractions.length > 0 && (
+              <div>
+                <p className="text-zinc-400 font-bold uppercase mb-1 text-[9px]">
+                  Nearby Attractions
+                </p>
+                <ul className="space-y-1">
+                  {attractions.map((item: any, i: number) => (
+                    <li key={i} className="truncate">
+                      &bull; {item.name} ({item.distanceKm} km)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Nearby Restaurants */}
+            {restaurants && restaurants.length > 0 && (
+              <div>
+                <p className="text-zinc-400 font-bold uppercase mb-1 text-[9px]">
+                  Nearby Dining
+                </p>
+                <ul className="space-y-1">
+                  {restaurants.map((item: any, i: number) => (
+                    <li key={i} className="truncate">
+                      &bull; {item.name} ({item.distance})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+

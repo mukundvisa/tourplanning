@@ -8,6 +8,7 @@ import {
   deleteMasterTitleTemplate,
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 interface TitleTemplateItem {
   id: string;
@@ -22,7 +23,6 @@ export function TitleTemplatesTab({ initialData }: { initialData: TitleTemplateI
   const [editingItem, setEditingItem] = useState<TitleTemplateItem | null>(null);
   const [titleValue, setTitleValue] = useState("");
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const filtered = data.filter((t) =>
     t.title.toLowerCase().includes(search.toLowerCase())
@@ -71,20 +71,26 @@ export function TitleTemplatesTab({ initialData }: { initialData: TitleTemplateI
     }
   };
 
-  const handleDelete = async (id: string, title: string) => {
-    if (!confirm(`Are you sure you want to delete title "${title}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterTitleTemplate(id);
-      if (res.success) {
-        setData((prev) => prev.filter((t) => t.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete title template");
-      }
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (item: TitleTemplateItem) => {
+    executeDeleteWithUndo<TitleTemplateItem>({
+      item,
+      itemType: "Title Template",
+      itemName: item.title,
+      onOptimisticRemove: (t) => {
+        setData((prev) => prev.filter((item) => item.id !== t.id));
+      },
+      onUndo: (t) => {
+        setData((prev) => [t, ...prev.filter((item) => item.id !== t.id)]);
+      },
+      onPermanentDelete: async (t) => {
+        const res = await deleteMasterTitleTemplate(t.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete title template");
+        }
+      },
+    });
   };
 
   return (
@@ -149,15 +155,11 @@ export function TitleTemplatesTab({ initialData }: { initialData: TitleTemplateI
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
                       <button
-                        onClick={() => handleDelete(item.id, item.title)}
-                        disabled={deletingId === item.id}
+                        onClick={() => handleDelete(item)}
                         className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
+                        title="Delete title template"
                       >
-                        {deletingId === item.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </td>

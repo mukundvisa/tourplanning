@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, BedDouble, Star, MapPin, X, Loader2, UploadCloud, Image as ImageIcon } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, BedDouble, Star, MapPin, X, Loader2, UploadCloud, Image as ImageIcon, Sparkles, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { createMasterHotel, updateMasterHotel, deleteMasterHotel } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { Pagination } from "./Pagination";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 interface HotelItem {
   id: string;
@@ -41,8 +43,13 @@ export function HotelsTab({
   const [data, setData] = useState<HotelItem[]>(initialData);
   const [selectedCityId, setSelectedCityId] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 8;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<HotelItem | null>(null);
+  const [viewGalleryHotel, setViewGalleryHotel] = useState<HotelItem | null>(null);
+  const [activeGalleryCategory, setActiveGalleryCategory] = useState<string>("all");
 
   // Form State
   const [formData, setFormData] = useState({
@@ -203,20 +210,26 @@ export function HotelsTab({
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete hotel "${name}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterHotel(id);
-      if (res.success) {
-        setData((prev) => prev.filter((h) => h.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete hotel");
-      }
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (hotel: HotelItem) => {
+    executeDeleteWithUndo<HotelItem>({
+      item: hotel,
+      itemType: "Hotel",
+      itemName: hotel.name,
+      onOptimisticRemove: (h) => {
+        setData((prev) => prev.filter((item) => item.id !== h.id));
+      },
+      onUndo: (h) => {
+        setData((prev) => [h, ...prev.filter((item) => item.id !== h.id)]);
+      },
+      onPermanentDelete: async (h) => {
+        const res = await deleteMasterHotel(h.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete hotel");
+        }
+      },
+    });
   };
 
   return (
@@ -246,7 +259,10 @@ export function HotelsTab({
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
             placeholder="Search hotels by property name, city..."
             className="w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
           />
@@ -254,7 +270,10 @@ export function HotelsTab({
 
         <select
           value={selectedCityId}
-          onChange={(e) => setSelectedCityId(e.target.value)}
+          onChange={(e) => {
+            setSelectedCityId(e.target.value);
+            setCurrentPage(1);
+          }}
           className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
         >
           <option value="all">📍 All Destinations & Cities</option>
@@ -266,112 +285,222 @@ export function HotelsTab({
         </select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filtered.length === 0 ? (
-          <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
-            No hotels found. Click "Add Master Hotel" to create one.
-          </div>
-        ) : (
-          filtered.map((hotel) => (
-            <div
-              key={hotel.id}
-              className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card flex flex-col justify-between space-y-4 hover:shadow-md transition-all"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-2">
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {filtered.length === 0 ? (
+            <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+              No hotels found. Click "Add Master Hotel" to create one.
+            </div>
+          ) : (
+            filtered
+              .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+              .map((hotel) => (
+                <div
+                  key={hotel.id}
+                  className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card flex flex-col justify-between space-y-4 hover:shadow-md transition-all"
+                >
                   <div>
-                    <h3 className="text-sm font-bold text-[#14213D] line-clamp-1">
-                      {hotel.name}
-                    </h3>
-                    <div className="flex items-center space-x-2 text-[11px] text-zinc-500 mt-1">
-                      {hotel.city && (
-                        <span className="flex items-center font-semibold text-[#B8944F]">
-                          <MapPin className="h-3 w-3 mr-1" />
-                          {hotel.city.name}, {hotel.city.country}
-                        </span>
-                      )}
-                      <span className="flex items-center text-amber-500 font-bold">
-                        <Star className="h-3 w-3 fill-amber-500 mr-0.5" />
-                        {hotel.starRating} Star
-                      </span>
-                      {hotel.guestScore && (
-                        <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded font-bold text-[10px]">
-                          {hotel.guestScore}★ ({hotel.guestScoreLabel || "Superb"})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-1 shrink-0">
-                    <button
-                      onClick={() => openEdit(hotel)}
-                      className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(hotel.id, hotel.name)}
-                      disabled={deletingId === hotel.id}
-                      className="p-1 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
-                    >
-                      {deletingId === hotel.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Pricing Badges */}
-                <div className="flex items-center gap-2 my-2.5">
-                  <span className="inline-flex items-center text-[11px] font-bold px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    💰 ₹{(hotel.pricePerNight || 0).toLocaleString()} / night
-                  </span>
-                  <span className="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
-                    👤 ₹{(hotel.pricePerPerson || 0).toLocaleString()} / person
-                  </span>
-                </div>
-
-                {/* Photos preview */}
-                {hotel.photos && hotel.photos.length > 0 && (
-                  <div className="flex space-x-2 overflow-x-auto py-2">
-                    {hotel.photos.slice(0, 3).map((p, idx) => (
-                      <div
-                        key={idx}
-                        className="h-16 w-24 rounded-lg overflow-hidden shrink-0 border border-zinc-200"
-                      >
-                        <img src={p} alt="Photo" className="h-full w-full object-cover" />
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <h3 className="text-sm font-bold text-[#14213D] line-clamp-1">
+                          {hotel.name}
+                        </h3>
+                        <div className="flex items-center space-x-2 text-[11px] text-zinc-500 mt-1">
+                          {hotel.city && (
+                            <span className="flex items-center font-semibold text-[#B8944F]">
+                              <MapPin className="h-3 w-3 mr-1" />
+                              {hotel.city.name}, {hotel.city.country}
+                            </span>
+                          )}
+                          <span className="flex items-center text-amber-500 font-bold">
+                            <Star className="h-3 w-3 fill-amber-500 mr-0.5" />
+                            {hotel.starRating} Star
+                          </span>
+                          {hotel.guestScore && (
+                            <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded font-bold text-[10px]">
+                              {hotel.guestScore}★ ({hotel.guestScoreLabel || "Superb"})
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                    {hotel.photos.length > 3 && (
-                      <div className="h-16 w-16 rounded-lg bg-zinc-100 flex items-center justify-center text-xs font-bold text-zinc-500 shrink-0">
-                        +{hotel.photos.length - 3}
+
+                      <div className="flex items-center space-x-1 shrink-0">
+                        <button
+                          onClick={() => openEdit(hotel)}
+                          className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                          title="Edit Hotel"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(hotel)}
+                          className="p-1 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
+                          title="Delete Hotel"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Pricing Badges */}
+                    <div className="flex items-center gap-2 my-2.5">
+                      <span className="inline-flex items-center text-[11px] font-bold px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        💰 ₹{(hotel.pricePerNight || 0).toLocaleString()} / night
+                      </span>
+                      <span className="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                        👤 ₹{(hotel.pricePerPerson || 0).toLocaleString()} / person
+                      </span>
+                    </div>
+
+                    {/* Photos preview & Categorized Gallery trigger */}
+                    {hotel.photos && hotel.photos.length > 0 && (
+                      <div className="space-y-1.5 py-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                            Photo Gallery ({hotel.photos.length})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setViewGalleryHotel(hotel);
+                              setActiveGalleryCategory("all");
+                            }}
+                            className="inline-flex items-center space-x-1 text-[10px] font-bold text-[#B8944F] hover:text-[#8F6F33] cursor-pointer"
+                          >
+                            <Eye className="h-3 w-3" />
+                            <span>View Categorized Photos</span>
+                          </button>
+                        </div>
+                        <div className="flex space-x-2 overflow-x-auto py-1">
+                          {hotel.photos.slice(0, 4).map((p, idx) => (
+                            <div
+                              key={idx}
+                              onClick={() => {
+                                setViewGalleryHotel(hotel);
+                                setActiveGalleryCategory("all");
+                              }}
+                              className="h-16 w-24 rounded-lg overflow-hidden shrink-0 border border-zinc-200 cursor-pointer hover:opacity-90 transition-opacity"
+                            >
+                              <img src={p} alt="Photo" className="h-full w-full object-cover" />
+                            </div>
+                          ))}
+                          {hotel.photos.length > 4 && (
+                            <div
+                              onClick={() => {
+                                setViewGalleryHotel(hotel);
+                                setActiveGalleryCategory("all");
+                              }}
+                              className="h-16 w-16 rounded-lg bg-zinc-100 flex items-center justify-center text-xs font-bold text-zinc-500 shrink-0 cursor-pointer hover:bg-zinc-200"
+                            >
+                              +{hotel.photos.length - 4}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
-                  </div>
-                )}
 
-                {/* Scoped Room Types & Meal Plans */}
-                <div className="space-y-1.5 pt-3 border-t border-zinc-100 text-[11px]">
-                  <div>
-                    <span className="font-semibold text-[#14213D]">Room Types: </span>
-                    <span className="text-zinc-600">
-                      {hotel.roomTypes?.join(", ") || "Standard"}
-                    </span>
+                    {/* Scoped Room Types & Meal Plans */}
+                    <div className="space-y-1.5 pt-3 border-t border-zinc-100 text-[11px]">
+                      <div>
+                        <span className="font-semibold text-[#14213D]">Room Types: </span>
+                        <span className="text-zinc-600">
+                          {hotel.roomTypes?.join(", ") || "Standard"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-[#14213D]">Meal Plans: </span>
+                        <span className="text-zinc-600">
+                          {hotel.mealPlans?.join(", ") || "CP"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-semibold text-[#14213D]">Meal Plans: </span>
-                    <span className="text-zinc-600">
-                      {hotel.mealPlans?.join(", ") || "CP"}
+                </div>
+              ))
+          )}
+        </div>
+
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filtered.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+        />
+      </div>
+
+      {/* Categorized Photo Gallery Modal */}
+      {viewGalleryHotel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-3xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 mb-4">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#B8944F]/10 text-[#B8944F]">
+                    Authentic Photos
+                  </span>
+                  <h3 className="text-base font-bold text-[#14213D] font-fraunces">
+                    {viewGalleryHotel.name}
+                  </h3>
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Categorized web and hotel property photos ({viewGalleryHotel.photos.length} total)
+                </p>
+              </div>
+              <button
+                onClick={() => setViewGalleryHotel(null)}
+                className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Category Filter Tabs */}
+            <div className="flex flex-wrap gap-1.5 pb-4 border-b border-zinc-100 mb-4">
+              {[
+                { id: "all", label: `All Photos (${viewGalleryHotel.photos.length})` },
+                { id: "exterior", label: "🏛️ Exterior & Facade" },
+                { id: "lobby", label: "🛋️ Lobby & Reception" },
+                { id: "rooms", label: "🛏️ Rooms & Suites" },
+                { id: "bath", label: "🚿 Bathrooms" },
+                { id: "facilities", label: "🏊 Amenities & Pool" },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveGalleryCategory(cat.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                    activeGalleryCategory === cat.id
+                      ? "bg-[#14213D] text-[#DDA74F] shadow-xs"
+                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Photos Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {viewGalleryHotel.photos.map((photo, i) => (
+                <div
+                  key={i}
+                  className="group relative rounded-lg overflow-hidden border border-zinc-200 bg-zinc-100 aspect-4/3"
+                >
+                  <img
+                    src={photo}
+                    alt={`${viewGalleryHotel.name} Photo ${i + 1}`}
+                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
+                    <span className="text-[10px] text-white font-medium">
+                      Photo #{i + 1}
                     </span>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))
-        )}
-      </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {modalOpen && (

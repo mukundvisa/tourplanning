@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, User, Phone, Mail, MapPin, X, Loader2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, User, Phone, Mail, MapPin, X, Loader2, Filter } from "lucide-react";
 import { createMasterConsultant, updateMasterConsultant, deleteMasterConsultant } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { Pagination } from "./Pagination";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 export interface ConsultantItem {
   id: string;
@@ -23,6 +25,10 @@ export function ConsultantsTab({
   const router = useRouter();
   const [data, setData] = useState<ConsultantItem[]>(initialData);
   const [search, setSearch] = useState("");
+  const [selectedCity, setSelectedCity] = useState<string>("ALL");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 8;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ConsultantItem | null>(null);
   const [formData, setFormData] = useState({
@@ -34,13 +40,32 @@ export function ConsultantsTab({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = data.filter(
-    (c) =>
+  const filtered = data.filter((c) => {
+    const matchesSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search) ||
       (c.departureCity && c.departureCity.toLowerCase().includes(search.toLowerCase())) ||
-      (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
-  );
+      (c.email && c.email.toLowerCase().includes(search.toLowerCase()));
+    const matchesCity =
+      selectedCity === "ALL"
+        ? true
+        : selectedCity === "NONE"
+        ? !c.departureCity
+        : c.departureCity === selectedCity;
+    return matchesSearch && matchesCity;
+  });
+
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleCityFilterChange = (val: string) => {
+    setSelectedCity(val);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setCurrentPage(1);
+  };
 
   const openCreate = () => {
     setEditingItem(null);
@@ -88,20 +113,26 @@ export function ConsultantsTab({
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete consultant "${name}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterConsultant(id);
-      if (res.success) {
-        setData((prev) => prev.filter((c) => c.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete consultant");
-      }
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (consultant: ConsultantItem) => {
+    executeDeleteWithUndo<ConsultantItem>({
+      item: consultant,
+      itemType: "Consultant",
+      itemName: consultant.name,
+      onOptimisticRemove: (c) => {
+        setData((prev) => prev.filter((item) => item.id !== c.id));
+      },
+      onUndo: (c) => {
+        setData((prev) => [c, ...prev.filter((item) => item.id !== c.id)]);
+      },
+      onPermanentDelete: async (c) => {
+        const res = await deleteMasterConsultant(c.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete consultant");
+        }
+      },
+    });
   };
 
   return (
@@ -124,15 +155,38 @@ export function ConsultantsTab({
         </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-        <input
-          type="text"
-          placeholder="Search by advisor name, assigned departure city, phone, or email..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
-        />
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <input
+            type="text"
+            placeholder="Search by advisor name, assigned departure city, phone, or email..."
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+          />
+        </div>
+
+        <div className="w-full sm:w-64 relative">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
+          <select
+            value={selectedCity}
+            onChange={(e) => handleCityFilterChange(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-700 font-medium focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] appearance-none cursor-pointer"
+          >
+            <option value="ALL">All Departure Cities ({data.length})</option>
+            <option value="NONE">Unassigned / All Hubs</option>
+            {cities.map((city: any) => {
+              const name = city.name || city;
+              const count = data.filter((c) => c.departureCity === name).length;
+              return (
+                <option key={city.id || name} value={name}>
+                  {name} {count > 0 ? `• ${count}` : ""}
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
 
       <div className="bg-white border border-[#B8944F]/20 rounded-lg overflow-hidden craft-card">
@@ -148,14 +202,14 @@ export function ConsultantsTab({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {filtered.length === 0 ? (
+              {paginated.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-zinc-400 text-xs">
-                    No consultants found.
+                    No consultants found matching filter criteria.
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => (
+                paginated.map((item) => (
                   <tr key={item.id} className="hover:bg-zinc-50/70 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#14213D] flex items-center">
                       <div className="h-7 w-7 rounded-full bg-[#B8944F]/15 text-[#B8944F] font-bold flex items-center justify-center mr-2.5 text-xs">
@@ -198,15 +252,11 @@ export function ConsultantsTab({
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDelete(item.id, item.name)}
-                          disabled={deletingId === item.id}
+                          onClick={() => handleDelete(item)}
                           className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
+                          title="Delete Consultant"
                         >
-                          {deletingId === item.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -217,6 +267,13 @@ export function ConsultantsTab({
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filtered.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+      />
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">

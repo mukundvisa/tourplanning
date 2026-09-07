@@ -9,6 +9,7 @@ import {
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
 import { RichTextEditor } from "../RichTextEditor";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 export interface PolicyTemplateItem {
   id: string;
@@ -35,7 +36,6 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
   });
 
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const filtered = data.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
@@ -96,20 +96,26 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete policy template "${name}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterPolicyTemplate(id);
-      if (res.success) {
-        setData((prev) => prev.filter((p) => p.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete policy template");
-      }
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (policy: PolicyTemplateItem) => {
+    executeDeleteWithUndo<PolicyTemplateItem>({
+      item: policy,
+      itemType: "Policy Template",
+      itemName: policy.name,
+      onOptimisticRemove: (p) => {
+        setData((prev) => prev.filter((item) => item.id !== p.id));
+      },
+      onUndo: (p) => {
+        setData((prev) => [p, ...prev.filter((item) => item.id !== p.id)]);
+      },
+      onPermanentDelete: async (p) => {
+        const res = await deleteMasterPolicyTemplate(p.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete policy template");
+        }
+      },
+    });
   };
 
   return (
@@ -168,15 +174,11 @@ export function PolicyTemplatesTab({ initialData }: { initialData: PolicyTemplat
                       <Edit2 className="h-3.5 w-3.5" />
                     </button>
                     <button
-                      onClick={() => handleDelete(item.id, item.name)}
-                      disabled={deletingId === item.id}
+                      onClick={() => handleDelete(item)}
                       className="p-1 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
+                      title="Delete policy template"
                     >
-                      {deletingId === item.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>

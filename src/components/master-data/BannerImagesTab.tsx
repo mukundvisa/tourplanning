@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, Image as ImageIcon, MapPin, X, Loader2, UploadCloud } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Image as ImageIcon, MapPin, X, Loader2, UploadCloud, Filter } from "lucide-react";
 import {
   createMasterBannerImage,
   updateMasterBannerImage,
   deleteMasterBannerImage,
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { Pagination } from "./Pagination";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 interface BannerImageItem {
   id: string;
@@ -46,11 +48,35 @@ export function BannerImagesTab({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = data.filter(
-    (b) =>
+  const [selectedCityId, setSelectedCityId] = useState<string>("ALL");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 6;
+
+  const filtered = data.filter((b) => {
+    const matchesSearch =
       b.label.toLowerCase().includes(search.toLowerCase()) ||
-      (b.destinationCity && b.destinationCity.name.toLowerCase().includes(search.toLowerCase()))
-  );
+      (b.destinationCity && b.destinationCity.name.toLowerCase().includes(search.toLowerCase()));
+    const matchesCity =
+      selectedCityId === "ALL"
+        ? true
+        : selectedCityId === "NONE"
+        ? !b.destinationCityId
+        : b.destinationCityId === selectedCityId;
+    return matchesSearch && matchesCity;
+  });
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleCityChange = (val: string) => {
+    setSelectedCityId(val);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setCurrentPage(1);
+  };
 
   const openCreate = () => {
     setEditingItem(null);
@@ -136,20 +162,26 @@ export function BannerImagesTab({
     }
   };
 
-  const handleDelete = async (id: string, label: string) => {
-    if (!confirm(`Are you sure you want to delete banner image "${label}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterBannerImage(id);
-      if (res.success) {
-        setData((prev) => prev.filter((b) => b.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete banner");
-      }
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (banner: BannerImageItem) => {
+    executeDeleteWithUndo<BannerImageItem>({
+      item: banner,
+      itemType: "Banner Image",
+      itemName: banner.label,
+      onOptimisticRemove: (b) => {
+        setData((prev) => prev.filter((item) => item.id !== b.id));
+      },
+      onUndo: (b) => {
+        setData((prev) => [b, ...prev.filter((item) => item.id !== b.id)]);
+      },
+      onPermanentDelete: async (b) => {
+        const res = await deleteMasterBannerImage(b.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete banner");
+        }
+      },
+    });
   };
 
   return (
@@ -172,24 +204,46 @@ export function BannerImagesTab({
         </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-        <input
-          type="text"
-          placeholder="Search banner library..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
-        />
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <input
+            type="text"
+            placeholder="Search banner library..."
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+          />
+        </div>
+
+        <div className="w-full sm:w-64 relative">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
+          <select
+            value={selectedCityId}
+            onChange={(e) => handleCityChange(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-700 font-medium focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] appearance-none cursor-pointer"
+          >
+            <option value="ALL">All Destination Cities ({data.length})</option>
+            <option value="NONE">Unassigned / Global</option>
+            {cities.map((city) => {
+              const count = data.filter((b) => b.destinationCityId === city.id).length;
+              return (
+                <option key={city.id} value={city.id}>
+                  {city.name} ({city.country}) {count > 0 ? `• ${count}` : ""}
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filtered.length === 0 ? (
+        {paginated.length === 0 ? (
           <div className="col-span-3 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
-            No banner images found.
+            No banner images found matching your filter criteria.
           </div>
         ) : (
-          filtered.map((b) => (
+          paginated.map((b) => (
             <div
               key={b.id}
               className="bg-white border border-[#B8944F]/20 rounded-lg overflow-hidden craft-card flex flex-col justify-between hover:shadow-md transition-all group"
@@ -223,15 +277,11 @@ export function BannerImagesTab({
                     <Edit2 className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleDelete(b.id, b.label)}
-                    disabled={deletingId === b.id}
+                    onClick={() => handleDelete(b)}
                     className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
+                    title="Delete Banner Image"
                   >
-                    {deletingId === b.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -239,6 +289,13 @@ export function BannerImagesTab({
           ))
         )}
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filtered.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+      />
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">

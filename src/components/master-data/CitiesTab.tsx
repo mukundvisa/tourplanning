@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, MapPin, X, Loader2 } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Plus, Search, Edit2, Trash2, MapPin, X, Loader2, Filter, Globe } from "lucide-react";
 import { createMasterCity, updateMasterCity, deleteMasterCity } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { Pagination } from "./Pagination";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 interface CityItem {
   id: string;
@@ -16,18 +18,68 @@ export function CitiesTab({ initialData }: { initialData: CityItem[] }) {
   const router = useRouter();
   const [data, setData] = useState<CityItem[]>(initialData);
   const [search, setSearch] = useState("");
+  const [selectedCountry, setSelectedCountry] = useState<string>("ALL");
+  const [selectedState, setSelectedState] = useState<string>("ALL");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 10;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CityItem | null>(null);
   const [formData, setFormData] = useState({ name: "", state: "", country: "India" });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = data.filter(
-    (c) =>
+  // Distinct countries list
+  const countries = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach((c) => {
+      if (c.country && c.country.trim()) set.add(c.country.trim());
+    });
+    return Array.from(set).sort();
+  }, [data]);
+
+  // Distinct states list (filtered by selected country if set)
+  const states = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach((c) => {
+      if (
+        (selectedCountry === "ALL" || c.country === selectedCountry) &&
+        c.state &&
+        c.state.trim()
+      ) {
+        set.add(c.state.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [data, selectedCountry]);
+
+  const filtered = data.filter((c) => {
+    const matchesSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.state.toLowerCase().includes(search.toLowerCase()) ||
-      c.country.toLowerCase().includes(search.toLowerCase())
-  );
+      c.country.toLowerCase().includes(search.toLowerCase());
+    const matchesCountry = selectedCountry === "ALL" || c.country === selectedCountry;
+    const matchesState = selectedState === "ALL" || c.state === selectedState;
+    return matchesSearch && matchesCountry && matchesState;
+  });
+
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleCountryChange = (val: string) => {
+    setSelectedCountry(val);
+    setSelectedState("ALL");
+    setCurrentPage(1);
+  };
+
+  const handleStateChange = (val: string) => {
+    setSelectedState(val);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setCurrentPage(1);
+  };
 
   const openCreate = () => {
     setEditingItem(null);
@@ -70,20 +122,26 @@ export function CitiesTab({ initialData }: { initialData: CityItem[] }) {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete city "${name}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterCity(id);
-      if (res.success) {
-        setData((prev) => prev.filter((c) => c.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete city");
-      }
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (city: CityItem) => {
+    executeDeleteWithUndo<CityItem>({
+      item: city,
+      itemType: "City",
+      itemName: `${city.name} (${city.country})`,
+      onOptimisticRemove: (c) => {
+        setData((prev) => prev.filter((item) => item.id !== c.id));
+      },
+      onUndo: (c) => {
+        setData((prev) => [c, ...prev.filter((item) => item.id !== c.id)]);
+      },
+      onPermanentDelete: async (c) => {
+        const res = await deleteMasterCity(c.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete city");
+        }
+      },
+    });
   };
 
   return (
@@ -107,16 +165,62 @@ export function CitiesTab({ initialData }: { initialData: CityItem[] }) {
         </button>
       </div>
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-        <input
-          type="text"
-          placeholder="Search by city name, state, or country..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
-        />
+      {/* Filter & Search Bar */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <input
+            type="text"
+            placeholder="Search by city name, state, or country..."
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+          />
+        </div>
+
+        {/* Country Filter */}
+        <div className="w-full sm:w-52 relative">
+          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
+          <select
+            value={selectedCountry}
+            onChange={(e) => handleCountryChange(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-700 font-medium focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] appearance-none cursor-pointer"
+          >
+            <option value="ALL">All Countries ({countries.length})</option>
+            {countries.map((country) => {
+              const count = data.filter((c) => c.country === country).length;
+              return (
+                <option key={country} value={country}>
+                  {country} ({count})
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        {/* State Filter */}
+        <div className="w-full sm:w-52 relative">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
+          <select
+            value={selectedState}
+            onChange={(e) => handleStateChange(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-xs text-zinc-700 font-medium focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] appearance-none cursor-pointer"
+          >
+            <option value="ALL">All States / Regions ({states.length})</option>
+            {states.map((st) => {
+              const count = data.filter(
+                (c) =>
+                  (selectedCountry === "ALL" || c.country === selectedCountry) &&
+                  c.state === st
+              ).length;
+              return (
+                <option key={st} value={st}>
+                  {st} ({count})
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
 
       {/* Table List */}
@@ -132,20 +236,20 @@ export function CitiesTab({ initialData }: { initialData: CityItem[] }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {filtered.length === 0 ? (
+              {paginated.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-8 text-center text-zinc-400 text-xs">
-                    No cities found matching query.
+                    No cities found matching filter criteria.
                   </td>
                 </tr>
               ) : (
-                filtered.map((city) => (
+                paginated.map((city) => (
                   <tr key={city.id} className="hover:bg-zinc-50/70 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#14213D] flex items-center">
                       <MapPin className="h-3.5 w-3.5 text-[#B8944F] mr-1.5 inline" />
                       {city.name}
                     </td>
-                    <td className="py-3 px-4 text-zinc-600">{city.state}</td>
+                    <td className="py-3 px-4 text-zinc-600">{city.state || "-"}</td>
                     <td className="py-3 px-4">
                       <span
                         className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
@@ -167,16 +271,11 @@ export function CitiesTab({ initialData }: { initialData: CityItem[] }) {
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDelete(city.id, city.name)}
-                          disabled={deletingId === city.id}
+                          onClick={() => handleDelete(city)}
                           className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
-                          title="Delete"
+                          title="Delete City"
                         >
-                          {deletingId === city.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -187,6 +286,13 @@ export function CitiesTab({ initialData }: { initialData: CityItem[] }) {
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filtered.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+      />
 
       {/* Modal */}
       {modalOpen && (

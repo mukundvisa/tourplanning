@@ -40,7 +40,6 @@ import { CitiesTab } from "./CitiesTab";
 import { PlacesTab } from "./PlacesTab";
 import { ConsultantsTab } from "./ConsultantsTab";
 import { TaxSettingsTab } from "./TaxSettingsTab";
-import { PricingLabelsTab } from "./PricingLabelsTab";
 import { HotelsTab } from "./HotelsTab";
 import { FlightRoutesTab } from "./FlightRoutesTab";
 import { AddOnsTab } from "./AddOnsTab";
@@ -80,7 +79,6 @@ const TABS = [
   { id: "addons", label: "Add-ons & Visa", icon: Ticket },
   { id: "restaurants", label: "Restaurants", icon: UtensilsCrossed },
   { id: "policies", label: "Policy Templates", icon: FileText },
-  { id: "pricing", label: "Pricing", icon: Tag },
   { id: "tax", label: "Tax Settings", icon: Percent },
 ];
 
@@ -281,9 +279,6 @@ function MasterDataHubContent(props: MasterDataHubProps) {
               <ConsultantsTab initialData={props.consultants} cities={props.cities} />
             )}
             {activeTab === "tax" && <TaxSettingsTab initialData={props.taxSettings} />}
-            {activeTab === "pricing" && (
-              <PricingLabelsTab initialData={props.pricingLabels} />
-            )}
             {activeTab === "hotels" && (
               <HotelsTab initialData={props.hotels} cities={props.cities} />
             )}

@@ -10,6 +10,8 @@ import {
   updateMasterPlaceDefaults
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { Pagination } from "./Pagination";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 interface PlaceItem {
   id: string;
@@ -53,6 +55,8 @@ export function PlacesTab({
   const [data, setData] = useState<PlaceItem[]>(initialData);
   const [selectedCityId, setSelectedCityId] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 9;
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PlaceItem | null>(null);
 
@@ -287,20 +291,26 @@ export function PlacesTab({
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this place?")) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterPlace(id);
-      if (res.success) {
-        setData((prev) => prev.filter((item) => item.id !== id));
-        router.refresh();
-      }
-    } catch (err) {
-      console.error("Delete place error:", err);
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (place: PlaceItem) => {
+    executeDeleteWithUndo<PlaceItem>({
+      item: place,
+      itemType: "Place",
+      itemName: place.name,
+      onOptimisticRemove: (p) => {
+        setData((prev) => prev.filter((item) => item.id !== p.id));
+      },
+      onUndo: (p) => {
+        setData((prev) => [p, ...prev.filter((item) => item.id !== p.id)]);
+      },
+      onPermanentDelete: async (p) => {
+        const res = await deleteMasterPlace(p.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete place");
+        }
+      },
+    });
   };
 
   return (
@@ -469,7 +479,10 @@ export function PlacesTab({
           <div className="relative min-w-[200px]">
             <select
               value={selectedCityId}
-              onChange={(e) => setSelectedCityId(e.target.value)}
+              onChange={(e) => {
+                setSelectedCityId(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full pl-9 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-semibold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] outline-none cursor-pointer"
             >
               <option value="all">📍 All Cities ({data.length} Places)</option>
@@ -491,7 +504,10 @@ export function PlacesTab({
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCurrentPage(1);
+              }}
               placeholder="Search places by name, category..."
               className="w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#B8944F]"
             />
@@ -526,113 +542,118 @@ export function PlacesTab({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((place) => {
-            const cityName =
-              place.city?.name ||
-              cities.find((c) => c.id === place.cityId)?.name ||
-              "Unknown City";
-            return (
-              <div
-                key={place.id}
-                className="bg-white border border-zinc-200/80 rounded-xl p-4 hover:shadow-md transition-all duration-200 space-y-3 relative group flex flex-col justify-between"
-              >
-                <div className="space-y-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#B8944F]/10 text-[#B8944F]">
-                          <MapPin className="h-2.5 w-2.5" />
-                          <span>{cityName}</span>
-                        </span>
-                        {place.category && (
-                          <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
-                            {place.category}
-                          </span>
-                        )}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered
+              .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+              .map((place) => {
+                const cityName =
+                  place.city?.name ||
+                  cities.find((c) => c.id === place.cityId)?.name ||
+                  "Unknown City";
+                return (
+                  <div
+                    key={place.id}
+                    className="bg-white border border-zinc-200/80 rounded-xl p-4 hover:shadow-md transition-all duration-200 space-y-3 relative group flex flex-col justify-between"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#B8944F]/10 text-[#B8944F]">
+                              <MapPin className="h-2.5 w-2.5" />
+                              <span>{cityName}</span>
+                            </span>
+                            {place.category && (
+                              <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
+                                {place.category}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-sm font-bold text-[#14213D] truncate">{place.name}</h3>
+                        </div>
+
+                        <div className="flex items-center space-x-1 shrink-0 opacity-80 group-hover:opacity-100">
+                          <button
+                            onClick={() => openEdit(place)}
+                            className="p-1.5 text-zinc-400 hover:text-[#B8944F] hover:bg-zinc-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Place"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(place)}
+                            className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Place"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <h3 className="text-sm font-bold text-[#14213D] truncate">{place.name}</h3>
+
+                      {place.description ? (
+                        <p className="text-xs text-zinc-500 line-clamp-2 leading-relaxed">
+                          {place.description}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-zinc-300 italic">No description added</p>
+                      )}
                     </div>
 
-                    <div className="flex items-center space-x-1 shrink-0 opacity-80 group-hover:opacity-100">
-                      <button
-                        onClick={() => openEdit(place)}
-                        className="p-1.5 text-zinc-400 hover:text-[#B8944F] hover:bg-zinc-50 rounded-lg transition-colors cursor-pointer"
-                        title="Edit Place"
-                      >
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(place.id)}
-                        disabled={deletingId === place.id}
-                        className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete Place"
-                      >
-                        {deletingId === place.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-red-500" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </button>
+                    <div className="pt-2.5 border-t border-zinc-100 space-y-1.5">
+                      {place.inclusions && place.inclusions.length > 0 && (
+                        <div className="flex items-start gap-1">
+                          <span className="font-bold text-emerald-700 shrink-0 text-[10px]">Inclusions:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {place.inclusions.slice(0, 3).map((inc, i) => (
+                              <span
+                                key={i}
+                                className="bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded text-[10px]"
+                              >
+                                ✓ {inc}
+                              </span>
+                            ))}
+                            {place.inclusions.length > 3 && (
+                              <span className="text-[10px] text-zinc-400">
+                                +{place.inclusions.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {place.exclusions && place.exclusions.length > 0 && (
+                        <div className="flex items-start gap-1">
+                          <span className="font-bold text-red-700 shrink-0 text-[10px]">Exclusions:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {place.exclusions.slice(0, 3).map((exc, i) => (
+                              <span
+                                key={i}
+                                className="bg-red-50 text-red-800 px-1.5 py-0.2 rounded text-[10px]"
+                              >
+                                ✗ {exc}
+                              </span>
+                            ))}
+                            {place.exclusions.length > 3 && (
+                              <span className="text-[10px] text-zinc-400">
+                                +{place.exclusions.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
+                );
+              })}
+          </div>
 
-                  {place.description ? (
-                    <p className="text-xs text-zinc-500 line-clamp-2 leading-relaxed">
-                      {place.description}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-zinc-400 italic">No description provided</p>
-                  )}
-                </div>
-
-                {/* Inclusions & Exclusions Summary */}
-                <div className="pt-2.5 border-t border-zinc-100 space-y-1.5 text-[11px]">
-                  {place.inclusions && place.inclusions.length > 0 && (
-                    <div className="flex items-start gap-1">
-                      <span className="font-bold text-emerald-700 shrink-0 text-[10px]">Inclusions:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {place.inclusions.slice(0, 3).map((inc, i) => (
-                          <span
-                            key={i}
-                            className="bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded text-[10px]"
-                          >
-                            ✓ {inc}
-                          </span>
-                        ))}
-                        {place.inclusions.length > 3 && (
-                          <span className="text-[10px] text-zinc-400">
-                            +{place.inclusions.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {place.exclusions && place.exclusions.length > 0 && (
-                    <div className="flex items-start gap-1">
-                      <span className="font-bold text-red-700 shrink-0 text-[10px]">Exclusions:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {place.exclusions.slice(0, 3).map((exc, i) => (
-                          <span
-                            key={i}
-                            className="bg-red-50 text-red-800 px-1.5 py-0.2 rounded text-[10px]"
-                          >
-                            ✗ {exc}
-                          </span>
-                        ))}
-                        {place.exclusions.length > 3 && (
-                          <span className="text-[10px] text-zinc-400">
-                            +{place.exclusions.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filtered.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+          />
         </div>
       )}
 

@@ -776,6 +776,29 @@ export function DayWiseTripSummary({
                               </span>
                             )}
                           </div>
+
+                          {/* Hotel Photos Gallery Strip */}
+                          {acc.photos && acc.photos.length > 0 && (
+                            <div className="pt-2 border-t border-zinc-100 mt-2">
+                              <span className="text-[9px] uppercase font-bold text-zinc-400 block mb-1">
+                                Stay Photos ({acc.photos.length})
+                              </span>
+                              <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
+                                {acc.photos.map((photoUrl: string, pIdx: number) => (
+                                  <div
+                                    key={pIdx}
+                                    className="relative h-12 w-16 rounded-md overflow-hidden shrink-0 border border-zinc-200 bg-zinc-100"
+                                  >
+                                    <img
+                                      src={photoUrl}
+                                      alt=""
+                                      className="h-full w-full object-cover hover:scale-110 transition-transform duration-200"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs text-zinc-400 italic py-1">

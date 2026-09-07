@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, Plane, Luggage, X, Loader2, Bus, Train, Car, Clock } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Plane, Luggage, X, Loader2, Bus, Train, Car, Clock, Filter } from "lucide-react";
 import {
   createMasterFlightRoute,
   updateMasterFlightRoute,
   deleteMasterFlightRoute,
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { Pagination } from "./Pagination";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 interface FlightRouteItem {
   id: string;
@@ -36,6 +38,9 @@ export function FlightRoutesTab({
   const [data, setData] = useState<FlightRouteItem[]>(initialData);
   const [search, setSearch] = useState("");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState("All");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 10;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<FlightRouteItem | null>(null);
 
@@ -147,20 +152,26 @@ export function FlightRoutesTab({
     }
   };
 
-  const handleDelete = async (id: string, sector: string) => {
-    if (!confirm(`Are you sure you want to delete route "${sector}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterFlightRoute(id);
-      if (res.success) {
-        setData((prev) => prev.filter((f) => f.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete route");
-      }
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (route: FlightRouteItem) => {
+    executeDeleteWithUndo<FlightRouteItem>({
+      item: route,
+      itemType: "Route Option",
+      itemName: route.sector,
+      onOptimisticRemove: (r) => {
+        setData((prev) => prev.filter((item) => item.id !== r.id));
+      },
+      onUndo: (r) => {
+        setData((prev) => [r, ...prev.filter((item) => item.id !== r.id)]);
+      },
+      onPermanentDelete: async (r) => {
+        const res = await deleteMasterFlightRoute(r.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete route");
+        }
+      },
+    });
   };
 
   const getTransportIcon = (type: string) => {
@@ -203,28 +214,37 @@ export function FlightRoutesTab({
       {/* Filter Tabs */}
       <div className="flex flex-wrap gap-2 pb-1">
         <button
-          onClick={() => setSelectedTypeFilter("All")}
+          onClick={() => {
+            setSelectedTypeFilter("All");
+            setCurrentPage(1);
+          }}
           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
             selectedTypeFilter === "All"
               ? "bg-[#B8944F] text-white shadow-sm"
               : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
           }`}
         >
-          All
+          All ({data.length})
         </button>
-        {TRANSPORT_TYPES.map((type) => (
-          <button
-            key={type}
-            onClick={() => setSelectedTypeFilter(type)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              selectedTypeFilter === type
-                ? "bg-[#B8944F] text-white shadow-sm"
-                : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-            }`}
-          >
-            {type}
-          </button>
-        ))}
+        {TRANSPORT_TYPES.map((type) => {
+          const count = data.filter((f) => (f.type || "Flight") === type).length;
+          return (
+            <button
+              key={type}
+              onClick={() => {
+                setSelectedTypeFilter(type);
+                setCurrentPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                selectedTypeFilter === type
+                  ? "bg-[#B8944F] text-white shadow-sm"
+                  : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+              }`}
+            >
+              {type} {count > 0 ? `(${count})` : ""}
+            </button>
+          );
+        })}
       </div>
 
       <div className="relative">
@@ -233,7 +253,10 @@ export function FlightRoutesTab({
           type="text"
           placeholder="Search routes by sector, provider, or notes..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setCurrentPage(1);
+          }}
           className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
         />
       </div>
@@ -258,70 +281,75 @@ export function FlightRoutesTab({
                   </td>
                 </tr>
               ) : (
-                filtered.map((route) => (
-                  <tr key={route.id} className="hover:bg-zinc-50/70 transition-colors">
-                    <td className="py-3 px-4 font-bold text-[#14213D] flex items-center">
-                      {getTransportIcon(route.type || "Flight")}
-                      <div className="flex flex-col">
-                        <span>{route.sector}</span>
-                        <span className="text-[10px] text-zinc-400 font-normal capitalize">Type: {route.type || "Flight"}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-zinc-700">
-                      {route.airline} {route.flightCodeDefault ? `(${route.flightCodeDefault})` : ""}
-                    </td>
-                    <td className="py-3 px-4 text-zinc-600">
-                      <div className="flex items-center space-x-1.5 font-bold text-[#B8944F]">
-                        <Clock className="h-3.5 w-3.5 shrink-0" />
-                        <span>{route.travelTime || "Any Time"}</span>
-                      </div>
-                      <p className="text-[10px] text-zinc-400 mt-0.5">
-                        {route.typicalStops === 0 ? "Non-stop" : `${route.typicalStops} Stop(s)`}
-                        {route.typicalLayoverInfo ? ` • ${route.typicalLayoverInfo}` : ""}
-                      </p>
-                    </td>
-                    <td className="py-3 px-4 text-zinc-600">
-                      {(route.type === "Flight" || !route.type) ? (
-                        <div className="flex items-center space-x-2 text-[11px]">
-                          <span className="bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
-                            Cabin: {route.cabinBaggageKg || 7}
-                          </span>
-                          <span className="bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
-                            Cargo: {route.checkInBaggageKg || 20}
-                          </span>
+                filtered
+                  .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+                  .map((route) => (
+                    <tr key={route.id} className="hover:bg-zinc-50/70 transition-colors">
+                      <td className="py-3 px-4 font-bold text-[#14213D] flex items-center">
+                        {getTransportIcon(route.type || "Flight")}
+                        <div className="flex flex-col">
+                          <span>{route.sector}</span>
+                          <span className="text-[10px] text-zinc-400 font-normal capitalize">Type: {route.type || "Flight"}</span>
                         </div>
-                      ) : (
-                        <span className="text-zinc-400 text-[10px]">No Baggage Limit</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end space-x-1">
-                        <button
-                          onClick={() => openEdit(route)}
-                          className="p-1.5 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(route.id, route.sector)}
-                          disabled={deletingId === route.id}
-                          className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
-                        >
-                          {deletingId === route.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                          ) : (
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-zinc-700">
+                        {route.airline} {route.flightCodeDefault ? `(${route.flightCodeDefault})` : ""}
+                      </td>
+                      <td className="py-3 px-4 text-zinc-600">
+                        <div className="flex items-center space-x-1.5 font-bold text-[#B8944F]">
+                          <Clock className="h-3.5 w-3.5 shrink-0" />
+                          <span>{route.travelTime || "Any Time"}</span>
+                        </div>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">
+                          {route.typicalStops === 0 ? "Non-stop" : `${route.typicalStops} Stop(s)`}
+                          {route.typicalLayoverInfo ? ` • ${route.typicalLayoverInfo}` : ""}
+                        </p>
+                      </td>
+                      <td className="py-3 px-4 text-zinc-600">
+                        {(route.type === "Flight" || !route.type) ? (
+                          <div className="flex items-center space-x-2 text-[11px]">
+                            <span className="bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
+                              Cabin: {route.cabinBaggageKg || 7}
+                            </span>
+                            <span className="bg-zinc-100 px-1.5 py-0.5 rounded font-mono">
+                              Cargo: {route.checkInBaggageKg || 20}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-zinc-400 text-[10px]">No Baggage Limit</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end space-x-1">
+                          <button
+                            onClick={() => openEdit(route)}
+                            className="p-1.5 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(route)}
+                            className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
+                            title="Delete Route"
+                          >
                             <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filtered.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+      />
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 overflow-y-auto">

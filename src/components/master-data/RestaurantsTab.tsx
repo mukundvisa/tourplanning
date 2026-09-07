@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, UtensilsCrossed, Star, MapPin, X, Loader2, Check } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, UtensilsCrossed, Star, MapPin, X, Loader2, Check, Filter } from "lucide-react";
 import {
   createMasterRestaurant,
   updateMasterRestaurant,
   deleteMasterRestaurant,
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { Pagination } from "./Pagination";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 interface RestaurantItem {
   id: string;
@@ -39,6 +41,9 @@ export function RestaurantsTab({
   const [data, setData] = useState<RestaurantItem[]>(initialData);
   const [selectedCityFilter, setSelectedCityFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 10;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<RestaurantItem | null>(null);
 
@@ -62,6 +67,18 @@ export function RestaurantsTab({
       r.cuisineType.toLowerCase().includes(search.toLowerCase()) ||
       (r.city && r.city.name.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleCityChange = (val: string) => {
+    setSelectedCityFilter(val);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setCurrentPage(1);
+  };
 
   const openCreate = () => {
     setEditingItem(null);
@@ -138,20 +155,26 @@ export function RestaurantsTab({
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete restaurant "${name}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterRestaurant(id);
-      if (res.success) {
-        setData((prev) => prev.filter((r) => r.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete restaurant");
-      }
-    } finally {
-      setDeletingId(null);
-    }
+  const handleDelete = (restaurant: RestaurantItem) => {
+    executeDeleteWithUndo<RestaurantItem>({
+      item: restaurant,
+      itemType: "Restaurant",
+      itemName: restaurant.name,
+      onOptimisticRemove: (r) => {
+        setData((prev) => prev.filter((item) => item.id !== r.id));
+      },
+      onUndo: (r) => {
+        setData((prev) => [r, ...prev.filter((item) => item.id !== r.id)]);
+      },
+      onPermanentDelete: async (r) => {
+        const res = await deleteMasterRestaurant(r.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete restaurant");
+        }
+      },
+    });
   };
 
   return (
@@ -174,6 +197,7 @@ export function RestaurantsTab({
         </button>
       </div>
 
+      {/* Filter and Search */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
@@ -181,22 +205,25 @@ export function RestaurantsTab({
             type="text"
             placeholder="Search dining by name, cuisine, or city..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
           />
         </div>
 
         <select
           value={selectedCityFilter}
-          onChange={(e) => setSelectedCityFilter(e.target.value)}
+          onChange={(e) => handleCityChange(e.target.value)}
           className="px-3.5 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
         >
-          <option value="all">📍 All Destinations & Cities</option>
-          {cities.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}, {c.country}
-            </option>
-          ))}
+          <option value="all">📍 All Destinations & Cities ({data.length})</option>
+          {cities.map((c) => {
+            const count = data.filter((r) => r.cityId === c.id).length;
+            return (
+              <option key={c.id} value={c.id}>
+                {c.name}, {c.country} {count > 0 ? `• ${count}` : ""}
+              </option>
+            );
+          })}
         </select>
       </div>
 
@@ -221,7 +248,7 @@ export function RestaurantsTab({
                   </td>
                 </tr>
               ) : (
-                filtered.map((item) => (
+                paginated.map((item) => (
                   <tr key={item.id} className="hover:bg-zinc-50/70 transition-colors">
                     <td className="py-3 px-4 font-bold text-[#14213D] flex items-center">
                       <UtensilsCrossed className="h-3.5 w-3.5 text-[#B8944F] mr-2" />
@@ -264,15 +291,11 @@ export function RestaurantsTab({
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDelete(item.id, item.name)}
-                          disabled={deletingId === item.id}
+                          onClick={() => handleDelete(item)}
                           className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
+                          title="Delete dining place"
                         >
-                          {deletingId === item.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -283,6 +306,13 @@ export function RestaurantsTab({
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalItems={filtered.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={setCurrentPage}
+      />
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 overflow-y-auto">

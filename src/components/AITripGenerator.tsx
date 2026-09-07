@@ -32,6 +32,8 @@ import {
   ListFilter,
 } from "lucide-react";
 
+import toast from "react-hot-toast";
+
 export interface AITripGeneratorProps {
   onReviewAndEdit: (prefillData: any) => void;
 }
@@ -266,18 +268,61 @@ export function AITripGenerator({ onReviewAndEdit }: AITripGeneratorProps) {
   };
 
   const handleResetChat = () => {
-    if (confirm("Reset the current AI Trip conversation history?")) {
-      setMessages([
-        {
-          id: "initial-greeting",
-          role: "assistant",
-          content:
-            "Hello! I am your AI Trip Blueprint Architect. Describe any client trip requirement in plain language, and I will automatically extract the parameters, match or draft items from your Master Data Hub catalogs (hotels, activities, restaurants, flights, policies), and build a complete 8-step itinerary blueprint ready for review.",
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    const prevMessages = [...messages];
+    const prevPrompt = inputPrompt;
+
+    // Optimistic reset
+    setMessages([
+      {
+        id: "initial-greeting",
+        role: "assistant",
+        content:
+          "Hello! I am your AI Trip Blueprint Architect. Describe any client trip requirement in plain language, and I will automatically extract the parameters, match or draft items from your Master Data Hub catalogs (hotels, activities, restaurants, flights, policies), and build a complete 8-step itinerary blueprint ready for review.",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ]);
+    setInputPrompt("");
+
+    toast(
+      (t) => (
+        <div className="flex items-center justify-between gap-3 text-xs w-full">
+          <div className="flex flex-col">
+            <span className="font-semibold text-white">Conversation cleared</span>
+            <span className="text-[11px] text-zinc-400">Restorable within 5s</span>
+          </div>
+          <button
+            onClick={() => {
+              setMessages(prevMessages);
+              setInputPrompt(prevPrompt);
+              toast.dismiss(t.id);
+              toast.success("Chat history restored", {
+                duration: 2500,
+                style: {
+                  background: "#14213D",
+                  color: "#fff",
+                  border: "1px solid rgba(184, 148, 79, 0.4)",
+                  fontSize: "12px",
+                },
+              });
+            }}
+            className="px-2.5 py-1 bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold rounded shadow-sm transition-all cursor-pointer shrink-0"
+          >
+            Undo
+          </button>
+        </div>
+      ),
+      {
+        duration: 5000,
+        style: {
+          background: "#14213D",
+          color: "#fff",
+          border: "1px solid rgba(184, 148, 79, 0.4)",
+          borderRadius: "8px",
+          padding: "10px 14px",
+          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3)",
         },
-      ]);
-      setInputPrompt("");
-    }
+      }
+    );
   };
 
   const handleCopySummary = (messageId: string, blueprint: any) => {
@@ -538,6 +583,11 @@ Plan Tier: ${blueprint.pricingPlanTitle}`;
                                         />
                                       )}
                                       <span className="truncate text-zinc-800 font-medium">{h.name}</span>
+                                      {h.photos && h.photos.length > 1 && (
+                                        <span className="text-[9px] text-[#B8944F] font-bold shrink-0">
+                                          ({h.photos.length} 📷)
+                                        </span>
+                                      )}
                                     </div>
                                     <span className="text-[9px] font-bold px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded shrink-0">
                                       Matched
@@ -555,6 +605,11 @@ Plan Tier: ${blueprint.pricingPlanTitle}`;
                                         />
                                       )}
                                       <span className="truncate text-zinc-800 font-medium">{h.name}</span>
+                                      {h.photos && h.photos.length > 1 && (
+                                        <span className="text-[9px] text-[#B8944F] font-bold shrink-0">
+                                          ({h.photos.length} 📷)
+                                        </span>
+                                      )}
                                     </div>
                                     <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded shrink-0">
                                       New Draft
@@ -648,6 +703,16 @@ Plan Tier: ${blueprint.pricingPlanTitle}`;
                         <button
                           onClick={() => {
                             if (msg.blueprintResult?.tripBlueprint) {
+                              toast.success("AI Blueprint loaded into Create Trip form. Review & save when ready!", {
+                                duration: 3500,
+                                icon: "✨",
+                                style: {
+                                  background: "#14213D",
+                                  color: "#fff",
+                                  border: "1px solid rgba(184, 148, 79, 0.4)",
+                                  fontSize: "12px",
+                                },
+                              });
                               onReviewAndEdit(msg.blueprintResult.tripBlueprint);
                             }
                           }}

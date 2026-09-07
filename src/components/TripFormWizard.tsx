@@ -1968,22 +1968,35 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                               )}
                             </div>
 
-                            {/* Photos preview */}
+                            {/* Photos gallery preview */}
                             <div>
                               {matchedHotel.photos && matchedHotel.photos.length > 0 ? (
-                                <div className="grid grid-cols-2 gap-1.5">
-                                  {matchedHotel.photos.slice(0, 4).map((p: string, pIdx: number) => (
-                                    <div
-                                      key={pIdx}
-                                      className="relative h-20 rounded-lg overflow-hidden border border-zinc-200"
-                                    >
-                                      <img
-                                        src={p}
-                                        alt={matchedHotel.name}
-                                        className="h-full w-full object-cover"
-                                      />
-                                    </div>
-                                  ))}
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between text-[11px] text-zinc-500 font-semibold px-0.5">
+                                    <span>Photo Gallery</span>
+                                    <span className="text-[10px] bg-[#B8944F]/15 text-[#8F6F33] px-2 py-0.5 rounded-full font-bold">
+                                      {matchedHotel.photos.length} Photos
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    {matchedHotel.photos.slice(0, 4).map((p: string, pIdx: number) => (
+                                      <div
+                                        key={pIdx}
+                                        className="group/photo relative h-20 rounded-lg overflow-hidden border border-zinc-200 bg-zinc-100"
+                                      >
+                                        <img
+                                          src={p}
+                                          alt={`${matchedHotel.name} ${pIdx + 1}`}
+                                          className="h-full w-full object-cover group-hover/photo:scale-105 transition-transform duration-300"
+                                        />
+                                        {pIdx === 3 && matchedHotel.photos.length > 4 && (
+                                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-xs">
+                                            +{matchedHotel.photos.length - 4} more
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="h-28 rounded-lg bg-zinc-100 border border-zinc-200 flex items-center justify-center text-xs text-zinc-400">

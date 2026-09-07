@@ -45,6 +45,7 @@ import { deleteTrip, getTripDetails, duplicateTrip } from "@/actions/trips";
 import { format } from "date-fns";
 import { DayWiseTripSummary, TripFullData } from "@/components/admin/DayWiseTripSummary";
 import { downloadTripPdf } from "@/lib/download-pdf";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 // Master Data Tab Components
 import { OverviewTab } from "./master-data/OverviewTab";
@@ -52,7 +53,6 @@ import { CitiesTab } from "./master-data/CitiesTab";
 import { PlacesTab } from "./master-data/PlacesTab";
 import { ConsultantsTab } from "./master-data/ConsultantsTab";
 import { TaxSettingsTab } from "./master-data/TaxSettingsTab";
-import { PricingLabelsTab } from "./master-data/PricingLabelsTab";
 import { HotelsTab } from "./master-data/HotelsTab";
 import { FlightRoutesTab } from "./master-data/FlightRoutesTab";
 import { AddOnsTab } from "./master-data/AddOnsTab";
@@ -112,7 +112,6 @@ const MASTER_DATA_TABS = [
   { id: "addons", label: "Add-ons & Visa", icon: Ticket },
   { id: "restaurants", label: "Restaurants", icon: UtensilsCrossed },
   { id: "policies", label: "Policy Templates", icon: FileText },
-  { id: "pricing", label: "Pricing", icon: Tag },
   { id: "tax", label: "Tax Settings", icon: Percent },
 ];
 
@@ -142,6 +141,13 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
   const [search, setSearch] = useState("");
   const [busyTripId, setBusyTripId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Sync client state if server props update
+  useEffect(() => {
+    if (props.initialTrips) {
+      setTrips(props.initialTrips);
+    }
+  }, [props.initialTrips]);
 
   // Trip Summary Modal state
   const [summaryTrip, setSummaryTrip] = useState<TripFullData | null>(null);
@@ -296,29 +302,26 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
     );
   });
 
-  const handleDelete = async (tripId: string, title: string) => {
-    if (
-      !confirm(
-        `Are you absolutely sure you want to delete the trip "${title}"?\nThis will permanently delete all accommodations, flights, days, and addons.`
-      )
-    ) {
-      return;
-    }
-
-    setBusyTripId(tripId);
-    try {
-      const res = await deleteTrip(tripId);
-      if (res.success) {
-        setTrips((prev) => prev.filter((t) => t.id !== tripId));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete trip");
-      }
-    } catch (err) {
-      alert("Error deleting trip");
-    } finally {
-      setBusyTripId(null);
-    }
+  const handleDelete = (trip: TripData) => {
+    executeDeleteWithUndo<TripData>({
+      item: trip,
+      itemType: "Trip",
+      itemName: trip.title,
+      onOptimisticRemove: (t) => {
+        setTrips((prev) => prev.filter((item) => item.id !== t.id));
+      },
+      onUndo: (t) => {
+        setTrips((prev) => [t, ...prev.filter((item) => item.id !== t.id)]);
+      },
+      onPermanentDelete: async (t) => {
+        const res = await deleteTrip(t.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete trip");
+        }
+      },
+    });
   };
 
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
@@ -764,7 +767,7 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                               )}
                             </button>
                             <button
-                              onClick={() => handleDelete(trip.id, trip.title)}
+                              onClick={() => handleDelete(trip)}
                               disabled={isBusy}
                               className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 border border-transparent hover:border-red-100 cursor-pointer transition-all"
                               title="Delete Itinerary"
@@ -823,6 +826,30 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                     const res = await getTripDetails(savedTripId);
                     if (res.success && res.data) {
                       setEditingTripData(res.data);
+                      // Real-time client-side update for Itineraries Console
+                      const savedSummary: TripData = {
+                        id: res.data.id,
+                        title: res.data.title,
+                        destination: res.data.destination,
+                        departureCity: res.data.departureCity,
+                        startDate: res.data.startDate,
+                        endDate: res.data.endDate,
+                        durationDays: res.data.durationDays,
+                        durationNights: res.data.durationNights,
+                        numTravellers: res.data.numTravellers,
+                        consultantName: res.data.consultantName || "Senior Consultant",
+                        updatedAt: res.data.updatedAt || new Date().toISOString(),
+                      };
+                      setTrips((prev) => {
+                        const exists = prev.findIndex((t) => t.id === savedSummary.id);
+                        if (exists >= 0) {
+                          const updated = [...prev];
+                          updated[exists] = savedSummary;
+                          return updated;
+                        } else {
+                          return [savedSummary, ...prev];
+                        }
+                      });
                     }
                   }
                   router.refresh();
@@ -883,9 +910,6 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                   <ConsultantsTab initialData={props.consultants} cities={props.cities} />
                 )}
                 {masterDataTab === "tax" && <TaxSettingsTab initialData={props.taxSettings} />}
-                {masterDataTab === "pricing" && (
-                  <PricingLabelsTab initialData={props.pricingLabels} />
-                )}
                 {masterDataTab === "hotels" && (
                   <HotelsTab initialData={props.hotels} cities={props.cities} />
                 )}

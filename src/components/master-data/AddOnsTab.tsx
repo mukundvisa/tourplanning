@@ -1,13 +1,31 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, Ticket, DollarSign, X, Loader2 } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  Ticket,
+  DollarSign,
+  X,
+  Loader2,
+  ShieldCheck,
+  Smartphone,
+  Car,
+  FileCheck,
+  Sparkles,
+  Layers,
+  Filter,
+} from "lucide-react";
 import {
   createMasterAddOn,
   updateMasterAddOn,
   deleteMasterAddOn,
 } from "@/actions/master-data";
 import { useRouter } from "next/navigation";
+import { Pagination } from "./Pagination";
+import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
 export interface AddOnItem {
   id: string;
@@ -27,6 +45,9 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
   const [data, setData] = useState<AddOnItem[]>(initialData);
   const [selectedType, setSelectedType] = useState("All");
   const [search, setSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const PAGE_SIZE = 6;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<AddOnItem | null>(null);
 
@@ -43,13 +64,26 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filteredByType = selectedType === "All" ? data : data.filter((a) => a.type === selectedType);
+  const filteredByType =
+    selectedType === "All" ? data : data.filter((a) => a.type === selectedType);
   const filtered = filteredByType.filter(
     (a) =>
       a.name.toLowerCase().includes(search.toLowerCase()) ||
       (a.visaType && a.visaType.toLowerCase().includes(search.toLowerCase())) ||
       (a.detailsDescription && a.detailsDescription.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleTypeChange = (type: string) => {
+    setSelectedType(type);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    setCurrentPage(1);
+  };
 
   const openCreate = () => {
     setEditingItem(null);
@@ -120,19 +154,42 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete add-on "${name}"?`)) return;
-    setDeletingId(id);
-    try {
-      const res = await deleteMasterAddOn(id);
-      if (res.success) {
-        setData((prev) => prev.filter((a) => a.id !== id));
-        router.refresh();
-      } else {
-        alert(res.error || "Failed to delete add-on");
-      }
-    } finally {
-      setDeletingId(null);
+  const handleDelete = (addon: AddOnItem) => {
+    executeDeleteWithUndo<AddOnItem>({
+      item: addon,
+      itemType: "Add-on",
+      itemName: addon.name,
+      onOptimisticRemove: (a) => {
+        setData((prev) => prev.filter((item) => item.id !== a.id));
+      },
+      onUndo: (a) => {
+        setData((prev) => [a, ...prev.filter((item) => item.id !== a.id)]);
+      },
+      onPermanentDelete: async (a) => {
+        const res = await deleteMasterAddOn(a.id);
+        if (res.success) {
+          router.refresh();
+        } else {
+          throw new Error(res.error || "Failed to delete add-on");
+        }
+      },
+    });
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case "Visa":
+        return <FileCheck className="h-4 w-4 text-emerald-600" />;
+      case "Insurance":
+        return <ShieldCheck className="h-4 w-4 text-blue-600" />;
+      case "Transfer":
+        return <Car className="h-4 w-4 text-amber-600" />;
+      case "SIM":
+        return <Smartphone className="h-4 w-4 text-purple-600" />;
+      case "Activity":
+        return <Sparkles className="h-4 w-4 text-[#B8944F]" />;
+      default:
+        return <Layers className="h-4 w-4 text-zinc-500" />;
     }
   };
 
@@ -144,7 +201,7 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
             Add-ons, Visas & Insurance Catalog
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Manage visa packages, international SIM cards, airport lounge access, and travel insurance items
+            Manage visa packages, international SIM cards, airport transfers, insurance, and extra amenities
           </p>
         </div>
         <button
@@ -164,101 +221,124 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
             type="text"
             placeholder="Search add-ons by package name or description..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
           />
         </div>
 
-        <select
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-          className="px-3.5 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
-        >
-          {ADDON_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t === "All" ? "📦 All Add-on Categories" : `${t} Packages`}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap gap-1.5 w-full sm:w-auto">
+          {ADDON_TYPES.map((t) => {
+            const count = t === "All" ? data.length : data.filter((a) => a.type === t).length;
+            return (
+              <button
+                key={t}
+                onClick={() => handleTypeChange(t)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedType === t
+                    ? "bg-[#14213D] text-[#DDA74F] shadow-sm"
+                    : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                }`}
+              >
+                {t} {count > 0 ? `(${count})` : ""}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {filtered.length === 0 ? (
-          <div className="col-span-2 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
-            No add-ons found. Click "Add Master Add-on" to create one.
-          </div>
-        ) : (
-          filtered.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#B8944F]/10 text-[#8F6F33] border border-[#B8944F]/20 uppercase tracking-wider">
-                    {item.type}
-                  </span>
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => openEdit(item)}
-                      className="p-1 rounded hover:bg-zinc-100 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id, item.name)}
-                      disabled={deletingId === item.id}
-                      className="p-1 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 cursor-pointer"
-                    >
-                      {deletingId === item.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-red-600" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <h3 className="text-base font-bold text-[#14213D] font-fraunces mb-1">
-                  {item.name}
-                </h3>
-                {item.visaType && (
-                  <p className="text-xs text-zinc-500 font-medium mb-2">
-                    {item.visaType}
-                  </p>
-                )}
-
-                {item.detailsDescription && (
-                  <p className="text-xs text-zinc-600 mb-3 bg-zinc-50 p-2.5 rounded border border-zinc-100">
-                    {item.detailsDescription}
-                  </p>
-                )}
-
-                <div className="grid grid-cols-2 gap-2 text-xs text-zinc-500 pt-2 border-t border-zinc-100">
-                  {item.validityLength && (
-                    <div>
-                      <span className="text-zinc-400 block text-[10px]">Validity:</span>
-                      <span className="font-semibold text-zinc-700">{item.validityLength}</span>
-                    </div>
-                  )}
-                  {item.validityWindow && (
-                    <div>
-                      <span className="text-zinc-400 block text-[10px]">Window:</span>
-                      <span className="font-semibold text-zinc-700">{item.validityWindow}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-zinc-100 flex justify-between items-center mt-3">
-                <span className="text-xs text-zinc-500 font-semibold">Standard Cost:</span>
-                <span className="text-sm font-bold text-[#14213D] font-mono">
-                  ₹{item.defaultPrice.toLocaleString("en-IN")}
-                </span>
-              </div>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filtered.length === 0 ? (
+            <div className="col-span-3 py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-lg">
+              No add-ons found matching your search. Click "Add Master Add-on" to create one.
             </div>
-          ))
-        )}
+          ) : (
+            paginated.map((item) => (
+              <div
+                key={item.id}
+                className="bg-white border border-[#B8944F]/25 hover:border-[#B8944F] rounded-xl p-5 craft-card flex flex-col justify-between hover:shadow-md transition-all duration-200 group"
+              >
+                <div className="space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-zinc-50 border border-zinc-100">
+                        {getTypeIcon(item.type)}
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#B8944F]/10 text-[#8F6F33] border border-[#B8944F]/20 uppercase tracking-wider">
+                        {item.type}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-1 opacity-80 group-hover:opacity-100">
+                      <button
+                        onClick={() => openEdit(item)}
+                        className="p-1.5 rounded-md hover:bg-zinc-100 text-zinc-400 hover:text-[#B8944F] transition-colors cursor-pointer"
+                        title="Edit Add-on"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item)}
+                        className="p-1.5 rounded-md hover:bg-red-50 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
+                        title="Delete Add-on"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-bold text-[#14213D] group-hover:text-[#8F6F33] transition-colors line-clamp-1">
+                      {item.name}
+                    </h3>
+                    {item.visaType && (
+                      <p className="text-[11px] text-zinc-500 font-medium mt-0.5">
+                        {item.visaType}
+                      </p>
+                    )}
+                  </div>
+
+                  {item.detailsDescription && (
+                    <p className="text-xs text-zinc-600 bg-[#FAF8F5] p-2.5 rounded-lg border border-zinc-200/60 leading-relaxed line-clamp-2">
+                      {item.detailsDescription}
+                    </p>
+                  )}
+
+                  {(item.validityLength || item.validityWindow) && (
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-500 pt-2 border-t border-zinc-100">
+                      {item.validityLength && (
+                        <div>
+                          <span className="text-zinc-400 block text-[10px]">Validity:</span>
+                          <span className="font-semibold text-zinc-700">{item.validityLength}</span>
+                        </div>
+                      )}
+                      {item.validityWindow && (
+                        <div>
+                          <span className="text-zinc-400 block text-[10px]">Window:</span>
+                          <span className="font-semibold text-zinc-700">{item.validityWindow}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-zinc-100 flex justify-between items-center mt-3">
+                  <span className="text-[11px] text-zinc-400 font-medium">Standard Cost</span>
+                  <span className="text-sm font-bold text-[#14213D] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    ₹{item.defaultPrice.toLocaleString("en-IN")}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filtered.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {modalOpen && (
