@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limiter";
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType, ResponseSchema } from "@google/generative-ai";
 
 export const dynamic = "force-dynamic";
 
@@ -137,66 +137,73 @@ Guidelines:
 
     // 4. Initialize Google Generative AI with structured JSON schema
     const genAI = new GoogleGenerativeAI(apiKey);
-    const modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-    const model = genAI.getGenerativeModel({
-      model: modelName,
-      systemInstruction: systemInstruction,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            destination: { type: SchemaType.STRING },
-            origin_city: { type: SchemaType.STRING },
-            duration_days: { type: SchemaType.INTEGER },
-            duration_nights: { type: SchemaType.INTEGER },
-            travellers: { type: SchemaType.INTEGER },
-            budget_level: {
-              type: SchemaType.STRING,
-              format: "enum",
-              enum: ["budget", "mid", "luxury"],
-            },
-            travel_dates: { type: SchemaType.STRING, nullable: true },
-            hotel_preferences: {
-              type: SchemaType.ARRAY,
-              items: { type: SchemaType.STRING },
-            },
-            activities: {
-              type: SchemaType.ARRAY,
-              items: { type: SchemaType.STRING },
-            },
-            restaurants: {
-              type: SchemaType.ARRAY,
-              items: { type: SchemaType.STRING },
-            },
-            flights_needed: { type: SchemaType.BOOLEAN },
-            trip_highlights: {
-              type: SchemaType.ARRAY,
-              items: { type: SchemaType.STRING },
-            },
-            missing_fields: {
-              type: SchemaType.ARRAY,
-              items: { type: SchemaType.STRING },
-            },
-            clarification_message: { type: SchemaType.STRING, nullable: true },
-          },
-          required: [
-            "destination",
-            "origin_city",
-            "duration_days",
-            "duration_nights",
-            "travellers",
-            "budget_level",
-            "hotel_preferences",
-            "activities",
-            "restaurants",
-            "flights_needed",
-            "missing_fields",
-          ],
+
+    const CANDIDATE_MODELS = Array.from(
+      new Set(
+        [
+          process.env.GEMINI_MODEL,
+          "gemini-3.5-flash",
+          "gemini-3.7-flash",
+          "gemini-3.6-flash",
+          "gemini-3.5-flash-lite",
+          "gemini-flash-lite-latest",
+          "gemini-flash-latest",
+          "gemini-pro-latest",
+        ].filter((m): m is string => Boolean(m && m.trim()))
+      )
+    );
+
+    const generationSchema: ResponseSchema = {
+      type: SchemaType.OBJECT,
+      properties: {
+        destination: { type: SchemaType.STRING },
+        origin_city: { type: SchemaType.STRING },
+        duration_days: { type: SchemaType.INTEGER },
+        duration_nights: { type: SchemaType.INTEGER },
+        travellers: { type: SchemaType.INTEGER },
+        budget_level: {
+          type: SchemaType.STRING,
+          format: "enum",
+          enum: ["budget", "mid", "luxury"],
         },
-        temperature: 0.3,
+        travel_dates: { type: SchemaType.STRING, nullable: true },
+        hotel_preferences: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+        },
+        activities: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+        },
+        restaurants: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+        },
+        flights_needed: { type: SchemaType.BOOLEAN },
+        trip_highlights: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+        },
+        missing_fields: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+        },
+        clarification_message: { type: SchemaType.STRING, nullable: true },
       },
-    });
+      required: [
+        "destination",
+        "origin_city",
+        "duration_days",
+        "duration_nights",
+        "travellers",
+        "budget_level",
+        "hotel_preferences",
+        "activities",
+        "restaurants",
+        "flights_needed",
+        "missing_fields",
+      ],
+    };
 
     // Format chat history into Gemini contents format
     const contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
@@ -220,12 +227,71 @@ Guidelines:
       parts: [{ text: prompt }],
     });
 
-    // 5. Call Gemini API
-    const result = await model.generateContent({ contents });
-    const aiContent = result.response.text();
+    // 5. Call Gemini API with Multi-Model Fallback & Transient Error Retries
+    let aiContent = "";
+    let lastError: any = null;
+
+    for (const modelName of CANDIDATE_MODELS) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemInstruction,
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: generationSchema,
+            temperature: 0.3,
+          },
+        });
+
+        // Up to 2 attempts per model for transient spikes (503 / 429)
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const result = await model.generateContent({ contents });
+            aiContent = result.response.text();
+            if (aiContent) break;
+          } catch (err: any) {
+            lastError = err;
+            console.warn(
+              `Gemini attempt ${attempt} on ${modelName} failed:`,
+              err?.message || err
+            );
+            const isTransient =
+              err?.status === 503 ||
+              err?.message?.includes("503") ||
+              err?.message?.includes("high demand") ||
+              err?.status === 429;
+
+            if (attempt < 2 && isTransient) {
+              await new Promise((res) => setTimeout(res, 1200));
+            } else {
+              break;
+            }
+          }
+        }
+
+        if (aiContent) {
+          break; // Successfully generated content!
+        }
+      } catch (initErr: any) {
+        lastError = initErr;
+        console.warn(`Failed to initialize or invoke ${modelName}:`, initErr?.message || initErr);
+      }
+    }
 
     if (!aiContent) {
-      throw new Error("No response received from Google Gemini API.");
+      const is503 =
+        lastError?.status === 503 ||
+        lastError?.message?.includes("503") ||
+        lastError?.message?.includes("high demand");
+
+      const errorMsg = is503
+        ? "The AI service is experiencing temporary peak demand from Google. Please click 'Generate' again in a few moments."
+        : lastError?.message || "No response received from Google Gemini API.";
+
+      return NextResponse.json(
+        { status: "error", error: errorMsg },
+        { status: is503 ? 503 : 500 }
+      );
     }
 
     let parsed: any;
