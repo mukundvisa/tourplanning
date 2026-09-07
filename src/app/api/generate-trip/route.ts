@@ -904,6 +904,35 @@ Guidelines:
         budgetLevel === "luxury" ? "luxury boutique travel" : "scenic vacation"
       ));
 
+    // Save newly generated banner image to Master Data Hub's Curated Banner & Cover Library
+    const existingSavedBanner = await db.masterBannerImage.findFirst({
+      where: { imageUrl: destinationCoverImage },
+    });
+
+    if (!existingSavedBanner) {
+      try {
+        const bannerCityTag = originCityName || destinationName;
+        const originCityRecord = await db.masterCity.findFirst({
+          where: {
+            name: {
+              contains: originCityName,
+              mode: "insensitive",
+            },
+          },
+        });
+
+        await db.masterBannerImage.create({
+          data: {
+            label: `${bannerCityTag} Banner`,
+            imageUrl: destinationCoverImage,
+            destinationCityId: originCityRecord?.id || cityId || null,
+          },
+        });
+      } catch (bannerSaveErr) {
+        console.warn("Auto-saving banner image to Master Data Hub:", bannerSaveErr);
+      }
+    }
+
     // 8. CONSTRUCT PREFILL TRIP BLUEPRINT OBJECT (matching TripFormWizard state)
     const today = new Date();
     const startDateObj = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days ahead by default
@@ -912,12 +941,49 @@ Guidelines:
     const startDateStr = startDateObj.toISOString().split("T")[0];
     const endDateStr = endDateObj.toISOString().split("T")[0];
 
+    // Helper to extract ordered multi-destination cities sequence
+    const rawDestination = destinationName;
+    const splitCities = rawDestination
+      .split(/[,;\->|/]+|\band\b|\bto\b/i)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 1 && s.toLowerCase() !== originCityName.toLowerCase());
+
+    let multiCityList = splitCities;
+    if (multiCityList.length <= 1) {
+      const matchAfterTo = (prompt || "").match(/\bto\s+([^.\n]+)/i);
+      if (matchAfterTo && matchAfterTo[1]) {
+        const promptStops = matchAfterTo[1]
+          .split(/[,;\->|/]+|\band\b/i)
+          .map((s: string) => s.replace(/\b(trip|tour|package|itinerary|days?|nights?|budget|luxury|family)\b/gi, "").trim())
+          .filter((s: string) => s.length > 1 && s.toLowerCase() !== originCityName.toLowerCase());
+
+        if (promptStops.length > 1) {
+          multiCityList = promptStops;
+        }
+      }
+    }
+
+    if (multiCityList.length === 0) {
+      multiCityList = [destinationName];
+    }
+
+    // Departure City for return journey booking is set to whichever city the itinerary ends on for its final day (e.g. "Kumbhalgadh")
+    const finalDepartureCity = multiCityList[multiCityList.length - 1] || destinationName;
+
     // Distribute places and hotels across itinerary days
     const itineraryDays = [];
     const primaryHotel = resolvedHotels[0] || null;
 
     for (let i = 0; i < durationDays; i++) {
       const dayNum = i + 1;
+      const cityIdx = Math.min(
+        Math.floor((i / Math.max(1, durationDays)) * multiCityList.length),
+        multiCityList.length - 1
+      );
+      const currentDayCity = multiCityList[cityIdx] || destinationName;
+      const isFirstDay = i === 0;
+      const isLastDay = i === durationDays - 1;
+
       const dayPlaces = resolvedPlaces
         .slice(i * 2, i * 2 + 2)
         .map((p) => p.name);
@@ -926,27 +992,30 @@ Guidelines:
         dayPlaces.push(resolvedPlaces[i % resolvedPlaces.length].name);
       }
 
-      const dayTitle =
-        i === 0
-          ? `Arrival in ${destinationName} & Scenic Leisure`
-          : i === durationDays - 1
-          ? `Farewell ${destinationName} & Departure`
-          : `Day ${dayNum} - ${dayPlaces[0] || "Exploration & Sightseeing"}`;
+      let dayTitle = `Day ${dayNum} - ${currentDayCity} Sightseeing & Discovery`;
+      let dayDesc = `Immersive day itinerary in ${currentDayCity}. Visit ${dayPlaces.join(
+        " and "
+      )}. Experience authentic local heritage, panoramic vistas, and curated cultural spots.`;
 
-      const dayDesc =
-        i === 0
-          ? `Arrive at ${destinationName} ex-${originCityName}. Private transfer to your curated stay. Relax, soak in the panoramic vistas, and enjoy local evening exploration.`
-          : i === durationDays - 1
-          ? `Enjoy a gourmet breakfast at your hotel. Complete check-out formalities, collect souvenirs, and transfer for your return journey to ${originCityName}.`
-          : `Full day immersive itinerary visiting ${dayPlaces.join(
-              " and "
-            )}. Experience authentic local culture, picturesque photo spots, and culinary delights.`;
+      if (isFirstDay) {
+        dayTitle = `Arrival in ${currentDayCity} & Scenic Leisure`;
+        dayDesc = `Arrive at ${currentDayCity} ex-${originCityName}. Private transfer to your curated stay. Relax, soak in the panoramic vistas, and enjoy local evening exploration.`;
+      } else if (isLastDay) {
+        dayTitle = `Farewell ${currentDayCity} & Return Departure`;
+        dayDesc = `Enjoy a gourmet breakfast at your hotel in ${currentDayCity}. Complete check-out formalities, collect souvenirs, and transfer from ${currentDayCity} for your return journey to ${originCityName}.`;
+      } else if (multiCityList.length > 1 && cityIdx > 0 && Math.floor(((i - 1) / Math.max(1, durationDays)) * multiCityList.length) !== cityIdx) {
+        const prevCity = multiCityList[cityIdx - 1];
+        dayTitle = `Scenic Transfer from ${prevCity} to ${currentDayCity} & Sightseeing`;
+        dayDesc = `Scenic transfer journey from ${prevCity} to ${currentDayCity}. Check in to your stay, followed by sightseeing at ${dayPlaces.join(
+          " and "
+        )} with local photo stops.`;
+      }
 
       itineraryDays.push({
         dayNumber: dayNum,
-        cityOrStay: destinationName,
+        cityOrStay: currentDayCity,
         title: dayTitle,
-        durationHours: i === 0 || i === durationDays - 1 ? "Half Day (4-5 hrs)" : "Full Day (8-9 hrs)",
+        durationHours: isFirstDay || isLastDay ? "Half Day (4-5 hrs)" : "Full Day (8-9 hrs)",
         description: dayDesc,
         places: dayPlaces,
         hotelId: primaryHotel?.id || null,
@@ -1103,7 +1172,7 @@ Guidelines:
           ? "Budget Explorer Plan"
           : "Premium Standard Plan",
       destination: `${destinationName}, ${matchedCity?.country || "India"}`,
-      departureCity: originCityName,
+      departureCity: finalDepartureCity,
       coverImage: destinationCoverImage,
       startDate: startDateStr,
       endDate: endDateStr,
@@ -1113,7 +1182,7 @@ Guidelines:
       consultantName: matchedSummary.consultantMatched?.name || "Senior Travel Consultant",
       consultantPhone: matchedSummary.consultantMatched?.phone || "+91 98765 43210",
       transportationArrangement: "Planner",
-      startingTransferDetails: `Private transfer arranged from ${originCityName} to ${destinationName}`,
+      startingTransferDetails: `Private transfer arranged from ${originCityName} to ${multiCityList[0] || destinationName}`,
       packageTransportationDetails: "Dedicated AC Vehicle for all local transfers and sightseeing tours as per itinerary.",
       priceQuoteItems: priceQuoteItems,
       tripFinancials: {

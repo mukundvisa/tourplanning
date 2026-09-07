@@ -955,38 +955,67 @@ export function DayWiseTripSummary({
 
         {/* Master Policies & Terms Glance */}
         {trip.tripTerms && (
-          <div className="bg-white border border-zinc-200/90 rounded-xl p-5 shadow-2xs craft-card space-y-3">
-            <h3 className="text-sm font-bold text-[#14213D] font-fraunces flex items-center space-x-2">
+          <div className="bg-white border border-zinc-200/90 rounded-xl p-5 shadow-2xs craft-card space-y-4">
+            <h3 className="text-sm font-bold text-[#14213D] font-fraunces flex items-center space-x-2 border-b border-zinc-150 pb-2">
               <ShieldCheck className="h-4 w-4 text-[#B8944F]" />
               <span>Itinerary Policies, Visas & Terms Summary</span>
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              <div className="p-3 bg-zinc-50 rounded-lg border border-zinc-150">
-                <span className="font-bold text-[#14213D] block mb-1">
-                  Payment Terms
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5">
+                <span className="font-bold text-[#14213D] block text-xs">
+                  💳 Payment Terms
                 </span>
-                <p className="text-zinc-600 line-clamp-3">
-                  {trip.tripTerms.paymentPolicy || "Standard booking deposit terms apply."}
-                </p>
+                <div
+                  className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      trip.tripTerms.paymentPolicy ||
+                      "<p>Standard booking deposit terms apply.</p>",
+                  }}
+                />
               </div>
 
-              <div className="p-3 bg-zinc-50 rounded-lg border border-zinc-150">
-                <span className="font-bold text-[#14213D] block mb-1">
-                  Cancellation Policy
+              <div className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5">
+                <span className="font-bold text-[#14213D] block text-xs">
+                  🔄 Cancellation Policy
                 </span>
-                <p className="text-zinc-600 line-clamp-3">
-                  {trip.tripTerms.cancellationPolicy || "Strict operator cancellation policy."}
-                </p>
+                <div
+                  className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      trip.tripTerms.cancellationPolicy ||
+                      "<p>Strict operator cancellation policy applies.</p>",
+                  }}
+                />
               </div>
 
-              <div className="p-3 bg-zinc-50 rounded-lg border border-zinc-150">
-                <span className="font-bold text-[#14213D] block mb-1">
-                  Visa & Passport Guidelines
+              <div className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5">
+                <span className="font-bold text-[#14213D] block text-xs">
+                  🛂 Visa & Passport Guidelines
                 </span>
-                <p className="text-zinc-600 line-clamp-3">
-                  {trip.tripTerms.visaRules || "Minimum 6 months passport validity required."}
-                </p>
+                <div
+                  className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      trip.tripTerms.visaRules ||
+                      "<p>Minimum 6 months passport validity required.</p>",
+                  }}
+                />
+              </div>
+
+              <div className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5">
+                <span className="font-bold text-[#14213D] block text-xs">
+                  ℹ️ General Notes & Advisory
+                </span>
+                <div
+                  className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      trip.tripTerms.generalNotes ||
+                      "<p>Standard hotel check-in/out and international travel advisories apply.</p>",
+                  }}
+                />
               </div>
             </div>
           </div>

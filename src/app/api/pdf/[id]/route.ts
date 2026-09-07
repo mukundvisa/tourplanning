@@ -132,22 +132,22 @@ export async function GET(
       printBackground: true,
       displayHeaderFooter: true,
       headerTemplate: `
-        <div style="font-size: 8px; color: #9CA3AF; width: 100%; padding: 0 6mm; display: flex; justify-content: space-between; font-family: sans-serif; font-weight: 600;">
+        <div style="font-size: 8px; color: #9CA3AF; width: 100%; padding: 0 13mm; display: flex; justify-content: space-between; font-family: sans-serif; font-weight: 600;">
           <span style="color: #14213D; font-weight: 700; letter-spacing: 0.05em;">TripPlanner</span>
           <span style="color: #6B7280;">${rawTitle}</span>
         </div>
       `,
       footerTemplate: `
-        <div style="font-size: 7.5px; color: #9CA3AF; width: 100%; padding: 0 6mm; display: flex; justify-content: space-between; font-family: sans-serif;">
+        <div style="font-size: 7.5px; color: #9CA3AF; width: 100%; padding: 0 13mm; display: flex; justify-content: space-between; font-family: sans-serif;">
           <span>Confidential Travel Itinerary Proposal</span>
           <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
         </div>
       `,
       margin: {
-        top: "18mm",
-        bottom: "14mm",
-        left: "6mm",
-        right: "6mm",
+        top: "13mm",
+        bottom: "13mm",
+        left: "13mm",
+        right: "13mm",
       },
     });
 

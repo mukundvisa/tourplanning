@@ -834,7 +834,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         
         @page {
           size: A4;
-          margin: 18mm 6mm 14mm 6mm;
+          margin: 13mm;
         }
         
         * {
@@ -849,7 +849,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           color: #14213D;
           margin: 0;
-          padding: 4px 2px 0 2px;
+          padding: 0;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
           width: 100%;
@@ -899,14 +899,20 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         .pdf-section, 
         .break-avoid,
         .pdf-section-wrapper,
+        .day-card,
+        .hotel-card,
+        .dining-card,
+        .policy-card,
         tr {
           break-inside: avoid !important;
           page-break-inside: avoid !important;
         }
 
+        .pdf-section-header,
         h1, h2, h3, h4, h5, h6, .section-header {
           break-after: avoid !important;
           page-break-after: avoid !important;
+          break-inside: avoid !important;
         }
 
         .pdf-section {
