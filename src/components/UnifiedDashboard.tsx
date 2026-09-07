@@ -63,9 +63,10 @@ import { AdminCostCalculationTab } from "./master-data/AdminCostCalculationTab";
 import { GeneralSettingsTab } from "./master-data/GeneralSettingsTab";
 import { MasterDataTabSlider } from "./master-data/MasterDataTabSlider";
 import { TripFormWizard } from "./TripFormWizard";
-import { Settings } from "lucide-react";
+import { AITripGenerator } from "./AITripGenerator";
+import { Settings, Sparkles } from "lucide-react";
 
-export type DashboardView = "console" | "create" | "edit" | "analytics" | "costing" | "master-data" | "settings";
+export type DashboardView = "console" | "create" | "edit" | "analytics" | "costing" | "master-data" | "settings" | "ai-generator";
 
 interface TripData {
   id: string;
@@ -146,9 +147,10 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
   const [summaryTrip, setSummaryTrip] = useState<TripFullData | null>(null);
   const [loadingSummaryId, setLoadingSummaryId] = useState<string | null>(null);
 
-  // In-Dashboard Trip Editing State
+  // In-Dashboard Trip Editing & AI Prefill State
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [editingTripData, setEditingTripData] = useState<any | null>(null);
+  const [prefillTripData, setPrefillTripData] = useState<any | null>(null);
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
 
   const handleEditTrip = async (tripId: string) => {
@@ -156,6 +158,7 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
     try {
       const res = await getTripDetails(tripId);
       if (res.success && res.data) {
+        setPrefillTripData(null);
         setEditingTripId(tripId);
         setEditingTripData(res.data);
         setActiveView("edit");
@@ -173,6 +176,7 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
   const exitEditMode = () => {
     setEditingTripId(null);
     setEditingTripData(null);
+    setPrefillTripData(null);
     setActiveView("console");
     window.history.replaceState(null, "", "/");
   };
@@ -186,6 +190,10 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
       setEditingTripId(null);
       setEditingTripData(null);
       setActiveView("create");
+    } else if (v === "ai-generator") {
+      setEditingTripId(null);
+      setEditingTripData(null);
+      setActiveView("ai-generator");
     } else if (v === "settings") {
       setEditingTripId(null);
       setEditingTripData(null);
@@ -212,6 +220,9 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
   }, [searchParams]);
 
   const switchView = (newView: DashboardView, extraTab?: string) => {
+    if (newView !== "create") {
+      setPrefillTripData(null);
+    }
     setEditingTripId(null);
     setEditingTripData(null);
     setActiveView(newView);
@@ -221,6 +232,8 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
     let newUrl = "/";
     if (newView === "console") {
       newUrl = "/";
+    } else if (newView === "ai-generator") {
+      newUrl = "/?view=ai-generator";
     } else if (newView === "create") {
       newUrl = "/?view=create";
     } else if (newView === "settings") {
@@ -335,6 +348,8 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
         return { breadcrumb: "Analytics Overview", title: "Performance Metrics & Velocity" };
       case "console":
         return { breadcrumb: "Trip Itineraries Console", title: "Travel Blueprints & Client Proposals" };
+      case "ai-generator":
+        return { breadcrumb: "AI Trip Generator", title: "Intelligent Trip Blueprint Synthesis" };
       case "create":
         return { breadcrumb: "Create Trip Blueprint", title: "New Itinerary Proposal Builder" };
       case "edit":
@@ -482,7 +497,28 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                 {!isSidebarCollapsed && <span>Itineraries Console</span>}
               </button>
 
-              {/* 3. Create Trip Blueprint */}
+              {/* 3. AI Trip Generator */}
+              <button
+                onClick={() => switchView("ai-generator")}
+                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  activeView === "ai-generator"
+                    ? "bg-[#B8944F]/20 text-[#B8944F] font-bold border-l-2 border-[#B8944F]"
+                    : "text-zinc-700 hover:bg-[#B8944F]/10 hover:text-[#B8944F]"
+                }`}
+                title="AI Trip Generator"
+              >
+                <Sparkles className={`h-4 w-4 shrink-0 ${activeView === "ai-generator" ? "text-[#B8944F] animate-pulse" : "text-[#B8944F]"}`} />
+                {!isSidebarCollapsed && (
+                  <span className="flex items-center justify-between flex-1">
+                    <span>AI Trip Generator</span>
+                    <span className="px-1.5 py-0.5 bg-[#B8944F]/20 text-[#B8944F] rounded text-[9px] font-extrabold uppercase tracking-wider">
+                      AI
+                    </span>
+                  </span>
+                )}
+              </button>
+
+              {/* 4. Create Trip Blueprint */}
               <button
                 onClick={() => switchView("create")}
                 className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
@@ -758,16 +794,42 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
           )}
 
           {/* ========================================================= */}
+          {/* VIEW: AI TRIP GENERATOR */}
+          {/* ========================================================= */}
+          {activeView === "ai-generator" && (
+            <div className="w-full flex-1 flex flex-col">
+              <AITripGenerator
+                onReviewAndEdit={(prefillData) => {
+                  setPrefillTripData(prefillData);
+                  setEditingTripId(null);
+                  setEditingTripData(null);
+                  setActiveView("create");
+                  window.history.replaceState(null, "", "/?view=create");
+                }}
+              />
+            </div>
+          )}
+
+          {/* ========================================================= */}
           {/* VIEW 2: CREATE / EDIT TRIP BLUEPRINT */}
           {/* ========================================================= */}
           {(activeView === "create" || activeView === "edit") && (
             <div className="w-full">
               <TripFormWizard
-                key={editingTripId || "new-blueprint"}
-                initialData={editingTripData || undefined}
+                key={
+                  editingTripId ||
+                  (prefillTripData
+                    ? `prefill-${prefillTripData.destination}-${prefillTripData.durationDays}`
+                    : "new-blueprint")
+                }
+                initialData={editingTripData || prefillTripData || undefined}
                 tripId={editingTripId || undefined}
-                onClose={exitEditMode}
+                onClose={() => {
+                  setPrefillTripData(null);
+                  exitEditMode();
+                }}
                 onSaved={async (savedTripId) => {
+                  setPrefillTripData(null);
                   if (savedTripId) {
                     setEditingTripId(savedTripId);
                     const res = await getTripDetails(savedTripId);
