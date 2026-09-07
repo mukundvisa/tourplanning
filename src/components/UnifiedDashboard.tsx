@@ -502,7 +502,7 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                 onClick={() => switchView("ai-generator")}
                 className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                   activeView === "ai-generator"
-                    ? "bg-[#B8944F]/20 text-[#B8944F] font-bold border-l-2 border-[#B8944F]"
+                    ? "bg-[#B8944F]/20 text-[#B8944F] font-bold"
                     : "text-zinc-700 hover:bg-[#B8944F]/10 hover:text-[#B8944F]"
                 }`}
                 title="AI Trip Generator"
@@ -574,18 +574,6 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                 {!isSidebarCollapsed && <span>General Settings</span>}
               </button>
             </div>
-          </div>
-
-          {/* Sidebar Bottom Footer */}
-          <div className="p-4 border-t border-zinc-100 text-center">
-            {!isSidebarCollapsed ? (
-              <div className="text-[11px] text-zinc-400">
-                <p className="font-semibold text-zinc-600">TripPlanner Workspace</p>
-                <p>Unified Travel Operations</p>
-              </div>
-            ) : (
-              <div className="text-[10px] font-bold text-[#B8944F]">TP</div>
-            )}
           </div>
         </aside>
 
