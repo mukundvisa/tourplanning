@@ -35,6 +35,7 @@ export async function createTrip(payload: TripSchemaType) {
         transportationArrangement: data.transportationArrangement || "Planner",
         startingTransferDetails: data.startingTransferDetails || data.ownArrivalArrangement || null,
         packageTransportationDetails: data.packageTransportationDetails || null,
+        ownArrivalArrangement: data.ownArrivalArrangement || null,
         priceQuoteItems: {
           create: data.priceQuoteItems.map((item) => ({
             label: item.label,
@@ -194,6 +195,7 @@ export async function updateTrip(tripId: string, payload: TripSchemaType) {
           transportationArrangement: data.transportationArrangement || "Planner",
           startingTransferDetails: data.startingTransferDetails || data.ownArrivalArrangement || null,
           packageTransportationDetails: data.packageTransportationDetails || null,
+          ownArrivalArrangement: data.ownArrivalArrangement || null,
           priceQuoteItems: {
             create: data.priceQuoteItems.map((item) => ({
               label: item.label,

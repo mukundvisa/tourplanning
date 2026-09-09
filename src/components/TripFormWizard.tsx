@@ -38,11 +38,14 @@ import {
   SlidersHorizontal,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Table2,
   CalendarDays,
   Hotel,
   Info,
   Copy,
+  Compass,
+  Search,
 } from "lucide-react";
 import { createTrip, updateTrip, getTripsListForSelector, getTripDetails } from "@/actions/trips";
 import { getAllMasterDataForSelectors, createMasterFlightRoute } from "@/actions/master-data";
@@ -75,6 +78,13 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [needsAdminReview, setNeedsAdminReview] = useState<boolean>(() => {
+    if (initialData?.needsAdminReview) return true;
+    if (initialData?.validation?.needs_admin_review?.length > 0) return true;
+    const hasHotelReview = initialData?.accommodations?.some((h: any) => h.needs_admin_review || h.needsAdminReview);
+    const hasPlaceReview = initialData?.itineraryDays?.some((d: any) => d.needs_admin_review || d.needsAdminReview);
+    return Boolean(hasHotelReview || hasPlaceReview);
+  });
 
   // Master Data Cache
   const [masterData, setMasterData] = useState<{
@@ -1032,14 +1042,91 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
     flightCodeDefault: "",
     flightNotes: "",
     saveToMasterData: true,
+    targetDayNum: null as number | null,
   });
   const [savingQuickAdd, setSavingQuickAdd] = useState(false);
+
+  // Search filter states for Tab 5 pickers
+  const [interCitySearchMap, setInterCitySearchMap] = useState<{ [dayNum: number]: string }>({});
+  const [localSearchMap, setLocalSearchMap] = useState<{ [dayNum: number]: string }>({});
+
+  const syncFlightDetailsFromDays = (days: any[], masterRoutes: any[], existingFlightDetails: any[] = []) => {
+    const list: any[] = [];
+    (days || []).forEach((d: any) => {
+      const dayNum = d.dayNumber;
+      
+      // 1. Inter-City Transfer
+      const interId = d.interCityTransferId || d.placeTransportMap?.inter_city_transfer_id;
+      if (interId) {
+        const mr = masterRoutes.find((r: any) => r.id === interId);
+        if (mr) {
+          list.push({
+            dayNumber: dayNum,
+            sector: mr.sector || `${mr.fromCity} to ${mr.toCity}`,
+            fromCity: mr.fromCity || "",
+            toCity: mr.toCity || "",
+            transportCategory: "Inter-City Transfer",
+            airline: mr.airline,
+            type: mr.type || "Car",
+            travelTime: mr.travelTime || "09:00 AM",
+            departureDateTime: "",
+            arrivalDateTime: "",
+            durationText: "Direct",
+            stops: mr.typicalStops || 0,
+            layoverInfo: mr.typicalLayoverInfo || "",
+            carryOnBaggageKg: mr.cabinBaggageKg ?? 7,
+            checkInBaggageKg: mr.checkInBaggageKg ?? 20,
+            cancellationPolicy: mr.cancellationPolicy || "",
+            flightNotes: mr.flightNotes || "",
+            flightCodeDefault: mr.flightCodeDefault || "",
+            isStartingTransfer: false,
+            isPackageIncluded: true,
+            isAutoSuggested: true,
+          });
+        }
+      }
+
+      // 2. Local Transfers
+      const localIds: string[] = d.localTransportIds || d.placeTransportMap?.local_transport_ids || [];
+      localIds.forEach((lid) => {
+        const mr = masterRoutes.find((r: any) => r.id === lid);
+        if (mr) {
+          list.push({
+            dayNumber: dayNum,
+            sector: mr.sector || `${mr.city?.name || mr.fromCity || d.cityOrStay} Local Transfer`,
+            fromCity: mr.city?.name || mr.fromCity || d.cityOrStay || "",
+            toCity: mr.city?.name || mr.toCity || d.cityOrStay || "",
+            transportCategory: "Local Transfer",
+            airline: mr.airline,
+            type: mr.type || "Car",
+            travelTime: mr.travelTime || "Flexible",
+            departureDateTime: "",
+            arrivalDateTime: "",
+            durationText: "Direct",
+            stops: 0,
+            layoverInfo: "",
+            carryOnBaggageKg: mr.cabinBaggageKg ?? 7,
+            checkInBaggageKg: mr.checkInBaggageKg ?? 20,
+            cancellationPolicy: mr.cancellationPolicy || "",
+            flightNotes: mr.flightNotes || "",
+            flightCodeDefault: mr.flightCodeDefault || "",
+            isStartingTransfer: false,
+            isPackageIncluded: true,
+            isAutoSuggested: true,
+          });
+        }
+      });
+    });
+
+    return list;
+  };
 
   const startQuickAdd = (
     category: "Inter-City Transfer" | "Local Transfer",
     fromCity = "",
     toCity = "",
-    city = ""
+    city = "",
+    targetDayNum?: number
   ) => {
     setQuickAddForm({
       transportCategory: category,
@@ -1052,6 +1139,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
       flightCodeDefault: "",
       flightNotes: "",
       saveToMasterData: true,
+      targetDayNum: targetDayNum ?? null,
     });
     setQuickAddModalOpen(true);
   };
@@ -1072,71 +1160,85 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
         ? `${quickAddForm.fromCity} to ${quickAddForm.toCity}`
         : `${quickAddForm.city} Local Transfer`;
 
-      if (quickAddForm.saveToMasterData) {
-        const fromCityObj = masterData.cities.find(
-          (c) => c.name.toLowerCase() === fromC.toLowerCase()
-        );
-        const toCityObj = masterData.cities.find(
-          (c) => c.name.toLowerCase() === toC.toLowerCase()
-        );
+      const fromCityObj = masterData.cities.find(
+        (c) => c.name.toLowerCase() === fromC.toLowerCase()
+      );
+      const toCityObj = masterData.cities.find(
+        (c) => c.name.toLowerCase() === toC.toLowerCase()
+      );
 
-        const res = await createMasterFlightRoute({
-          sector: sectorName,
-          airline: quickAddForm.airline,
-          transportCategory: quickAddForm.transportCategory,
-          fromCity: fromC,
-          fromCityId: fromCityObj?.id || undefined,
-          toCity: toC,
-          toCityId: toCityObj?.id || undefined,
-          cityId: fromCityObj?.id || undefined,
-          type: quickAddForm.type,
-          travelTime: quickAddForm.travelTime,
-          flightCodeDefault: quickAddForm.flightCodeDefault,
-          flightNotes: quickAddForm.flightNotes,
-          cabinBaggageKg: 7,
-          checkInBaggageKg: 20,
-        });
+      const res = await createMasterFlightRoute({
+        sector: sectorName,
+        airline: quickAddForm.airline,
+        transportCategory: quickAddForm.transportCategory,
+        fromCity: fromC,
+        fromCityId: fromCityObj?.id || undefined,
+        toCity: toC,
+        toCityId: toCityObj?.id || undefined,
+        cityId: fromCityObj?.id || undefined,
+        type: quickAddForm.type,
+        travelTime: quickAddForm.travelTime,
+        flightCodeDefault: quickAddForm.flightCodeDefault,
+        flightNotes: quickAddForm.flightNotes,
+        cabinBaggageKg: 7,
+        checkInBaggageKg: 20,
+      });
 
-        if (res.success && res.data) {
-          setMasterData((prev) => ({
-            ...prev,
-            flightRoutes: [res.data, ...prev.flightRoutes],
-          }));
+      if (res.success && res.data) {
+        const createdRoute = res.data;
+        const updatedRoutes = [createdRoute, ...masterData.flightRoutes];
+        setMasterData((prev) => ({
+          ...prev,
+          flightRoutes: updatedRoutes,
+        }));
+
+        // Auto-select the newly created record for the target day
+        if (quickAddForm.targetDayNum) {
+          const targetDay = quickAddForm.targetDayNum;
+          setFormData((prev: any) => {
+            const updatedDays = (prev.itineraryDays || []).map((d: any) => {
+              if (d.dayNumber === targetDay) {
+                if (isInterCity) {
+                  return {
+                    ...d,
+                    interCityTransferId: createdRoute.id,
+                    placeTransportMap: {
+                      ...(d.placeTransportMap || {}),
+                      inter_city_transfer_id: createdRoute.id,
+                    },
+                  };
+                } else {
+                  const currentLocalIds = d.localTransportIds || d.placeTransportMap?.local_transport_ids || [];
+                  const nextLocalIds = currentLocalIds.includes(createdRoute.id)
+                    ? currentLocalIds
+                    : [...currentLocalIds, createdRoute.id];
+                  return {
+                    ...d,
+                    localTransportIds: nextLocalIds,
+                    placeTransportMap: {
+                      ...(d.placeTransportMap || {}),
+                      local_transport_ids: nextLocalIds,
+                    },
+                  };
+                }
+              }
+              return d;
+            });
+
+            const nextFlightDetails = syncFlightDetailsFromDays(updatedDays, updatedRoutes, prev.flightDetails);
+            return {
+              ...prev,
+              itineraryDays: updatedDays,
+              flightDetails: nextFlightDetails,
+            };
+          });
         }
       }
 
-      // Add to Trip formData
-      const newLeg = {
-        sector: sectorName,
-        fromCity: fromC,
-        toCity: toC,
-        transportCategory: quickAddForm.transportCategory,
-        airline: quickAddForm.airline,
-        type: quickAddForm.type,
-        travelTime: quickAddForm.travelTime,
-        departureDateTime: "",
-        arrivalDateTime: "",
-        durationText: "Direct",
-        stops: 0,
-        layoverInfo: "",
-        carryOnBaggageKg: 7,
-        checkInBaggageKg: 20,
-        cancellationPolicy: "",
-        flightNotes: quickAddForm.flightNotes,
-        flightCodeDefault: quickAddForm.flightCodeDefault,
-        isStartingTransfer: false,
-        isPackageIncluded: true,
-        isAutoSuggested: false,
-      };
-
-      setFormData((prev: any) => ({
-        ...prev,
-        flightDetails: [...prev.flightDetails, newLeg],
-      }));
       setQuickAddModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Error adding transport option.");
+      alert(err.message || "Error adding transport option.");
     } finally {
       setSavingQuickAdd(false);
     }
@@ -2536,7 +2638,6 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
         );
 
       case 5: {
-        const TRANSPORT_TYPES = ["Flight", "Train", "Bus", "Car", "Sedan", "SUV", "Helicopter", "Boat", "Auto-rickshaw", "Other"];
         const getTransportIcon = (type: string) => {
           switch (type) {
             case "Flight":
@@ -2544,166 +2645,77 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
             case "Train":
               return <Train className="h-4 w-4 text-[#B8944F] shrink-0" />;
             case "Bus":
+            case "Luxury Coach":
               return <Bus className="h-4 w-4 text-[#B8944F] shrink-0" />;
             case "Car":
             case "Sedan":
             case "SUV":
+            case "Tempo Traveller":
               return <Car className="h-4 w-4 text-[#B8944F] shrink-0" />;
             default:
               return <Car className="h-4 w-4 text-[#B8944F] shrink-0" />;
           }
         };
 
-        // 1. Detect Inter-City Route Transitions from consecutive days in Tab 2
-        const interCityTransitions: {
-          fromCity: string;
-          toCity: string;
-          fromDay: number;
-          toDay: number;
-          matchingMasterRoutes: any[];
-        }[] = [];
+        const totalDays = (formData.itineraryDays || []).length;
 
-        for (let i = 0; i < (formData.itineraryDays || []).length - 1; i++) {
-          const d1 = formData.itineraryDays[i];
-          const d2 = formData.itineraryDays[i + 1];
-          const c1 = d1.cityOrStay?.trim();
-          const c2 = d2.cityOrStay?.trim();
-          if (c1 && c2 && c1.toLowerCase() !== c2.toLowerCase()) {
-            const matched = masterData.flightRoutes.filter(
-              (r) =>
-                r.transportCategory === "Inter-City Transfer" &&
-                ((r.fromCity?.toLowerCase() === c1.toLowerCase() && r.toCity?.toLowerCase() === c2.toLowerCase()) ||
-                 (r.fromCity?.toLowerCase() === c2.toLowerCase() && r.toCity?.toLowerCase() === c1.toLowerCase()) ||
-                 (r.sector?.toLowerCase().includes(c1.toLowerCase()) && r.sector?.toLowerCase().includes(c2.toLowerCase())))
-            );
-            interCityTransitions.push({
-              fromCity: c1,
-              toCity: c2,
-              fromDay: d1.dayNumber,
-              toDay: d2.dayNumber,
-              matchingMasterRoutes: matched,
+        // Select or Deselect Inter-City Transfer for a specific day
+        const handleSelectInterCity = (dayNum: number, masterRouteId: string | null) => {
+          setFormData((prev: any) => {
+            const updatedDays = (prev.itineraryDays || []).map((d: any) => {
+              if (d.dayNumber === dayNum) {
+                return {
+                  ...d,
+                  interCityTransferId: masterRouteId,
+                  placeTransportMap: {
+                    ...(d.placeTransportMap || {}),
+                    inter_city_transfer_id: masterRouteId,
+                  },
+                };
+              }
+              return d;
             });
-          }
-        }
-
-        // 2. Detect Distinct Cities for Local Transfers
-        const distinctCityStays = Array.from(
-          new Set(
-            (formData.itineraryDays || [])
-              .map((d: any) => d.cityOrStay?.trim())
-              .filter(Boolean)
-          )
-        ).map((cityName) => {
-          const matched = masterData.flightRoutes.filter(
-            (r) =>
-              r.transportCategory === "Local Transfer" &&
-              (r.city?.name?.toLowerCase() === (cityName as string).toLowerCase() ||
-               r.fromCity?.toLowerCase() === (cityName as string).toLowerCase() ||
-               r.sector?.toLowerCase().includes((cityName as string).toLowerCase()))
-          );
-          return {
-            city: cityName as string,
-            matchingMasterRoutes: matched,
-          };
-        });
-
-        // 3. Separate Current Flight Details by Category
-        const interCityList = (formData.flightDetails || []).map((f: any, idx: number) => ({ ...f, originalIndex: idx })).filter(
-          (f: any) => (f.transportCategory || "Inter-City Transfer") === "Inter-City Transfer"
-        );
-        const localList = (formData.flightDetails || []).map((f: any, idx: number) => ({ ...f, originalIndex: idx })).filter(
-          (f: any) => f.transportCategory === "Local Transfer"
-        );
-
-        // 4. Auto-populate from Master Data
-        const handleAutoPopulate = () => {
-          const current = [...formData.flightDetails];
-          let added = 0;
-
-          // Add inter-city transfers
-          interCityTransitions.forEach((t) => {
-            const exists = current.some(
-              (f: any) =>
-                (f.transportCategory || "Inter-City Transfer") === "Inter-City Transfer" &&
-                ((f.fromCity?.toLowerCase() === t.fromCity.toLowerCase() && f.toCity?.toLowerCase() === t.toCity.toLowerCase()) ||
-                 (f.sector?.toLowerCase().includes(t.fromCity.toLowerCase()) && f.sector?.toLowerCase().includes(t.toCity.toLowerCase())))
-            );
-            if (!exists && t.matchingMasterRoutes.length > 0) {
-              const best = t.matchingMasterRoutes[0];
-              current.push({
-                sector: best.sector || `${t.fromCity} to ${t.toCity}`,
-                fromCity: t.fromCity,
-                toCity: t.toCity,
-                transportCategory: "Inter-City Transfer",
-                airline: best.airline,
-                type: best.type || "Car",
-                travelTime: best.travelTime || "09:00 AM",
-                departureDateTime: "",
-                arrivalDateTime: "",
-                durationText: "Direct",
-                stops: best.typicalStops || 0,
-                layoverInfo: best.typicalLayoverInfo || "",
-                carryOnBaggageKg: best.cabinBaggageKg ?? 7,
-                checkInBaggageKg: best.checkInBaggageKg ?? 20,
-                cancellationPolicy: best.cancellationPolicy || "",
-                flightNotes: best.flightNotes || "",
-                flightCodeDefault: best.flightCodeDefault || "",
-                isStartingTransfer: false,
-                isPackageIncluded: true,
-                isAutoSuggested: true,
-              });
-              added++;
-            }
+            const nextFlightDetails = syncFlightDetailsFromDays(updatedDays, masterData.flightRoutes, prev.flightDetails);
+            return {
+              ...prev,
+              itineraryDays: updatedDays,
+              flightDetails: nextFlightDetails,
+            };
           });
+        };
 
-          // Add local transfers
-          distinctCityStays.forEach((s) => {
-            const exists = current.some(
-              (f: any) =>
-                f.transportCategory === "Local Transfer" &&
-                (f.fromCity?.toLowerCase() === s.city.toLowerCase() ||
-                 f.toCity?.toLowerCase() === s.city.toLowerCase() ||
-                 f.sector?.toLowerCase().includes(s.city.toLowerCase()))
-            );
-            if (!exists && s.matchingMasterRoutes.length > 0) {
-              s.matchingMasterRoutes.forEach((r) => {
-                current.push({
-                  sector: r.sector || `${s.city} Local Transfer`,
-                  fromCity: s.city,
-                  toCity: s.city,
-                  transportCategory: "Local Transfer",
-                  airline: r.airline,
-                  type: r.type || "Car",
-                  travelTime: r.travelTime || "Flexible",
-                  departureDateTime: "",
-                  arrivalDateTime: "",
-                  durationText: "Direct",
-                  stops: 0,
-                  layoverInfo: "",
-                  carryOnBaggageKg: r.cabinBaggageKg ?? 7,
-                  checkInBaggageKg: r.checkInBaggageKg ?? 20,
-                  cancellationPolicy: r.cancellationPolicy || "",
-                  flightNotes: r.flightNotes || "",
-                  flightCodeDefault: r.flightCodeDefault || "",
-                  isStartingTransfer: false,
-                  isPackageIncluded: true,
-                  isAutoSuggested: true,
-                });
-                added++;
-              });
-            }
+        // Toggle Local Transportation option (Multi-select) for a specific day
+        const handleToggleLocalTransport = (dayNum: number, masterRouteId: string) => {
+          setFormData((prev: any) => {
+            const updatedDays = (prev.itineraryDays || []).map((d: any) => {
+              if (d.dayNumber === dayNum) {
+                const currentIds: string[] = d.localTransportIds || d.placeTransportMap?.local_transport_ids || [];
+                const nextIds = currentIds.includes(masterRouteId)
+                  ? currentIds.filter((id) => id !== masterRouteId)
+                  : [...currentIds, masterRouteId];
+                return {
+                  ...d,
+                  localTransportIds: nextIds,
+                  placeTransportMap: {
+                    ...(d.placeTransportMap || {}),
+                    local_transport_ids: nextIds,
+                  },
+                };
+              }
+              return d;
+            });
+            const nextFlightDetails = syncFlightDetailsFromDays(updatedDays, masterData.flightRoutes, prev.flightDetails);
+            return {
+              ...prev,
+              itineraryDays: updatedDays,
+              flightDetails: nextFlightDetails,
+            };
           });
-
-          if (added > 0) {
-            setFormData((prev: any) => ({ ...prev, flightDetails: current }));
-          } else {
-            alert("All detected inter-city and local routes from Master Data are already active in your plan!");
-          }
         };
 
         return (
           <div className="space-y-6">
-            {/* Header with Auto-Suggest Actions */}
+            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
               <div>
                 <h2 className="text-xl font-bold text-[#14213D] font-fraunces flex items-center gap-2">
@@ -2711,25 +2723,23 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                   <span>Step 5: Transportation & Transit Arrangements</span>
                 </h2>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Categorized into Own Arrangement, Inter-City Transfers, and City-level Local Transfers with live Master Data suggestions.
+                  Connected directly to Master Data Transportation (Inter-City &amp; Local Transportation).
                 </p>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={handleAutoPopulate}
-                  className="px-3.5 py-1.5 bg-[#B8944F]/15 hover:bg-[#B8944F]/25 text-[#8F6F33] rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs border border-[#B8944F]/30"
+                  onClick={() => startQuickAdd("Inter-City Transfer")}
+                  className="px-3.5 py-1.5 bg-white border border-[#B8944F]/40 hover:bg-zinc-50 text-[#8F6F33] rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
                 >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>Auto-Populate Transfers</span>
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Quick Add Route</span>
                 </button>
               </div>
             </div>
 
-            {/* ========================================================================= */}
             {/* SECTION A: TRAVELLER'S OWN ARRANGEMENT */}
-            {/* ========================================================================= */}
             <div className="bg-white border border-zinc-200/90 rounded-xl p-5 craft-card shadow-xs space-y-3">
               <div className="flex items-center justify-between border-b border-zinc-100 pb-2.5">
                 <div className="flex items-center space-x-2">
@@ -2740,7 +2750,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                     Traveller&apos;s Own Arrival Arrangement
                   </h3>
                 </div>
-                <span className="text-[11px] text-zinc-400 font-medium">Sourced from Step 1</span>
+                <span className="text-[11px] text-zinc-400 font-medium">Independent Transit</span>
               </div>
 
               <div className="space-y-2">
@@ -2762,629 +2772,412 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
               </div>
             </div>
 
-            {/* ========================================================================= */}
-            {/* SECTION B: INTER-CITY TRANSFERS */}
-            {/* ========================================================================= */}
-            <div className="bg-white border border-[#B8944F]/30 rounded-xl p-5 craft-card shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-3">
-                <div className="flex items-center space-x-2">
-                  <span className="h-5 w-5 rounded-full bg-[#B8944F] text-white text-xs font-bold flex items-center justify-center shadow-xs">
-                    B
-                  </span>
-                  <div>
-                    <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                      Inter-City Transfers (Consecutive Day Transitions)
-                    </h3>
-                    <p className="text-[11px] text-zinc-500">
-                      Auto-detected between consecutive days when stay city changes in Day Planning.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => startQuickAdd("Inter-City Transfer")}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#14213D] hover:bg-[#2B2E36] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>+ Add Inter-City Leg</span>
-                </button>
+            {/* DAY-WISE BLOCKS DRIVEN BY TAB 2 */}
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-[#B8944F]" />
+                  <span>Day-wise Transportation Schedule ({totalDays} Days)</span>
+                </h3>
+                <span className="text-[11px] text-zinc-400">
+                  Sourced strictly from Tab 2 Day-wise Planning
+                </span>
               </div>
 
-              {/* Detected Transitions Prompts / Missing Master Data alerts */}
-              {interCityTransitions.length > 0 && (
-                <div className="space-y-2 bg-[#FAF8F5] p-3.5 rounded-lg border border-[#B8944F]/20">
-                  <span className="text-[11px] font-bold text-[#8F6F33] flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>Detected Route Transitions from Day-wise Plan:</span>
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    {interCityTransitions.map((t, tIdx) => {
-                      const isAlreadyInTrip = (formData.flightDetails || []).some(
-                        (f: any) =>
-                          (f.transportCategory || "Inter-City Transfer") === "Inter-City Transfer" &&
-                          ((f.fromCity?.toLowerCase() === t.fromCity.toLowerCase() && f.toCity?.toLowerCase() === t.toCity.toLowerCase()) ||
-                           (f.sector?.toLowerCase().includes(t.fromCity.toLowerCase()) && f.sector?.toLowerCase().includes(t.toCity.toLowerCase())))
-                      );
+              {totalDays === 0 ? (
+                <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-xl">
+                  No itinerary days found. Please configure days in Step 2: Day-wise Planning.
+                </div>
+              ) : (
+                formData.itineraryDays.map((day: any, i: number) => {
+                  const dayNum = day.dayNumber || (i + 1);
+                  const dayDate = formatDayDate(formData.startDate, i);
+                  const currCity = day.cityOrStay?.trim() || `Day ${dayNum} Location`;
+                  const isLastDay = i === totalDays - 1;
+                  const nextDay = !isLastDay ? formData.itineraryDays[i + 1] : null;
+                  const nextCity = nextDay ? (nextDay.cityOrStay?.trim() || null) : null;
+                  
+                  // Inter-City Skip Logic:
+                  // Show ONLY when: not last day AND current city !== next city
+                  const isInterCityTransition = Boolean(
+                    !isLastDay && nextCity && currCity.toLowerCase() !== nextCity.toLowerCase()
+                  );
 
-                      if (isAlreadyInTrip) {
-                        return (
-                          <div
-                            key={tIdx}
-                            className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-md text-xs"
-                          >
-                            <span className="font-semibold text-emerald-900">
-                              ✓ Day {t.fromDay}&rarr;{t.toDay}: {t.fromCity} &rarr; {t.toCity}
+                  // 1. Query Inter-City Transfer from Master Data:
+                  // category = "Inter-City Transfer" AND from_city = current_day.city AND to_city = next_day.city
+                  const interCityMatches = isInterCityTransition
+                    ? masterData.flightRoutes.filter((r) => {
+                        const isInterCityCat = (r.transportCategory || "").toLowerCase().includes("inter-city");
+                        const matchesFrom = (r.fromCity || "").toLowerCase().trim() === currCity.toLowerCase().trim();
+                        const matchesTo = (r.toCity || "").toLowerCase().trim() === nextCity!.toLowerCase().trim();
+                        return isInterCityCat && matchesFrom && matchesTo;
+                      })
+                    : [];
+
+                  // Current selected Inter-City route ID
+                  const selectedInterCityId = day.interCityTransferId || day.placeTransportMap?.inter_city_transfer_id || null;
+                  const selectedInterCity = selectedInterCityId
+                    ? masterData.flightRoutes.find((r) => r.id === selectedInterCityId)
+                    : null;
+
+                  // Inter-City Search filter
+                  const interSearchTerm = (interCitySearchMap[dayNum] || "").toLowerCase().trim();
+                  const filteredInterCityMatches = interCityMatches.filter((r) => {
+                    if (!interSearchTerm) return true;
+                    return (
+                      (r.sector || "").toLowerCase().includes(interSearchTerm) ||
+                      (r.airline || "").toLowerCase().includes(interSearchTerm) ||
+                      (r.type || "").toLowerCase().includes(interSearchTerm)
+                    );
+                  });
+
+                  // 2. Query Local Transportation from Master Data:
+                  // category = "Local Transportation" (or "Local Transfer") AND destination_city = current_day.city
+                  const localMatches = masterData.flightRoutes.filter((r) => {
+                    const isLocalCat = (r.transportCategory || "").toLowerCase().includes("local");
+                    const matchesCity =
+                      (r.city?.name || "").toLowerCase().trim() === currCity.toLowerCase().trim() ||
+                      (r.fromCity || "").toLowerCase().trim() === currCity.toLowerCase().trim() ||
+                      (r.toCity || "").toLowerCase().trim() === currCity.toLowerCase().trim();
+                    return isLocalCat && matchesCity;
+                  });
+
+                  // Current selected Local Transport IDs
+                  const selectedLocalIds: string[] = day.localTransportIds || day.placeTransportMap?.local_transport_ids || [];
+                  const selectedLocalRoutes = masterData.flightRoutes.filter((r) =>
+                    selectedLocalIds.includes(r.id)
+                  );
+
+                  // Local Search filter
+                  const localSearchTerm = (localSearchMap[dayNum] || "").toLowerCase().trim();
+                  const filteredLocalMatches = localMatches.filter((r) => {
+                    if (!localSearchTerm) return true;
+                    return (
+                      (r.sector || "").toLowerCase().includes(localSearchTerm) ||
+                      (r.airline || "").toLowerCase().includes(localSearchTerm) ||
+                      (r.type || "").toLowerCase().includes(localSearchTerm)
+                    );
+                  });
+
+                  return (
+                    <div
+                      key={dayNum}
+                      className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-2xs space-y-4 p-5 hover:border-[#B8944F]/40 transition-all"
+                    >
+                      {/* READ-ONLY DAY HEADER */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#FAF8F5] border border-zinc-200/80 rounded-lg px-4 py-2.5">
+                        <div className="flex items-center space-x-2.5">
+                          <span className="h-6 w-6 rounded-md bg-[#14213D] text-white text-xs font-bold flex items-center justify-center shrink-0">
+                            {dayNum}
+                          </span>
+                          <span className="font-bold text-[#14213D] text-sm font-fraunces">
+                            Day {dayNum} {dayDate ? `· ${dayDate}` : ""} · {currCity}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {isInterCityTransition ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                              <span>Inter-City Transition &rarr; {nextCity}</span>
                             </span>
-                            <span className="text-[10px] text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border border-emerald-200">
-                              Active in Plan
+                          ) : isLastDay ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200">
+                              Final Tour Day
                             </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              Stay in {currCity} (No Inter-City Transfer)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 1. INTER-CITY TRANSFER SECTION (Shown ONLY when current day city !== next day city) */}
+                      {isInterCityTransition && (
+                        <div className="bg-amber-50/40 border border-amber-200/80 rounded-xl p-4 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/60 pb-2.5">
+                            <div className="flex items-center space-x-2">
+                              <Compass className="h-4 w-4 text-[#B8944F]" />
+                              <div>
+                                <h4 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                                  Inter-City Transfer
+                                </h4>
+                                <p className="text-[11px] text-zinc-500">
+                                  From: <strong>{currCity}</strong> &nbsp;•&nbsp; To: <strong>{nextCity}</strong>
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => startQuickAdd("Inter-City Transfer", currCity, nextCity!, "", dayNum)}
+                              className="text-[11px] font-bold text-[#8F6F33] hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              <Plus className="h-3 w-3" />
+                              <span>Add New Transfer</span>
+                            </button>
                           </div>
-                        );
-                      }
 
-                      if (t.matchingMasterRoutes.length > 0) {
-                        const mr = t.matchingMasterRoutes[0];
-                        return (
-                          <div
-                            key={tIdx}
-                            className="flex items-center justify-between p-2.5 bg-amber-50/70 border border-amber-200 rounded-md text-xs"
+                          {/* Selected Inter-City Route Display */}
+                          {selectedInterCity ? (
+                            <div className="p-3.5 bg-white border border-amber-300 rounded-lg shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="flex items-center space-x-3 min-w-0">
+                                <div className="h-8 w-8 rounded-lg bg-[#B8944F]/10 flex items-center justify-center shrink-0">
+                                  {getTransportIcon(selectedInterCity.type || "Car")}
+                                </div>
+                                <div className="min-w-0 space-y-0.5">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h5 className="font-bold text-[#14213D] text-xs">
+                                      {selectedInterCity.fromCity || currCity} &rarr; {selectedInterCity.toCity || nextCity} · {selectedInterCity.type || "Transport"} · {selectedInterCity.airline}
+                                    </h5>
+                                    <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-semibold">
+                                      Selected Route
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-zinc-500">
+                                    Provider: <strong>{selectedInterCity.airline}</strong> • Time: <strong>{selectedInterCity.travelTime || "09:00 AM"}</strong>
+                                    {selectedInterCity.flightNotes && <span> • <em>{selectedInterCity.flightNotes}</em></span>}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center space-x-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectInterCity(dayNum, null)}
+                                  className="px-2.5 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ) : interCityMatches.length === 0 ? (
+                            /* No Matching Inter-City Transfer Found State */
+                            <div className="flex flex-col sm:flex-row items-center justify-between p-3.5 bg-amber-50 border border-dashed border-amber-300 rounded-lg text-xs gap-3">
+                              <div className="flex items-center space-x-2 text-amber-950 font-medium">
+                                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                                <span>
+                                  No transfer found for <strong>{currCity} to {nextCity}</strong> — Add New
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => startQuickAdd("Inter-City Transfer", currCity, nextCity!, "", dayNum)}
+                                className="px-3 py-1.5 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-md text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                <span>Add New</span>
+                              </button>
+                            </div>
+                          ) : (
+                            /* Search and Select Inter-City Picker */
+                            <div className="space-y-2">
+                              {interCityMatches.length > 3 && (
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-400" />
+                                  <input
+                                    type="text"
+                                    value={interCitySearchMap[dayNum] || ""}
+                                    onChange={(e) =>
+                                      setInterCitySearchMap((prev) => ({
+                                        ...prev,
+                                        [dayNum]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder={`Search ${interCityMatches.length} transfer options for ${currCity} → ${nextCity}...`}
+                                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-medium text-[#14213D] outline-none"
+                                  />
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                                {filteredInterCityMatches.map((mr) => (
+                                  <button
+                                    key={mr.id}
+                                    type="button"
+                                    onClick={() => handleSelectInterCity(dayNum, mr.id)}
+                                    className="text-left p-2.5 bg-white border border-amber-200/90 hover:border-[#B8944F] hover:bg-amber-50/50 rounded-lg transition-all flex items-start space-x-2.5 cursor-pointer shadow-2xs group"
+                                  >
+                                    <div className="h-7 w-7 rounded-md bg-[#B8944F]/10 text-[#B8944F] flex items-center justify-center shrink-0 mt-0.5">
+                                      {getTransportIcon(mr.type || "Car")}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-xs font-bold text-[#14213D] truncate group-hover:text-[#B8944F]">
+                                        {mr.fromCity || currCity} &rarr; {mr.toCity || nextCity} · {mr.type || "Transport"} · {mr.airline}
+                                      </div>
+                                      <div className="text-[10px] text-zinc-500 mt-0.5 flex items-center gap-2">
+                                        <span>Time: {mr.travelTime || "09:00 AM"}</span>
+                                        {mr.flightNotes && <span className="truncate italic">• {mr.flightNotes}</span>}
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 2. LOCAL TRANSPORTATION SECTION (Always displayed for EVERY day) */}
+                      <div className="bg-emerald-50/40 border border-emerald-200/80 rounded-xl p-4 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/60 pb-2.5">
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="h-4 w-4 text-emerald-700" />
+                            <div>
+                              <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                                Local Transportation
+                              </h4>
+                              <p className="text-[11px] text-zinc-500">
+                                Destination City: <strong>{currCity}</strong> ({selectedLocalIds.length} selected)
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => startQuickAdd("Local Transfer", currCity, currCity, currCity, dayNum)}
+                            className="text-[11px] font-bold text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer shrink-0"
                           >
-                            <div className="min-w-0">
-                              <span className="font-bold text-[#14213D] block truncate">
-                                ⚡ Day {t.fromDay}&rarr;{t.toDay}: {t.fromCity} &rarr; {t.toCity}
-                              </span>
-                              <span className="text-[10px] text-zinc-500">
-                                Master option: {mr.airline} ({mr.type || "Car"}) • {mr.travelTime || "10:00 AM"}
+                            <Plus className="h-3 w-3" />
+                            <span>Add New Local Transport</span>
+                          </button>
+                        </div>
+
+                        {/* Selected Local Options Tag/Chip List */}
+                        {selectedLocalRoutes.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="text-[11px] font-bold text-emerald-900 uppercase tracking-wider">
+                              Active Local Options for Day {dayNum}:
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {selectedLocalRoutes.map((r) => (
+                                <div
+                                  key={r.id}
+                                  className="p-2.5 bg-white border border-emerald-300 rounded-lg shadow-2xs flex items-center justify-between gap-2 text-xs"
+                                >
+                                  <div className="flex items-center space-x-2 min-w-0">
+                                    <div className="h-6 w-6 rounded-md bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                                      {getTransportIcon(r.type || "Car")}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="font-bold text-[#14213D] truncate">
+                                        {r.sector || `${currCity} Local Transport`}
+                                      </div>
+                                      <div className="text-[10px] text-zinc-500 truncate">
+                                        {r.type || "Transport"} • {r.airline}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleLocalTransport(dayNum, r.id)}
+                                    className="p-1 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer shrink-0"
+                                    title="Deselect option"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Local Transportation Multi-Select / Searchable Picker */}
+                        {localMatches.length === 0 ? (
+                          /* No Local Transportation Found State */
+                          <div className="flex flex-col sm:flex-row items-center justify-between p-3.5 bg-emerald-50 border border-dashed border-emerald-300 rounded-lg text-xs gap-3">
+                            <div className="flex items-center space-x-2 text-emerald-950 font-medium">
+                              <AlertCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              <span>
+                                No local transportation found for <strong>{currCity}</strong> — Add New
                               </span>
                             </div>
                             <button
                               type="button"
-                              onClick={() => {
-                                const newLeg = {
-                                  sector: mr.sector || `${t.fromCity} to ${t.toCity}`,
-                                  fromCity: t.fromCity,
-                                  toCity: t.toCity,
-                                  transportCategory: "Inter-City Transfer",
-                                  airline: mr.airline,
-                                  type: mr.type || "Car",
-                                  travelTime: mr.travelTime || "09:00 AM",
-                                  departureDateTime: "",
-                                  arrivalDateTime: "",
-                                  durationText: "Direct",
-                                  stops: mr.typicalStops || 0,
-                                  layoverInfo: mr.typicalLayoverInfo || "",
-                                  carryOnBaggageKg: mr.cabinBaggageKg ?? 7,
-                                  checkInBaggageKg: mr.checkInBaggageKg ?? 20,
-                                  cancellationPolicy: mr.cancellationPolicy || "",
-                                  flightNotes: mr.flightNotes || "",
-                                  flightCodeDefault: mr.flightCodeDefault || "",
-                                  isStartingTransfer: false,
-                                  isPackageIncluded: true,
-                                  isAutoSuggested: true,
-                                };
-                                setFormData((prev: any) => ({
-                                  ...prev,
-                                  flightDetails: [...prev.flightDetails, newLeg],
-                                }));
-                              }}
-                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold shrink-0 cursor-pointer shadow-2xs"
+                              onClick={() => startQuickAdd("Local Transfer", currCity, currCity, currCity, dayNum)}
+                              className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-md text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
                             >
-                              + Add Route
+                              <Plus className="h-3.5 w-3.5" />
+                              <span>Add New</span>
                             </button>
                           </div>
-                        );
-                      }
+                        ) : (
+                          /* Searchable Multi-select list */
+                          <div className="space-y-2">
+                            {localMatches.length > 4 && (
+                              <div className="relative">
+                                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-400" />
+                                <input
+                                  type="text"
+                                  value={localSearchMap[dayNum] || ""}
+                                  onChange={(e) =>
+                                    setLocalSearchMap((prev) => ({
+                                      ...prev,
+                                      [dayNum]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={`Search ${localMatches.length} local transport options in ${currCity}...`}
+                                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-[#14213D] outline-none"
+                                />
+                              </div>
+                            )}
 
-                      return (
-                        <div
-                          key={tIdx}
-                          className="flex items-center justify-between p-2.5 bg-red-50/60 border border-red-200 rounded-md text-xs"
-                        >
-                          <div className="min-w-0">
-                            <span className="font-bold text-red-950 block truncate">
-                              ⚠️ No transport found for {t.fromCity} &rarr; {t.toCity}
-                            </span>
-                            <span className="text-[10px] text-red-700">
-                              Missing in master data catalog.
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => startQuickAdd("Inter-City Transfer", t.fromCity, t.toCity)}
-                            className="px-2.5 py-1 bg-red-700 hover:bg-red-800 text-white rounded text-[11px] font-bold shrink-0 cursor-pointer shadow-2xs"
-                          >
-                            + Add Option
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Inter-City Items List */}
-              <div className="space-y-3">
-                {interCityList.length === 0 ? (
-                  <div className="py-8 text-center text-zinc-400 text-xs bg-zinc-50/60 border border-dashed rounded-lg">
-                    No inter-city transfers configured. Use auto-suggest above or click &quot;+ Add Inter-City Leg&quot;.
-                  </div>
-                ) : (
-                  interCityList.map((f: any) => (
-                    <div
-                      key={f.originalIndex}
-                      className="p-4 bg-white border border-zinc-200/90 hover:border-[#B8944F]/50 rounded-lg shadow-2xs transition-all space-y-2.5"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center space-x-2.5 min-w-0">
-                          <div className="h-8 w-8 rounded-lg bg-[#B8944F]/10 flex items-center justify-center shrink-0">
-                            {getTransportIcon(f.type || "Car")}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-bold text-[#14213D] text-sm truncate">
-                                {f.sector || `${f.fromCity || "Origin"} to ${f.toCity || "Destination"}`}
-                              </h4>
-                              {f.isAutoSuggested ? (
-                                <span className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full">
-                                  ✨ Auto-suggested from master data
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full">
-                                  Custom Entry
-                                </span>
-                              )}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                              {filteredLocalMatches.map((mr) => {
+                                const isChecked = selectedLocalIds.includes(mr.id);
+                                return (
+                                  <button
+                                    key={mr.id}
+                                    type="button"
+                                    onClick={() => handleToggleLocalTransport(dayNum, mr.id)}
+                                    className={`text-left p-2.5 rounded-lg border transition-all flex items-start space-x-2.5 cursor-pointer shadow-2xs ${
+                                      isChecked
+                                        ? "bg-emerald-50/90 border-emerald-400 ring-1 ring-emerald-300"
+                                        : "bg-white border-zinc-200 hover:border-emerald-300 hover:bg-emerald-50/30"
+                                    }`}
+                                  >
+                                    <div
+                                      className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 mt-0.5 ${
+                                        isChecked
+                                          ? "bg-emerald-700 border-emerald-700 text-white"
+                                          : "border-zinc-300 bg-white"
+                                      }`}
+                                    >
+                                      {isChecked && <Check className="h-3 w-3" />}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-xs font-bold text-[#14213D] truncate">
+                                        {mr.sector || `${currCity} Local Transfer`}
+                                      </div>
+                                      <div className="text-[10px] text-zinc-500 mt-0.5 flex items-center gap-1.5">
+                                        <span className="font-semibold text-zinc-700">{mr.type || "Transport"}</span>
+                                        <span>•</span>
+                                        <span className="truncate">{mr.airline}</span>
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
                             </div>
-                            <p className="text-zinc-500 text-xs font-semibold mt-0.5 flex items-center gap-2 flex-wrap">
-                              <span>Carrier: <strong>{f.airline}</strong></span>
-                              <span>•</span>
-                              <span>Mode: <strong>{f.type || "Car"}</strong></span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3 text-[#B8944F]" />
-                                Preferred Time: <strong>{f.travelTime || "10:00 AM"}</strong>
-                              </span>
-                            </p>
                           </div>
-                        </div>
-
-                        {/* Controls */}
-                        <div className="flex items-center space-x-2 shrink-0">
-                          {/* Swap Selector with other matching master routes */}
-                          {masterData.flightRoutes.filter((r) => r.transportCategory === "Inter-City Transfer").length > 0 && (
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  handleSwapFlightWithMaster(f.originalIndex, e.target.value);
-                                }
-                              }}
-                              className="text-[11px] font-semibold text-[#8F6F33] bg-amber-50/60 border border-amber-200 rounded px-2 py-1 outline-none cursor-pointer"
-                              title="Swap with another Master Data route"
-                            >
-                              <option value="">⇄ Swap option...</option>
-                              {masterData.flightRoutes
-                                .filter((r) => r.transportCategory === "Inter-City Transfer")
-                                .map((r) => (
-                                  <option key={r.id} value={r.id}>
-                                    {r.sector} &bull; {r.airline} ({r.type || "Car"})
-                                  </option>
-                                ))}
-                            </select>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => startEditFlight(f.originalIndex)}
-                            className="p-1.5 text-zinc-500 hover:text-[#B8944F] rounded-md hover:bg-zinc-50 transition-colors cursor-pointer"
-                            title="Edit Leg"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeFlight(f.originalIndex)}
-                            className="p-1.5 text-zinc-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
-                            title="Remove Leg"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+                        )}
                       </div>
-
-                      {f.flightNotes && (
-                        <p className="text-[11px] text-zinc-500 bg-zinc-50 p-2 rounded border border-zinc-100 italic">
-                          📝 {f.flightNotes}
-                        </p>
-                      )}
                     </div>
-                  ))
-                )}
-              </div>
+                  );
+                })
+              )}
             </div>
 
-            {/* ========================================================================= */}
-            {/* SECTION C: LOCAL TRANSFERS */}
-            {/* ========================================================================= */}
-            <div className="bg-white border border-[#6B7A5E]/40 rounded-xl p-5 craft-card shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-3">
-                <div className="flex items-center space-x-2">
-                  <span className="h-5 w-5 rounded-full bg-[#6B7A5E] text-white text-xs font-bold flex items-center justify-center shadow-xs">
-                    C
-                  </span>
-                  <div>
-                    <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                      Local Transfers (City Stay, Station &amp; Hotel Logistics)
-                    </h3>
-                    <p className="text-[11px] text-zinc-500">
-                      Scoped per city stay (e.g. arrival transfer, station-to-hotel car, local day cab).
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => startQuickAdd("Local Transfer")}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#6B7A5E] hover:bg-[#58654D] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>+ Add Local Transfer</span>
-                </button>
-              </div>
-
-              {/* City Stay Suggestions */}
-              {distinctCityStays.length > 0 && (
-                <div className="space-y-2 bg-[#FAF8F5] p-3.5 rounded-lg border border-[#6B7A5E]/30">
-                  <span className="text-[11px] font-bold text-[#58654D] flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>City Stays in Day Plan:</span>
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    {distinctCityStays.map((s, sIdx) => {
-                      const isAlreadyInTrip = (formData.flightDetails || []).some(
-                        (f: any) =>
-                          f.transportCategory === "Local Transfer" &&
-                          (f.fromCity?.toLowerCase() === s.city.toLowerCase() ||
-                           f.toCity?.toLowerCase() === s.city.toLowerCase() ||
-                           f.sector?.toLowerCase().includes(s.city.toLowerCase()))
-                      );
-
-                      if (isAlreadyInTrip) {
-                        return (
-                          <div
-                            key={sIdx}
-                            className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-md text-xs"
-                          >
-                            <span className="font-semibold text-emerald-900">
-                              ✓ {s.city} Local Transport
-                            </span>
-                            <span className="text-[10px] text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border border-emerald-200">
-                              Active in Plan
-                            </span>
-                          </div>
-                        );
-                      }
-
-                      if (s.matchingMasterRoutes.length > 0) {
-                        const mr = s.matchingMasterRoutes[0];
-                        return (
-                          <div
-                            key={sIdx}
-                            className="flex items-center justify-between p-2.5 bg-emerald-50/40 border border-emerald-200 rounded-md text-xs"
-                          >
-                            <div className="min-w-0">
-                              <span className="font-bold text-[#14213D] block truncate">
-                                📍 {s.city} Local Transit
-                              </span>
-                              <span className="text-[10px] text-zinc-500">
-                                {mr.sector} • {mr.airline} ({mr.type || "Car"})
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newLeg = {
-                                  sector: mr.sector || `${s.city} Local Transfer`,
-                                  fromCity: s.city,
-                                  toCity: s.city,
-                                  transportCategory: "Local Transfer",
-                                  airline: mr.airline,
-                                  type: mr.type || "Car",
-                                  travelTime: mr.travelTime || "Flexible",
-                                  departureDateTime: "",
-                                  arrivalDateTime: "",
-                                  durationText: "Direct",
-                                  stops: 0,
-                                  layoverInfo: "",
-                                  carryOnBaggageKg: mr.cabinBaggageKg ?? 7,
-                                  checkInBaggageKg: mr.checkInBaggageKg ?? 20,
-                                  cancellationPolicy: mr.cancellationPolicy || "",
-                                  flightNotes: mr.flightNotes || "",
-                                  flightCodeDefault: mr.flightCodeDefault || "",
-                                  isStartingTransfer: false,
-                                  isPackageIncluded: true,
-                                  isAutoSuggested: true,
-                                };
-                                setFormData((prev: any) => ({
-                                  ...prev,
-                                  flightDetails: [...prev.flightDetails, newLeg],
-                                }));
-                              }}
-                              className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold shrink-0 cursor-pointer shadow-2xs"
-                            >
-                              + Add Local
-                            </button>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div
-                          key={sIdx}
-                          className="flex items-center justify-between p-2.5 bg-red-50/60 border border-red-200 rounded-md text-xs"
-                        >
-                          <div className="min-w-0">
-                            <span className="font-bold text-red-950 block truncate">
-                              ⚠️ No local transport found for {s.city}
-                            </span>
-                            <span className="text-[10px] text-red-700">
-                              Add standard local transfer option.
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => startQuickAdd("Local Transfer", s.city, s.city, s.city)}
-                            className="px-2.5 py-1 bg-red-700 hover:bg-red-800 text-white rounded text-[11px] font-bold shrink-0 cursor-pointer shadow-2xs"
-                          >
-                            + Add Option
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Local Items List */}
-              <div className="space-y-3">
-                {localList.length === 0 ? (
-                  <div className="py-8 text-center text-zinc-400 text-xs bg-zinc-50/60 border border-dashed rounded-lg">
-                    No local transfers configured. Use suggestions above or click &quot;+ Add Local Transfer&quot;.
-                  </div>
-                ) : (
-                  localList.map((f: any) => (
-                    <div
-                      key={f.originalIndex}
-                      className="p-4 bg-white border border-zinc-200/90 hover:border-[#6B7A5E]/60 rounded-lg shadow-2xs transition-all space-y-2.5"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center space-x-2.5 min-w-0">
-                          <div className="h-8 w-8 rounded-lg bg-[#6B7A5E]/10 flex items-center justify-center shrink-0">
-                            {getTransportIcon(f.type || "Car")}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-bold text-[#14213D] text-sm truncate">
-                                {f.sector || `${f.fromCity || "City"} Local Transfer`}
-                              </h4>
-                              {f.isAutoSuggested ? (
-                                <span className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full">
-                                  ✨ Auto-suggested from master data
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full">
-                                  Custom Entry
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-zinc-500 text-xs font-semibold mt-0.5 flex items-center gap-2 flex-wrap">
-                              <span>Provider: <strong>{f.airline}</strong></span>
-                              <span>•</span>
-                              <span>Mode: <strong>{f.type || "Car"}</strong></span>
-                              <span>•</span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3 text-[#6B7A5E]" />
-                                Preferred Time: <strong>{f.travelTime || "Flexible"}</strong>
-                              </span>
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Controls */}
-                        <div className="flex items-center space-x-2 shrink-0">
-                          {/* Swap Selector */}
-                          {masterData.flightRoutes.filter((r) => r.transportCategory === "Local Transfer").length > 0 && (
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  handleSwapFlightWithMaster(f.originalIndex, e.target.value);
-                                }
-                              }}
-                              className="text-[11px] font-semibold text-[#58654D] bg-emerald-50/60 border border-emerald-200 rounded px-2 py-1 outline-none cursor-pointer"
-                              title="Swap with another Local Master route"
-                            >
-                              <option value="">⇄ Swap option...</option>
-                              {masterData.flightRoutes
-                                .filter((r) => r.transportCategory === "Local Transfer")
-                                .map((r) => (
-                                  <option key={r.id} value={r.id}>
-                                    {r.sector} &bull; {r.airline} ({r.type || "Car"})
-                                  </option>
-                                ))}
-                            </select>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => startEditFlight(f.originalIndex)}
-                            className="p-1.5 text-zinc-500 hover:text-[#6B7A5E] rounded-md hover:bg-zinc-50 transition-colors cursor-pointer"
-                            title="Edit Leg"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeFlight(f.originalIndex)}
-                            className="p-1.5 text-zinc-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
-                            title="Remove Leg"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {f.flightNotes && (
-                        <p className="text-[11px] text-zinc-500 bg-zinc-50 p-2 rounded border border-zinc-100 italic">
-                          📝 {f.flightNotes}
-                        </p>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* ========================================================================= */}
-            {/* EDIT MODAL / DRAWER FOR SINGLE FLIGHT DETAIL */}
-            {/* ========================================================================= */}
-            {editingFlightIndex !== null && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-                <div className="bg-white rounded-xl shadow-2xl border border-zinc-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
-                    <h3 className="text-sm font-bold text-[#14213D] flex items-center gap-2">
-                      <Pencil className="h-4 w-4 text-[#B8944F]" />
-                      <span>Edit Transportation Leg</span>
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => setEditingFlightIndex(null)}
-                      className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Transport Category
-                      </label>
-                      <select
-                        value={newFlight.transportCategory}
-                        onChange={(e) =>
-                          setNewFlight({
-                            ...newFlight,
-                            transportCategory: e.target.value as any,
-                          })
-                        }
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
-                      >
-                        <option value="Inter-City Transfer">Inter-City Transfer (Between Cities)</option>
-                        <option value="Local Transfer">Local Transfer (Station/Hotel/Sightseeing)</option>
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          Vehicle / Transit Type
-                        </label>
-                        <select
-                          value={newFlight.type}
-                          onChange={(e) => setNewFlight({ ...newFlight, type: e.target.value })}
-                          className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                        >
-                          {TRANSPORT_TYPES.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          Preferred Travel Time
-                        </label>
-                        <input
-                          type="text"
-                          value={newFlight.travelTime}
-                          onChange={(e) => setNewFlight({ ...newFlight, travelTime: e.target.value })}
-                          placeholder="e.g. 10:00 AM or Morning slot"
-                          className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none font-medium"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Sector / Route Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={newFlight.sector}
-                        onChange={(e) => setNewFlight({ ...newFlight, sector: e.target.value })}
-                        placeholder="e.g. Ahmedabad to Udaipur or Udaipur Station Pickup"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Carrier / Provider Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={newFlight.airline}
-                        onChange={(e) => setNewFlight({ ...newFlight, airline: e.target.value })}
-                        placeholder="e.g. Private AC Sedan or Indigo Airlines"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none font-medium"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Transit Notes / Guidelines
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={newFlight.flightNotes}
-                        onChange={(e) => setNewFlight({ ...newFlight, flightNotes: e.target.value })}
-                        placeholder="e.g. Tolls and parking included. Luggage space for 2 large suitcases."
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                      />
-                    </div>
-
-                    <div className="flex justify-end space-x-2 pt-3 border-t border-zinc-100">
-                      <button
-                        type="button"
-                        onClick={() => setEditingFlightIndex(null)}
-                        className="px-4 py-2 border border-zinc-200 text-zinc-600 rounded-lg text-xs font-semibold hover:bg-zinc-50 cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={addFlight}
-                        className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold cursor-pointer"
-                      >
-                        Update Arrangement
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ========================================================================= */}
-            {/* QUICK ADD MODAL (WITH OPTION TO SAVE TO MASTER DATA) */}
-            {/* ========================================================================= */}
+            {/* QUICK ADD MODAL (SAVED DIRECTLY TO MASTER DATA & ASSIGNED TO DAY) */}
             {quickAddModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
                 <div className="bg-white rounded-xl shadow-2xl border border-zinc-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                   <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
                     <h3 className="text-sm font-bold text-[#14213D] flex items-center gap-2">
                       <Plus className="h-4 w-4 text-[#B8944F]" />
-                      <span>Add {quickAddForm.transportCategory}</span>
+                      <span>
+                        Add Master {quickAddForm.transportCategory === "Inter-City Transfer" ? "Inter-City Transfer" : "Local Transportation"}
+                      </span>
                     </h3>
                     <button
                       type="button"
@@ -3428,14 +3221,14 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                     ) : (
                       <div>
                         <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                          City / Scope *
+                          Destination City *
                         </label>
                         <input
                           type="text"
                           required
                           value={quickAddForm.city}
                           onChange={(e) => setQuickAddForm({ ...quickAddForm, city: e.target.value })}
-                          placeholder="e.g. Udaipur or Bali"
+                          placeholder="e.g. Ahmedabad or Udaipur"
                           className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                         />
                       </div>
@@ -3450,7 +3243,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                         required
                         value={quickAddForm.airline}
                         onChange={(e) => setQuickAddForm({ ...quickAddForm, airline: e.target.value })}
-                        placeholder="e.g. Private AC Sedan / Station Car"
+                        placeholder="e.g. ABC Travels / Private AC Sedan"
                         className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                       />
                     </div>
@@ -3465,7 +3258,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                           onChange={(e) => setQuickAddForm({ ...quickAddForm, type: e.target.value })}
                           className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                         >
-                          {TRANSPORT_TYPES.map((t) => (
+                          {["Car", "Sedan", "SUV", "Tempo Traveller", "Flight", "Train", "Bus", "Luxury Coach", "Helicopter", "Boat", "Auto-rickshaw", "Other"].map((t) => (
                             <option key={t} value={t}>
                               {t}
                             </option>
@@ -3481,7 +3274,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                           type="text"
                           value={quickAddForm.travelTime}
                           onChange={(e) => setQuickAddForm({ ...quickAddForm, travelTime: e.target.value })}
-                          placeholder="e.g. 10:00 AM"
+                          placeholder="e.g. 10:00 AM / Flexible"
                           className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none"
                         />
                       </div>
@@ -3489,35 +3282,22 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
 
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Notes / Inclusions
+                        Notes / Instructions
                       </label>
                       <input
                         type="text"
                         value={quickAddForm.flightNotes}
                         onChange={(e) => setQuickAddForm({ ...quickAddForm, flightNotes: e.target.value })}
-                        placeholder="e.g. Driver allowance and fuel included"
+                        placeholder="e.g. Tolls, fuel and driver allowance included"
                         className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
 
-                    {/* Option to Save to Master Data Hub */}
-                    <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-lg">
-                      <label className="flex items-center space-x-2.5 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={quickAddForm.saveToMasterData}
-                          onChange={(e) =>
-                            setQuickAddForm({
-                              ...quickAddForm,
-                              saveToMasterData: e.target.checked,
-                            })
-                          }
-                          className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F] cursor-pointer"
-                        />
-                        <span className="text-xs font-bold text-[#14213D]">
-                          ⚡ Save to Master Data Hub (Auto-suggest for future trips)
-                        </span>
-                      </label>
+                    <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-[#B8944F] shrink-0" />
+                      <span>
+                        Saves to Master Data Hub and automatically assigns to <strong>Day {quickAddForm.targetDayNum || 1}</strong>.
+                      </span>
                     </div>
 
                     <div className="flex justify-end space-x-2 pt-3 border-t border-zinc-100">
@@ -3534,7 +3314,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                         className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer"
                       >
                         {savingQuickAdd && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                        <span>Add to Trip</span>
+                        <span>Save &amp; Select</span>
                       </button>
                     </div>
                   </form>
@@ -3546,462 +3326,354 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
       }
 
       case 6: {
-        // Collect all active cities from the itinerary days & destination
-        const tripCities: string[] = Array.from(
-          new Set(
-            (formData.itineraryDays || [])
-              .map((d: any) => d.cityOrStay?.trim())
-              .filter(Boolean)
-          )
-        );
-        if (tripCities.length === 0 && formData.destination) {
-          tripCities.push(formData.destination.trim());
-        }
+        const totalDays = (formData.itineraryDays || []).length;
 
-        // City-wise filtering for Add-ons & Visa
-        const availableMasterAddOns = masterData.addOns.filter((addon: any) => {
-          if (addOnCityFilter !== "All") {
-            const matchedCity = masterData.cities.find(
-              (c) => c.name.toLowerCase() === addOnCityFilter.toLowerCase()
-            );
-            if (matchedCity) {
-              if (addon.cityId === matchedCity.id) return true;
-              if (addon.cityIds && addon.cityIds.includes(matchedCity.id)) return true;
-            }
-            if (addon.city?.name?.toLowerCase() === addOnCityFilter.toLowerCase()) return true;
-            return false;
-          }
+        const handleAddMasterAddOnToDay = (dayNum: number, addonName: string) => {
+          if (!addonName) return;
+          const addon = masterData.addOns.find((a) => a.name === addonName);
+          if (!addon) return;
 
-          if (tripCities.length > 0) {
-            const matchesItineraryCity = tripCities.some((cityName) => {
-              const matchedCity = masterData.cities.find(
-                (c) => c.name.toLowerCase() === cityName.toLowerCase()
-              );
-              if (matchedCity) {
-                if (addon.cityId === matchedCity.id) return true;
-                if (addon.cityIds && addon.cityIds.includes(matchedCity.id)) return true;
-              }
-              if (addon.city?.name?.toLowerCase() === cityName.toLowerCase()) return true;
-              return false;
-            });
-            const isUniversal = !addon.cityId && (!addon.cityIds || addon.cityIds.length === 0) && !addon.city;
-            return matchesItineraryCity || isUniversal;
-          }
+          const newItem = {
+            dayNumber: dayNum,
+            name: addon.name,
+            detailsJson: {
+              visaType: addon.visaType || undefined,
+              length: addon.validityLength || undefined,
+              validity: addon.validityWindow || undefined,
+              details: addon.detailsDescription || undefined,
+            },
+            price: Number(addon.defaultPrice || 0),
+            priceType: "per person",
+          };
 
-          return true;
-        });
+          setFormData((prev: any) => ({
+            ...prev,
+            addOns: [...(prev.addOns || []), newItem],
+          }));
+        };
+
+        const handleRemoveDayAddOn = (index: number) => {
+          setFormData((prev: any) => ({
+            ...prev,
+            addOns: prev.addOns.filter((_: any, i: number) => i !== index),
+          }));
+        };
 
         return (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
               <div>
-                <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-                  Step 6: Optional Add-ons & Visa
+                <h2 className="text-xl font-bold text-[#14213D] font-fraunces flex items-center gap-2">
+                  <PlusCircle className="h-5 w-5 text-[#B8944F]" />
+                  <span>Step 6: Optional Add-ons, Visas & Experiences</span>
                 </h2>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  City-connected visa packages, fast-track entry, insurance, and extra amenities.
+                  Day-wise add-on services, visa arrangements, sightseeing passes, and travel packages.
                 </p>
               </div>
+            </div>
 
-              {/* Dynamic City-wise filter tags for Itinerary */}
-              {tripCities.length > 0 && (
-                <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mr-1">
-                    City Filter:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setAddOnCityFilter("All")}
-                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                      addOnCityFilter === "All"
-                        ? "bg-[#14213D] text-[#DDA74F] shadow-2xs"
-                        : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
-                    }`}
-                  >
-                    All Itinerary Cities ({tripCities.length})
-                  </button>
-                  {tripCities.map((cityName) => (
-                    <button
-                      type="button"
-                      key={cityName}
-                      onClick={() => setAddOnCityFilter(cityName)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
-                        addOnCityFilter === cityName
-                          ? "bg-[#B8944F] text-white shadow-2xs"
-                          : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
-                      }`}
-                    >
-                      <MapPin className="h-2.5 w-2.5" />
-                      <span>{cityName}</span>
-                    </button>
-                  ))}
+            {/* DAY-WISE BLOCKS DRIVEN BY TAB 2 */}
+            <div className="space-y-5">
+              {totalDays === 0 ? (
+                <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-xl">
+                  No itinerary days found. Please configure days in Step 2: Day-wise Planning.
                 </div>
+              ) : (
+                formData.itineraryDays.map((day: any, i: number) => {
+                  const dayNum = day.dayNumber || (i + 1);
+                  const dayDate = formatDayDate(formData.startDate, i);
+                  const currCity = day.cityOrStay?.trim() || `Day ${dayNum} Location`;
+
+                  // Matching master add-ons for this day's city
+                  const matchingMasterAddons = masterData.addOns.filter((a: any) => {
+                    const cityMatch =
+                      a.city?.name?.toLowerCase() === currCity.toLowerCase() ||
+                      a.cityId === masterData.cities.find((c: any) => c.name.toLowerCase() === currCity.toLowerCase())?.id ||
+                      (a.cityIds && a.cityIds.includes(masterData.cities.find((c: any) => c.name.toLowerCase() === currCity.toLowerCase())?.id));
+                    const isUniversal = !a.cityId && (!a.cityIds || a.cityIds.length === 0) && !a.city;
+                    return cityMatch || isUniversal;
+                  });
+
+                  // Add-ons selected for this day
+                  const dayAddOns = (formData.addOns || [])
+                    .map((a: any, originalIndex: number) => ({ ...a, originalIndex }))
+                    .filter((a: any) => a.dayNumber === dayNum);
+
+                  return (
+                    <div
+                      key={dayNum}
+                      className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-2xs p-5 space-y-4 hover:border-[#B8944F]/40 transition-all"
+                    >
+                      {/* Read-Only Day Header */}
+                      <div className="flex items-center justify-between bg-[#FAF8F5] border border-zinc-200/80 rounded-lg px-4 py-2.5">
+                        <div className="flex items-center space-x-2.5">
+                          <span className="h-6 w-6 rounded-md bg-[#14213D] text-white text-xs font-bold flex items-center justify-center shrink-0">
+                            {dayNum}
+                          </span>
+                          <span className="font-bold text-[#14213D] text-sm font-fraunces">
+                            Day {dayNum} {dayDate ? `· ${dayDate}` : ""} · {currCity}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                          {dayAddOns.length} {dayAddOns.length === 1 ? "Add-on Selected" : "Add-ons Selected"}
+                        </span>
+                      </div>
+
+                      {/* Selected Add-ons List */}
+                      {dayAddOns.length > 0 && (
+                        <div className="space-y-2">
+                          {dayAddOns.map((a: any) => {
+                            let desc: any = {};
+                            try {
+                              desc = typeof a.detailsJson === "string" ? JSON.parse(a.detailsJson) : a.detailsJson;
+                            } catch (e) {}
+
+                            return (
+                              <div
+                                key={a.originalIndex}
+                                className="flex items-center justify-between p-3.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs"
+                              >
+                                <div className="space-y-0.5">
+                                  <h4 className="font-bold text-[#14213D]">{a.name}</h4>
+                                  <p className="text-[11px] text-zinc-500">
+                                    <span className="font-mono font-bold text-emerald-800">₹{Number(a.price || 0).toLocaleString("en-IN")}</span> {a.priceType || "per person"}
+                                    {desc?.visaType && <span> • {desc.visaType}</span>}
+                                    {desc?.details && <span> • {desc.details}</span>}
+                                  </p>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDayAddOn(a.originalIndex)}
+                                  className="p-1.5 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
+                                  title="Remove add-on"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Add-on Selector */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddMasterAddOnToDay(dayNum, e.target.value);
+                              e.target.value = "";
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-semibold text-[#14213D] outline-none cursor-pointer"
+                        >
+                          <option value="">
+                            {matchingMasterAddons.length > 0
+                              ? `+ Add add-on for Day ${dayNum} (${matchingMasterAddons.length} available for ${currCity})...`
+                              : `+ Add add-on for Day ${dayNum}...`}
+                          </option>
+                          {matchingMasterAddons.length > 0 && (
+                            <optgroup label={`Add-ons for ${currCity}`}>
+                              {matchingMasterAddons.map((a: any) => (
+                                <option key={a.id} value={a.name}>
+                                  {a.name} (₹{a.defaultPrice}) {a.visaType ? `• ${a.visaType}` : ""}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="All Master Add-ons">
+                            {masterData.addOns.map((a: any) => (
+                              <option key={a.id} value={a.name}>
+                                {a.name} (₹{a.defaultPrice})
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })
               )}
-            </div>
-
-            {/* Add-on Entry Form with City-Filtered Master AddOn picker */}
-            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                    {editingAddOnIndex !== null ? "Edit Add-on Service" : "Add Service / Visa Package"}
-                  </span>
-                  {addOnCityFilter !== "All" && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                      📍 Filtered for {addOnCityFilter}
-                    </span>
-                  )}
-                </div>
-
-                {/* Master Add-on Picker with City-Aware Options */}
-                {availableMasterAddOns.length > 0 ? (
-                  <select
-                    onChange={(e) => {
-                      const addon = masterData.addOns.find((a) => a.name === e.target.value);
-                      if (addon) {
-                        setNewAddOn((prev) => ({
-                          ...prev,
-                          name: addon.name,
-                          visaType: addon.visaType || "",
-                          length: addon.validityLength || "",
-                          validity: addon.validityWindow || "",
-                          details: addon.detailsDescription || "",
-                          price: addon.defaultPrice || 0,
-                        }));
-                      }
-                    }}
-                    value=""
-                    className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
-                  >
-                    <option value="">⚡ Pre-fill from Master Add-ons ({availableMasterAddOns.length} available)...</option>
-                    {availableMasterAddOns.map((a: any) => {
-                      const cityName = a.city?.name ? ` [${a.city.name}]` : "";
-                      return (
-                        <option key={a.id} value={a.name}>
-                          {a.name}{cityName} (₹{a.defaultPrice})
-                        </option>
-                      );
-                    })}
-                  </select>
-                ) : (
-                  <span className="text-[11px] text-zinc-400 italic">
-                    No master add-ons configured for this city.
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Add-on Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={newAddOn.name}
-                    onChange={(e) => setNewAddOn({ ...newAddOn, name: e.target.value })}
-                    placeholder="e.g. Indonesia Official E-VOA (Electronic Visa on Arrival)"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Visa Type
-                  </label>
-                  <input
-                    type="text"
-                    value={newAddOn.visaType}
-                    onChange={(e) => setNewAddOn({ ...newAddOn, visaType: e.target.value })}
-                    placeholder="e.g. Tourist E-VOA 30 Days"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Validity Length / Window
-                  </label>
-                  <input
-                    type="text"
-                    value={newAddOn.validity}
-                    onChange={(e) => setNewAddOn({ ...newAddOn, validity: e.target.value })}
-                    placeholder="e.g. 90 Days from issue"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Price (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    value={newAddOn.price}
-                    onChange={(e) =>
-                      setNewAddOn({ ...newAddOn, price: parseFloat(e.target.value) || 0 })
-                    }
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-mono font-bold text-[#14213D] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Price Structure
-                  </label>
-                  <select
-                    value={newAddOn.priceType}
-                    onChange={(e) => setNewAddOn({ ...newAddOn, priceType: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  >
-                    <option value="per person">per person</option>
-                    <option value="per group">per group</option>
-                  </select>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Details Description
-                  </label>
-                  <input
-                    type="text"
-                    value={newAddOn.details}
-                    onChange={(e) => setNewAddOn({ ...newAddOn, details: e.target.value })}
-                    placeholder="e.g. Clears immigration queues via dedicated e-gate barcode scanners."
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2">
-                {editingAddOnIndex !== null && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingAddOnIndex(null)}
-                    className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={addAddOn}
-                  className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                >
-                  {editingAddOnIndex !== null ? "Update Add-on" : "+ Add Service"}
-                </button>
-              </div>
-            </div>
-
-            {/* Addons List */}
-            <div className="space-y-3">
-              {formData.addOns.map((a: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
-                >
-                  <div>
-                    <h4 className="font-bold text-[#14213D] text-sm">{a.name}</h4>
-                    <p className="text-zinc-500 mt-0.5">
-                      ₹{a.price?.toLocaleString("en-IN")} {a.priceType}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => startEditAddOn(idx)}
-                      className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeAddOn(idx)}
-                      className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         );
       }
 
-      case 7:
+      case 7: {
+        const totalDays = (formData.itineraryDays || []).length;
+
+        const handleAddMasterRestaurantToDay = (dayNum: number, currCity: string, restName: string) => {
+          if (!restName) return;
+          const rest = masterData.restaurants.find((r) => r.name === restName);
+          if (!rest) return;
+
+          const newItem = {
+            dayNumber: dayNum,
+            location: rest.city?.name || currCity,
+            cuisineType: rest.cuisineType,
+            name: rest.name,
+            rating: rest.starRating || 4.5,
+            reviewCount: rest.reviewsCount || 100,
+            isVeg: rest.offersPureVegJain,
+            category: rest.categoryType || "Restaurant",
+          };
+
+          setFormData((prev: any) => ({
+            ...prev,
+            restaurantSuggestions: [...(prev.restaurantSuggestions || []), newItem],
+          }));
+        };
+
+        const handleRemoveDayRestaurant = (index: number) => {
+          setFormData((prev: any) => ({
+            ...prev,
+            restaurantSuggestions: prev.restaurantSuggestions.filter((_: any, i: number) => i !== index),
+          }));
+        };
+
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 7: Restaurant & Club Suggestions
-            </h2>
-
-            {/* Restaurant Form with Master Restaurant Selector */}
-            <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                  {editingRestIndex !== null ? "Edit Dining Recommendation" : "Add Dining Recommendation"}
-                </span>
-
-                {/* Master Restaurant Picker (filtered by destination city if matched) */}
-                {masterData.restaurants.length > 0 && (
-                  <select
-                    onChange={(e) => {
-                      const rest = masterData.restaurants.find((r) => r.name === e.target.value);
-                      if (rest) {
-                        setNewRest((prev) => ({
-                          ...prev,
-                          name: rest.name,
-                          location: rest.city ? `${rest.city.name}` : prev.location,
-                          cuisineType: rest.cuisineType,
-                          category: rest.categoryType || "Restaurant",
-                          rating: rest.starRating || 4.5,
-                          reviewCount: rest.reviewsCount || 150,
-                          isVeg: rest.offersPureVegJain,
-                        }));
-                      }
-                    }}
-                    value=""
-                    className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
-                  >
-                    <option value="">⚡ Select from Curated Dining Library...</option>
-                    {masterData.restaurants.map((r) => (
-                      <option key={r.id} value={r.name}>
-                        {r.name} ({r.cuisineType}) {r.city ? `- ${r.city.name}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Location Area *
-                  </label>
-                  <input
-                    type="text"
-                    value={newRest.location}
-                    onChange={(e) => setNewRest({ ...newRest, location: e.target.value })}
-                    placeholder="e.g. Seminyak, Ubud, Downtown Dubai"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Restaurant Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={newRest.name}
-                    onChange={(e) => setNewRest({ ...newRest, name: e.target.value })}
-                    placeholder="e.g. Queen's Tandoor Seminyak"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Cuisine Type
-                  </label>
-                  <input
-                    type="text"
-                    value={newRest.cuisineType}
-                    onChange={(e) => setNewRest({ ...newRest, cuisineType: e.target.value })}
-                    placeholder="e.g. North & South Indian, Italian"
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Category Type
-                  </label>
-                  <select
-                    value={newRest.category}
-                    onChange={(e) => setNewRest({ ...newRest, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                  >
-                    <option value="Restaurant">Restaurant</option>
-                    <option value="Beach Club">Beach Club</option>
-                    <option value="Night Club">Night Club</option>
-                    <option value="Cafe">Cafe</option>
-                  </select>
-                </div>
-
-                <div className="sm:col-span-2 flex items-center space-x-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="veg-jain-flag"
-                    checked={newRest.isVeg}
-                    onChange={(e) => setNewRest({ ...newRest, isVeg: e.target.checked })}
-                    className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F]"
-                  />
-                  <label htmlFor="veg-jain-flag" className="text-xs font-semibold text-zinc-700 cursor-pointer">
-                    Offers Dedicated Pure Veg / Jain Food Options
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-2">
-                {editingRestIndex !== null && (
-                  <button
-                    type="button"
-                    onClick={() => setEditingRestIndex(null)}
-                    className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={addRest}
-                  className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                >
-                  {editingRestIndex !== null ? "Update Suggestion" : "+ Add Suggestion"}
-                </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
+              <div>
+                <h2 className="text-xl font-bold text-[#14213D] font-fraunces flex items-center gap-2">
+                  <Utensils className="h-5 w-5 text-[#B8944F]" />
+                  <span>Step 7: Restaurant & Club Suggestions</span>
+                </h2>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Day-wise curated dining recommendations, Indian cuisines, beach clubs, and cafes.
+                </p>
               </div>
             </div>
 
-            {/* Suggestions list */}
-            <div className="space-y-3">
-              {formData.restaurantSuggestions.map((r: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
-                >
-                  <div>
-                    <h4 className="font-bold text-[#14213D] text-sm">{r.name}</h4>
-                    <p className="text-zinc-500 mt-0.5">
-                      📍 {r.location} &bull; {r.category} ({r.cuisineType})
-                    </p>
-                    {r.isVeg && (
-                      <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
-                        Pure Veg / Jain Available
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => startEditRest(idx)}
-                      className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeRest(idx)}
-                      className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+            {/* DAY-WISE BLOCKS DRIVEN BY TAB 2 */}
+            <div className="space-y-5">
+              {totalDays === 0 ? (
+                <div className="py-12 text-center text-zinc-400 text-xs bg-white border border-dashed rounded-xl">
+                  No itinerary days found. Please configure days in Step 2: Day-wise Planning.
                 </div>
-              ))}
+              ) : (
+                formData.itineraryDays.map((day: any, i: number) => {
+                  const dayNum = day.dayNumber || (i + 1);
+                  const dayDate = formatDayDate(formData.startDate, i);
+                  const currCity = day.cityOrStay?.trim() || `Day ${dayNum} Location`;
+
+                  // Matching master restaurants for this day's city
+                  const matchingMasterRestaurants = masterData.restaurants.filter((r: any) => {
+                    const cityMatch =
+                      r.city?.name?.toLowerCase() === currCity.toLowerCase() ||
+                      r.cityId === masterData.cities.find((c: any) => c.name.toLowerCase() === currCity.toLowerCase())?.id;
+                    const isUniversal = !r.cityId && !r.city;
+                    return cityMatch || isUniversal;
+                  });
+
+                  // Dining suggestions selected for this day
+                  const dayRestaurants = (formData.restaurantSuggestions || [])
+                    .map((r: any, originalIndex: number) => ({ ...r, originalIndex }))
+                    .filter((r: any) => r.dayNumber === dayNum);
+
+                  return (
+                    <div
+                      key={dayNum}
+                      className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-2xs p-5 space-y-4 hover:border-[#B8944F]/40 transition-all"
+                    >
+                      {/* Read-Only Day Header */}
+                      <div className="flex items-center justify-between bg-[#FAF8F5] border border-zinc-200/80 rounded-lg px-4 py-2.5">
+                        <div className="flex items-center space-x-2.5">
+                          <span className="h-6 w-6 rounded-md bg-[#14213D] text-white text-xs font-bold flex items-center justify-center shrink-0">
+                            {dayNum}
+                          </span>
+                          <span className="font-bold text-[#14213D] text-sm font-fraunces">
+                            Day {dayNum} {dayDate ? `· ${dayDate}` : ""} · {currCity}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                          {dayRestaurants.length} {dayRestaurants.length === 1 ? "Dining Spot" : "Dining Spots"}
+                        </span>
+                      </div>
+
+                      {/* Selected Dining Suggestions List */}
+                      {dayRestaurants.length > 0 && (
+                        <div className="space-y-2">
+                          {dayRestaurants.map((r: any) => (
+                            <div
+                              key={r.originalIndex}
+                              className="flex items-center justify-between p-3.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs"
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="font-bold text-[#14213D]">{r.name}</h4>
+                                  <span className="text-[10px] bg-zinc-100 text-zinc-600 px-1.5 py-0.2 rounded font-semibold">
+                                    {r.category || "Restaurant"}
+                                  </span>
+                                  {r.isVeg && (
+                                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded font-bold">
+                                      Pure Veg / Jain
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-zinc-500">
+                                  📍 {r.location} • Cuisine: <strong>{r.cuisineType}</strong> • ⭐ {r.rating || 4.5}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDayRestaurant(r.originalIndex)}
+                                className="p-1.5 text-zinc-400 hover:text-red-600 transition-colors cursor-pointer"
+                                title="Remove dining suggestion"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Restaurant Selector */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleAddMasterRestaurantToDay(dayNum, currCity, e.target.value);
+                              e.target.value = "";
+                            }
+                          }}
+                          className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-semibold text-[#14213D] outline-none cursor-pointer"
+                        >
+                          <option value="">
+                            {matchingMasterRestaurants.length > 0
+                              ? `+ Add Dining spot for Day ${dayNum} (${matchingMasterRestaurants.length} available in ${currCity})...`
+                              : `+ Add Dining spot for Day ${dayNum}...`}
+                          </option>
+                          {matchingMasterRestaurants.length > 0 && (
+                            <optgroup label={`Dining Spots in ${currCity}`}>
+                              {matchingMasterRestaurants.map((r: any) => (
+                                <option key={r.id} value={r.name}>
+                                  {r.name} ({r.cuisineType}) • ⭐ {r.starRating || 4.5} {r.offersPureVegJain ? "• [Veg/Jain]" : ""}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="All Master Dining Spots">
+                            {masterData.restaurants.map((r: any) => (
+                              <option key={r.id} value={r.name}>
+                                {r.name} ({r.cuisineType}) {r.city ? `- ${r.city.name}` : ""}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         );
+      }
 
       case 8:
         return (
@@ -4396,6 +4068,31 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
           </div>
         )}
 
+        {/* Ungrounded Fallback Admin Review Banner */}
+        {needsAdminReview && (
+          <div className="mb-6 p-4 bg-amber-500/10 border-2 border-amber-400 rounded-xl flex items-start gap-3.5 text-amber-950 shadow-xs animate-in fade-in duration-200">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="space-y-0.5">
+                <p className="text-xs font-extrabold uppercase tracking-wide text-amber-900 flex items-center gap-2">
+                  <span>Admin Review Required</span>
+                  <span className="px-1.5 py-0.2 bg-amber-200/80 text-amber-900 rounded text-[9px]">Ungrounded Source</span>
+                </p>
+                <p className="text-xs text-amber-950 font-medium">
+                  Some details were generated without live verification — please review before finalizing this trip.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNeedsAdminReview(false)}
+                className="text-[11px] font-bold text-amber-800 hover:text-amber-950 px-2.5 py-1 bg-amber-200/60 hover:bg-amber-200 rounded-md self-start sm:self-center transition-colors cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Sidebar Step Indicators (8 exact steps, brass active indicators) */}
           <div className="lg:col-span-1 space-y-2">
@@ -4449,7 +4146,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
           {/* Form Content container */}
           <div className="lg:col-span-3">
             <div className="bg-white border border-[#B8944F]/20 rounded-lg p-6 sm:p-8 craft-card shadow-sm">
-              <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
+              <div className="space-y-6">
                 {renderStepContent()}
 
                 {/* Footer Navigation */}
@@ -4514,7 +4211,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                     )}
                   </div>
                 </div>
-              </form>
+              </div>
             </div>
           </div>
         </div>

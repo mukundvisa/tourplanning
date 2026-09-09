@@ -184,7 +184,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
   const watermarkOpacity =
     logoSettingsRes.data?.watermarkOpacity !== undefined
       ? Number(logoSettingsRes.data.watermarkOpacity)
-      : 0.06;
+      : 0.05;
 
   const trip = await db.trip.findUnique({
     where: { id: tripId },
@@ -276,7 +276,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     places: [`Departure Hub (Ex-${sourceCity})`],
     description: `Commence travel journey towards ${destCity}`,
     transferMode: isSourceFlight ? "flight" : "road",
-    accentColor: "#1D4ED8",
+    accentColor: "#14213D",
     placeIcon: "🛫",
   });
 
@@ -299,7 +299,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       id: `day-${d.dayNumber}`,
       stopType: "day",
       dayNumber: d.dayNumber,
-      badge: `DAY ${d.dayNumber}`,
+      badge: `DAY ${d.dayNumber < 10 ? "0" + d.dayNumber : d.dayNumber}`,
       city: currentCity,
       title: d.title,
       places: placesArr.length > 0 ? placesArr : [currentCity],
@@ -319,12 +319,12 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     places: [`Final Destination (${destCity})`],
     description: `Official itinerary conclusion & return transit to ${sourceCity}`,
     transferMode: "road",
-    accentColor: "#047857",
+    accentColor: "#6B7A5E",
     placeIcon: "🏁",
   });
 
   const totalStops = visualStops.length;
-  const canvasWidth = 760;
+  const canvasWidth = 740;
 
   let numRows = 1;
   let stopsPerRow = totalStops;
@@ -359,7 +359,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         ? totalStops - rowIndex * stopsPerRow
         : stopsPerRow;
 
-    const marginX = stopsInThisRow <= 2 ? 160 : stopsInThisRow <= 3 ? 110 : 85;
+    const marginX = stopsInThisRow <= 2 ? 150 : stopsInThisRow <= 3 ? 100 : 75;
     const effectiveWidth = canvasWidth - marginX * 2;
     const stepX = stopsInThisRow > 1 ? effectiveWidth / (stopsInThisRow - 1) : effectiveWidth / 2;
 
@@ -398,7 +398,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       midX = 0.25 * p1.x + 0.5 * ctrlX + 0.25 * p2.x;
       midY = 0.25 * p1.y + 0.5 * ctrlY + 0.25 * p2.y;
     } else {
-      const outwards = p1.isGoingRight ? 50 : -50;
+      const outwards = p1.isGoingRight ? 45 : -45;
       const c1x = p1.x + outwards;
       const c1y = p1.y + 35;
       const c2x = p2.x + outwards;
@@ -409,17 +409,17 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     }
 
     pathSegments.push(`
-      <path d="${pathD}" fill="none" stroke="#B8944F" stroke-width="2.2" stroke-dasharray="6,5" stroke-linecap="round" opacity="0.85" />
+      <path d="${pathD}" fill="none" stroke="#B8944F" stroke-width="2" stroke-dasharray="5,4" stroke-linecap="round" opacity="0.8" />
     `);
 
     const isFlight = p1.stop.transferMode === "flight";
     const vehicleIconSvg = isFlight
-      ? `<svg class="w-3.5 h-3.5 text-[#14213D]" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`
-      : `<svg class="w-3.5 h-3.5 text-[#A6572E]" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM7.5 15c-.83 0-1.5-.67-1.5-1.5S6.67 12 7.5 12s1.5.67 1.5 1.5S8.33 15 7.5 15zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>`;
+      ? `<svg style="width: 12px; height: 12px; color: #14213D;" fill="currentColor" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>`
+      : `<svg style="width: 12px; height: 12px; color: #A6572E;" fill="currentColor" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM7.5 15c-.83 0-1.5-.67-1.5-1.5S6.67 12 7.5 12s1.5.67 1.5 1.5S8.33 15 7.5 15zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>`;
 
     transitMarkers.push(`
       <div style="position: absolute; left: ${Math.round(midX)}px; top: ${Math.round(midY)}px; transform: translate(-50%, -50%); z-index: 10;">
-        <div class="h-5 w-5 bg-white rounded-full border border-[#B8944F]/60 flex items-center justify-center shadow-xs">
+        <div style="height: 20px; width: 20px; background-color: #FFFFFF; border-radius: 9999px; border: 1px solid rgba(184, 148, 79, 0.4); display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
           ${vehicleIconSvg}
         </div>
       </div>
@@ -434,61 +434,57 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
 
       const placesText = stop.places
         .slice(0, 3)
-        .map((p) => `<span class="text-zinc-700 font-semibold">&bull; ${p}</span>`)
+        .map((p) => `<span style="color: #4A4E58; font-weight: 600;">&bull; ${p}</span>`)
         .join(" ");
 
-      let markerBg = "bg-[#B8944F] text-white";
-      let markerBorder = "border-white ring-2 ring-[#B8944F]/40";
-      let pinTailBg = "bg-[#B8944F]";
-      let cityColor = "text-[#14213D]";
+      let markerBg = "background-color: #B8944F; color: #FFFFFF;";
+      let markerBorder = "border: 2px solid #FFFFFF; box-shadow: 0 2px 6px rgba(184, 148, 79, 0.35);";
+      let cityColor = "color: #14213D;";
 
       if (isSource) {
-        markerBg = "bg-blue-600 text-white";
-        markerBorder = "border-blue-200 ring-2 ring-blue-100";
-        pinTailBg = "bg-blue-600";
-        cityColor = "text-blue-900";
+        markerBg = "background-color: #14213D; color: #FFFFFF;";
+        markerBorder = "border: 2px solid #FFFFFF; box-shadow: 0 2px 6px rgba(20, 33, 61, 0.35);";
+        cityColor = "color: #14213D;";
       } else if (isDest) {
-        markerBg = "bg-emerald-700 text-white";
-        markerBorder = "border-emerald-200 ring-2 ring-emerald-100";
-        pinTailBg = "bg-emerald-700";
-        cityColor = "text-emerald-950";
+        markerBg = "background-color: #6B7A5E; color: #FFFFFF;";
+        markerBorder = "border: 2px solid #FFFFFF; box-shadow: 0 2px 6px rgba(107, 122, 94, 0.35);";
+        cityColor = "color: #2B2E36;";
       }
 
       return `
         <div style="position: absolute; left: ${x}px; top: ${y}px; transform: translate(-50%, -50%); z-index: 25;">
-          <div class="relative flex flex-col items-center justify-center">
-            <div class="h-8 w-8 rounded-full ${markerBg} ${markerBorder} flex items-center justify-center text-sm shadow-md">
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="height: 30px; width: 30px; border-radius: 9999px; ${markerBg} ${markerBorder} display: flex; align-items: center; justify-content: center; font-size: 13px;">
               ${stop.placeIcon}
             </div>
-            <div class="w-1.5 h-1.5 ${pinTailBg} rotate-45 -mt-1 shadow-2xs"></div>
           </div>
         </div>
 
-        <div style="position: absolute; left: ${x}px; top: ${y + 20}px; transform: translateX(-50%); z-index: 20; width: 135px; max-width: 145px; text-align: center;">
-          <div class="flex flex-col items-center pt-1">
-            <div class="mb-0.5">
-              <span class="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-full ${
+        <div style="position: absolute; left: ${x}px; top: ${y + 18}px; transform: translateX(-50%); z-index: 20; width: 130px; text-align: center;">
+          <div style="display: flex; flex-direction: column; align-items: center; padding-top: 4px;">
+            <div style="margin-bottom: 2px;">
+              <span style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 9999px; ${
                 isSource
-                  ? "bg-blue-100 text-blue-800"
+                  ? "background-color: rgba(20, 33, 61, 0.08); color: #14213D;"
                   : isDest
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-[#B8944F]/15 text-[#B8944F]"
+                  ? "background-color: rgba(107, 122, 94, 0.15); color: #6B7A5E;"
+                  : "background-color: rgba(184, 148, 79, 0.14); color: #B8944F;"
               }">
                 ${stop.badge}
               </span>
             </div>
 
-            <h4 class="text-xs font-bold uppercase ${cityColor} leading-tight truncate w-full" title="${stop.city}">
+            <h4 style="font-size: 11px; font-weight: 700; text-transform: uppercase; ${cityColor} margin: 0; line-height: 1.2; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
               ${stop.city}
             </h4>
 
             ${
               placesText
-                ? `<div class="text-[8.5px] text-zinc-700 leading-tight mt-0.5 line-clamp-2 w-full">${placesText}</div>`
+                ? `<div style="font-size: 8px; color: #4A4E58; line-height: 1.25; margin-top: 2px; width: 100%; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${placesText}</div>`
                 : ""
             }
 
-            <p class="text-[7.5px] text-zinc-500 line-clamp-1 mt-0.5 leading-tight font-medium w-full" title="${stop.description}">
+            <p style="font-size: 7.5px; color: #717680; line-height: 1.2; margin-top: 2px; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
               ${stop.description}
             </p>
           </div>
@@ -500,14 +496,14 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
   const glanceRows = trip.itineraryDays
     .map(
       (d: any) => `
-    <tr class="border-b border-zinc-150 break-avoid">
-      <td class="py-2.5 font-bold text-[#B8944F] pr-2 whitespace-nowrap text-xs w-[18%]">
-        Day ${d.dayNumber}
+    <tr style="border-bottom: 1px solid rgba(184, 148, 79, 0.12);" class="break-avoid">
+      <td style="padding: 8px 6px; font-weight: 700; color: #B8944F; font-size: 10.5px; width: 18%; vertical-align: top;">
+        DAY ${d.dayNumber < 10 ? "0" + d.dayNumber : d.dayNumber}
       </td>
-      <td class="py-2.5 text-zinc-700 font-semibold pr-2 text-xs w-[32%]">
+      <td style="padding: 8px 6px; color: #14213D; font-weight: 600; font-size: 10.5px; width: 32%; vertical-align: top;">
         ${d.cityOrStay || trip.destination}
       </td>
-      <td class="py-2.5 text-zinc-900 font-bold text-xs w-[50%] leading-snug">
+      <td style="padding: 8px 6px; color: #2B2E36; font-size: 10.5px; width: 50%; vertical-align: top; line-height: 1.35;">
         ${d.title}
       </td>
     </tr>
@@ -522,9 +518,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
   const priceLines = trip.priceQuoteItems
     .map(
       (item: any) => `
-    <div class="flex justify-between items-center border-b border-zinc-100 py-2 text-xs">
-      <span class="text-zinc-600 font-medium">${item.label}</span>
-      <span class="font-bold text-[#14213D] font-mono">₹ ${item.amount.toLocaleString("en-IN")}</span>
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(184, 148, 79, 0.15); padding: 6px 0; font-size: 11px;">
+      <span style="color: #4A4E58; font-weight: 500;">${item.label}</span>
+      <span style="font-weight: 700; color: #14213D; font-family: 'Inter', monospace;">₹ ${item.amount.toLocaleString("en-IN")}</span>
     </div>
   `
     )
@@ -535,9 +531,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const inclusionsList = (day.inclusions || [])
         .map(
           (inc: string) => `
-        <li class="flex items-start text-xs text-zinc-700 mb-1">
-          <span class="text-emerald-600 mr-2 font-bold leading-none">&bull;</span>
-          <span class="leading-relaxed">${inc}</span>
+        <li style="display: flex; align-items: flex-start; font-size: 10.5px; color: #2B2E36; margin-bottom: 4px; line-height: 1.45;">
+          <span style="color: #6B7A5E; margin-right: 6px; font-weight: 800; line-height: 1;">✦</span>
+          <span>${inc}</span>
         </li>
       `
         )
@@ -546,9 +542,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const exclusionsList = (day.exclusions || [])
         .map(
           (exc: string) => `
-        <li class="flex items-start text-xs text-zinc-600 mb-1">
-          <span class="text-rose-500 mr-2 font-bold leading-none">&bull;</span>
-          <span class="leading-relaxed">${exc}</span>
+        <li style="display: flex; align-items: flex-start; font-size: 10.5px; color: #4A4E58; margin-bottom: 4px; line-height: 1.45;">
+          <span style="color: #A6572E; margin-right: 6px; font-weight: 800; line-height: 1;">✕</span>
+          <span>${exc}</span>
         </li>
       `
         )
@@ -557,9 +553,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const lovedTips = (day.customerLovedTips || [])
         .map(
           (tip: string) => `
-        <li class="flex items-start text-xs text-zinc-800 mb-1">
-          <span class="text-[#B8944F] mr-2 font-bold leading-none">&bull;</span>
-          <span class="leading-relaxed">${tip}</span>
+        <li style="display: flex; align-items: flex-start; font-size: 10px; color: #14213D; margin-bottom: 3px; line-height: 1.4;">
+          <span style="color: #B8944F; margin-right: 6px; font-weight: 700;">★</span>
+          <span>${tip}</span>
         </li>
       `
         )
@@ -568,73 +564,89 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const watchOutTips = (day.customerWatchOutTips || [])
         .map(
           (tip: string) => `
-        <li class="flex items-start text-xs text-amber-900 mb-1">
-          <span class="text-amber-600 mr-2 font-bold leading-none">&bull;</span>
-          <span class="leading-relaxed">${tip}</span>
+        <li style="display: flex; align-items: flex-start; font-size: 10px; color: #A6572E; margin-bottom: 3px; line-height: 1.4;">
+          <span style="color: #A6572E; margin-right: 6px; font-weight: 700;">!</span>
+          <span>${tip}</span>
         </li>
       `
         )
         .join("");
 
       return `
-      <div class="pdf-section break-avoid bg-white border border-zinc-200 rounded-2xl p-5 mb-5 shadow-2xs">
-        <div class="flex justify-between items-center text-[10px] uppercase text-zinc-400 border-b border-zinc-150 pb-2.5 mb-3">
-          <span class="font-bold text-[#14213D]">${trip.title}</span>
-          <span class="font-semibold text-[#B8944F]">Day ${day.dayNumber} Daily Itinerary</span>
+      <div class="pdf-section break-avoid day-card" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
+        <!-- Day Section Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.15); padding-bottom: 8px; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-weight: 800; color: #14213D; letter-spacing: 0.1em;">TRIPPLANNER</span>
+            <span style="color: #B8944F;">|</span>
+            <span style="font-weight: 600; color: #4A4E58;">${trip.title}</span>
+          </div>
+          <span style="font-weight: 700; color: #B8944F; letter-spacing: 0.08em;">DAILY ITINERARY &bull; DAY ${day.dayNumber < 10 ? "0" + day.dayNumber : day.dayNumber}</span>
         </div>
 
-        <div class="flex justify-between items-start border-b border-[#B8944F]/25 pb-3 mb-3">
-          <div class="flex items-center space-x-3">
-            <span class="h-8 w-8 bg-[#B8944F] text-white rounded-xl flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
-              ${day.dayNumber}
-            </span>
+        <!-- Day Title & Region -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 12px; margin-bottom: 12px;">
+          <div style="display: flex; align-items: flex-start; gap: 12px;">
+            <div style="height: 36px; width: 36px; background-color: #14213D; border: 1px solid #B8944F; color: #F3ECDD; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 4px rgba(20, 33, 61, 0.2);">
+              <span style="font-size: 7px; font-weight: 700; letter-spacing: 0.05em; color: #B8944F; line-height: 1;">DAY</span>
+              <span style="font-size: 14px; font-weight: 800; line-height: 1; margin-top: 1px;">${day.dayNumber < 10 ? "0" + day.dayNumber : day.dayNumber}</span>
+            </div>
             <div>
-              <h3 class="text-sm font-bold text-[#14213D] leading-snug">${day.title}</h3>
-              <p class="text-[11px] text-[#B8944F] font-bold mt-0.5">Stay / Region : ${day.cityOrStay || trip.destination}</p>
+              <h3 class="font-serif-luxury" style="font-size: 15px; font-weight: 700; color: #14213D; margin: 0; line-height: 1.25;">${day.title}</h3>
+              <p style="font-size: 10px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px;">
+                STAY / REGION &bull; <span style="color: #14213D;">${day.cityOrStay || trip.destination}</span>
+              </p>
             </div>
           </div>
           ${
             day.durationHours
-              ? `<span class="text-[10px] px-3 py-1 bg-zinc-50 rounded-lg font-bold border border-zinc-200 shrink-0 text-zinc-700 shadow-2xs">${
+              ? `<span style="font-size: 9px; font-weight: 700; background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.3); color: #14213D; padding: 4px 10px; border-radius: 20px; flex-shrink: 0; letter-spacing: 0.03em;">${
                   String(day.durationHours).toLowerCase().includes("hour") || String(day.durationHours).toLowerCase().includes("day")
                     ? day.durationHours
-                    : `Duration : ${day.durationHours}h`
+                    : `Duration: ${day.durationHours}h`
                 }</span>`
               : ""
           }
         </div>
 
-        <div class="text-xs leading-relaxed text-zinc-700 font-normal mb-4 whitespace-pre-line">
+        <!-- Description -->
+        <div style="font-size: 11px; line-height: 1.6; color: #2B2E36; font-weight: 400; margin-bottom: 14px; white-space: pre-line;">
           ${day.description || "Scheduled sightseeing and curated local activities as per the travel itinerary program."}
         </div>
 
-        <div class="grid grid-cols-2 gap-3.5 pt-3 border-t border-zinc-150">
-          <div class="bg-emerald-50/50 border border-emerald-100 p-3.5 rounded-xl">
-            <p class="text-[10px] text-emerald-800 font-bold uppercase mb-1.5">Day Inclusions</p>
-            <ul class="list-none space-y-1">
-              ${inclusionsList || '<li class="text-zinc-400 italic text-xs">Standard itinerary inclusions apply</li>'}
+        <!-- Inclusions & Exclusions Two-Column Cards -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 10px; border-top: 1px solid rgba(184, 148, 79, 0.12);">
+          <div style="background-color: rgba(107, 122, 94, 0.08); border: 1px solid rgba(107, 122, 94, 0.25); padding: 10px 12px; border-radius: 10px;">
+            <p style="font-size: 9px; color: #4A5641; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+              <span>✓</span> INCLUDED
+            </p>
+            <ul style="list-style: none; margin: 0; padding: 0;">
+              ${inclusionsList || '<li style="color: #717680; font-style: italic; font-size: 10.5px;">Standard itinerary inclusions apply</li>'}
             </ul>
           </div>
-          <div class="bg-rose-50/50 border border-rose-100 p-3.5 rounded-xl">
-            <p class="text-[10px] text-rose-800 font-bold uppercase mb-1.5">Day Exclusions</p>
-            <ul class="list-none space-y-1">
-              ${exclusionsList || '<li class="text-zinc-400 italic text-xs">Personal expenses & optional activities</li>'}
+          <div style="background-color: rgba(166, 87, 46, 0.06); border: 1px solid rgba(166, 87, 46, 0.2); padding: 10px 12px; border-radius: 10px;">
+            <p style="font-size: 9px; color: #8C441E; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+              <span>✕</span> NOT INCLUDED
+            </p>
+            <ul style="list-style: none; margin: 0; padding: 0;">
+              ${exclusionsList || '<li style="color: #717680; font-style: italic; font-size: 10.5px;">Personal expenses & optional activities</li>'}
             </ul>
           </div>
         </div>
 
+        <!-- Traveler Love & Advisory Tips -->
         ${
           lovedTips || watchOutTips
             ? `
-          <div class="grid grid-cols-2 gap-3.5 pt-3 mt-3 border-t border-zinc-100">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 10px; margin-top: 10px; border-top: 1px dashed rgba(184, 148, 79, 0.15);">
             ${
               lovedTips
                 ? `
-              <div class="bg-amber-50/50 border border-amber-200/80 p-3.5 rounded-xl">
-                <h5 class="text-[10px] font-bold text-[#B8944F] mb-1.5 uppercase flex items-center gap-1.5">
-                  <span>★</span> What Travelers Love
+              <div style="background-color: rgba(184, 148, 79, 0.08); border: 1px solid rgba(184, 148, 79, 0.3); padding: 10px 12px; border-radius: 10px;">
+                <h5 style="font-size: 9px; font-weight: 800; color: #B8944F; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; gap: 4px;">
+                  <span>✦</span> LOVE THIS
                 </h5>
-                <ul class="space-y-1">${lovedTips}</ul>
+                <ul style="list-style: none; margin: 0; padding: 0;">${lovedTips}</ul>
               </div>
             `
                 : ""
@@ -642,11 +654,11 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
             ${
               watchOutTips
                 ? `
-              <div class="bg-amber-50/70 border border-amber-200 p-3.5 rounded-xl">
-                <h5 class="text-[10px] font-bold text-amber-900 mb-1.5 uppercase flex items-center gap-1.5">
-                  <span>⚠️</span> Advisory Guidelines
+              <div style="background-color: rgba(166, 87, 46, 0.08); border: 1px solid rgba(166, 87, 46, 0.28); padding: 10px 12px; border-radius: 10px;">
+                <h5 style="font-size: 9px; font-weight: 800; color: #A6572E; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; gap: 4px;">
+                  <span>!</span> WATCH OUT
                 </h5>
-                <ul class="space-y-1">${watchOutTips}</ul>
+                <ul style="list-style: none; margin: 0; padding: 0;">${watchOutTips}</ul>
               </div>
             `
                 : ""
@@ -665,14 +677,14 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const starRow = Array.from({ length: acc.starRating || 4 })
         .map(
           () =>
-            `<svg class="h-3 w-3 fill-amber-400 text-amber-400 inline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`
+            `<svg style="height: 12px; width: 12px; fill: #B8944F; color: #B8944F; display: inline;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`
         )
         .join("");
 
       const facilitiesTags = (acc.facilities || [])
         .map(
           (fac: string) => `
-        <span class="text-[9px] px-2.5 py-1 bg-zinc-50 border border-zinc-200 text-zinc-700 rounded-md font-semibold">${fac}</span>
+        <span style="font-size: 8.5px; padding: 3px 8px; background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.25); color: #2B2E36; border-radius: 6px; font-weight: 600;">${fac}</span>
       `
         )
         .join("");
@@ -688,46 +700,46 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const photoGrid = photoSlots
         .map(
           (pUrl: string, idx: number) => `
-        <div class="h-24 w-full bg-zinc-100 rounded-xl overflow-hidden border border-zinc-200 shadow-2xs">
-          <img src="${pUrl}" alt="Photo ${idx + 1}" class="h-full w-full object-cover" />
+        <div style="height: 85px; width: 100%; background-color: #F3ECDD; border-radius: 8px; overflow: hidden; border: 1px solid rgba(184, 148, 79, 0.2); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <img src="${pUrl}" alt="Hotel photo ${idx + 1}" style="height: 100%; width: 100%; object-fit: cover;" />
         </div>
       `
         )
         .join("");
 
       return `
-      <div class="pdf-section break-avoid bg-white border border-zinc-200 rounded-2xl p-5 mb-5 shadow-2xs">
-        <div class="flex justify-between items-start border-b border-[#B8944F]/25 pb-3 mb-3">
+      <div class="pdf-section break-avoid hotel-card" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 12px; margin-bottom: 12px;">
           <div>
-            <span class="text-[10px] font-bold text-[#B8944F] uppercase">${acc.location} Stay</span>
-            <h3 class="text-sm font-bold text-[#14213D] mt-0.5">${acc.hotelName}</h3>
-            <div class="flex items-center space-x-2 mt-1">
-              <div class="flex space-x-0.5">${starRow}</div>
+            <span style="font-size: 8.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em;">${acc.location} STAY</span>
+            <h3 class="font-serif-luxury" style="font-size: 15px; font-weight: 700; color: #14213D; margin: 3px 0 4px 0; line-height: 1.25;">${acc.hotelName}</h3>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <div style="display: flex; gap: 2px;">${starRow}</div>
               ${
                 acc.ratingScore
-                  ? `<span class="text-[9px] bg-[#B8944F]/10 border border-[#B8944F]/20 text-[#B8944F] px-2.5 py-0.5 rounded-full font-bold">${acc.ratingScore}★ (${acc.ratingLabel || "Guest rating"})</span>`
+                  ? `<span style="font-size: 8.5px; background-color: rgba(184, 148, 79, 0.12); border: 1px solid rgba(184, 148, 79, 0.3); color: #B8944F; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">${acc.ratingScore}★ (${acc.ratingLabel || "Guest rating"})</span>`
                   : ""
               }
             </div>
           </div>
-          <div class="text-right text-xs">
-            <span class="text-[10px] text-zinc-400 font-bold uppercase block">Stay Schedule</span>
-            <span class="font-bold text-[#14213D]">${new Date(acc.checkInDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} &ndash; ${new Date(acc.checkOutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+          <div style="text-align: right; font-size: 10.5px;">
+            <span style="font-size: 8px; color: #717680; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 2px;">STAY SCHEDULE</span>
+            <span style="font-weight: 700; color: #14213D; font-family: 'Inter', sans-serif;">${new Date(acc.checkInDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} &ndash; ${new Date(acc.checkOutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
           </div>
         </div>
 
-        <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-4 text-xs">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 10.5px;">
             <div>
-              <p class="text-[10px] text-zinc-400 font-bold uppercase">Room Category &amp; Meal Plan</p>
-              <p class="font-bold text-[#14213D] mt-0.5">${acc.roomType || "Standard Luxury Room"} (${acc.mealPlan || "CP"})</p>
+              <p style="font-size: 8px; color: #717680; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 3px 0;">ROOM CATEGORY &amp; MEAL PLAN</p>
+              <p style="font-weight: 700; color: #14213D; margin: 0;">${acc.roomType || "Standard Luxury Room"} (${acc.mealPlan || "CP"})</p>
             </div>
             ${
               facilitiesTags
                 ? `
               <div>
-                <p class="text-[10px] text-zinc-400 font-bold uppercase mb-1">Amenities &amp; Highlights</p>
-                <div class="flex flex-wrap gap-1">${facilitiesTags}</div>
+                <p style="font-size: 8px; color: #717680; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px 0;">AMENITIES &amp; HIGHLIGHTS</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px;">${facilitiesTags}</div>
               </div>
             `
                 : ""
@@ -735,7 +747,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           </div>
 
           <!-- 3 Equal-Width Hotel Photo Gallery -->
-          <div class="grid grid-cols-3 gap-2.5 pt-2 border-t border-zinc-100">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; padding-top: 10px; border-top: 1px solid rgba(184, 148, 79, 0.12);">
             ${photoGrid}
           </div>
         </div>
@@ -748,15 +760,15 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     .map((f: any) => {
       const typeLabel = f.type ? f.type.toUpperCase() : "TRANSIT";
       const startingBadge = f.isStartingTransfer
-        ? `<span style="background-color: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; font-size: 8px; font-weight: bold; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Starting Transfer</span>`
+        ? `<span style="background-color: rgba(20, 33, 61, 0.08); color: #14213D; border: 1px solid rgba(20, 33, 61, 0.2); font-size: 8px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Starting Transfer</span>`
         : "";
       const packageBadge = f.isPackageIncluded
-        ? `<span style="background-color: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; font-size: 8px; font-weight: bold; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Package Included</span>`
+        ? `<span style="background-color: rgba(107, 122, 94, 0.12); color: #4A5641; border: 1px solid rgba(107, 122, 94, 0.3); font-size: 8px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Package Included</span>`
         : "";
 
       const depTime = f.departureDateTime
         ? formatDateTime(f.departureDateTime)
-        : `Preferred : ${f.travelTime || "Anytime"}`;
+        : `Preferred: ${f.travelTime || "Anytime"}`;
       const arrTime = f.arrivalDateTime ? formatDateTime(f.arrivalDateTime) : "As scheduled";
 
       let durationOrStops = f.stops === 0 ? "Direct" : `${f.stops} Stop(s)`;
@@ -765,27 +777,27 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       }
 
       return `
-        <tr class="border-b border-zinc-200 text-xs break-avoid">
-          <td class="p-3 font-bold text-[#14213D] align-top">
-            <div class="flex items-center flex-wrap gap-1.5">
-              <span class="bg-[#B8944F]/15 text-[#B8944F] text-[9px] font-bold px-2 py-0.5 rounded mr-1">${typeLabel}</span>
+        <tr style="border-bottom: 1px solid rgba(184, 148, 79, 0.12); font-size: 10.5px;" class="break-avoid">
+          <td style="padding: 10px 8px; font-weight: 700; color: #14213D; vertical-align: top;">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
+              <span style="background-color: rgba(184, 148, 79, 0.15); color: #B8944F; font-size: 8px; font-weight: 800; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.05em;">${typeLabel}</span>
               <span>${f.sector}</span>
               ${startingBadge}
               ${packageBadge}
             </div>
-            ${f.flightNotes ? `<div class="text-[10px] text-zinc-500 mt-1 italic">${f.flightNotes}</div>` : ""}
+            ${f.flightNotes ? `<div style="font-size: 9.5px; color: #717680; margin-top: 3px; font-style: italic;">${f.flightNotes}</div>` : ""}
           </td>
-          <td class="p-3 align-top font-semibold text-[#14213D]">
+          <td style="padding: 10px 8px; vertical-align: top; font-weight: 600; color: #14213D;">
             ${f.airline}
-            ${f.flightCodeDefault ? `<div class="text-[9px] text-zinc-400 font-mono mt-0.5">${f.flightCodeDefault}</div>` : ""}
+            ${f.flightCodeDefault ? `<div style="font-size: 9px; color: #717680; font-family: 'Inter', monospace; margin-top: 2px;">${f.flightCodeDefault}</div>` : ""}
           </td>
-          <td class="p-3 align-top font-mono text-[11px]">${depTime}</td>
-          <td class="p-3 align-top font-mono text-[11px]">${arrTime}</td>
-          <td class="p-3 align-top">
-            <p class="font-bold text-xs">${durationOrStops}</p>
-            ${f.layoverInfo ? `<p class="text-[9px] text-zinc-400 mt-0.5">${f.layoverInfo}</p>` : ""}
+          <td style="padding: 10px 8px; vertical-align: top; font-family: 'Inter', monospace; font-size: 10px; color: #2B2E36;">${depTime}</td>
+          <td style="padding: 10px 8px; vertical-align: top; font-family: 'Inter', monospace; font-size: 10px; color: #2B2E36;">${arrTime}</td>
+          <td style="padding: 10px 8px; vertical-align: top;">
+            <p style="font-weight: 700; font-size: 10.5px; margin: 0; color: #14213D;">${durationOrStops}</p>
+            ${f.layoverInfo ? `<p style="font-size: 9px; color: #717680; margin: 2px 0 0 0;">${f.layoverInfo}</p>` : ""}
           </td>
-          <td class="p-3 text-right align-top font-mono text-[11px]">
+          <td style="padding: 10px 8px; text-align: right; vertical-align: top; font-family: 'Inter', monospace; font-size: 10px; color: #2B2E36;">
             ${f.type === "Flight" ? `${f.carryOnBaggageKg || 7} kg / ${f.checkInBaggageKg || 20} kg` : "N/A"}
           </td>
         </tr>
@@ -800,14 +812,16 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         desc = typeof addon.detailsJson === "string" ? JSON.parse(addon.detailsJson) : addon.detailsJson;
       } catch (e) {}
       return `
-      <tr class="border-b border-zinc-200 text-xs break-avoid">
-        <td class="p-3 font-bold text-[#14213D]">${addon.name}</td>
-        <td class="p-3 text-zinc-600">
-          ${desc?.visaType ? `<p><span class="font-bold">Visa Type :</span> ${desc.visaType}</p>` : ""}
-          ${desc?.length ? `<p><span class="font-bold">Validity :</span> ${desc.length}</p>` : ""}
-          ${desc?.details ? `<p class="italic text-zinc-500 mt-0.5">${desc.details}</p>` : ""}
+      <tr style="border-bottom: 1px solid rgba(184, 148, 79, 0.12); font-size: 10.5px;" class="break-avoid">
+        <td style="padding: 10px 8px; font-weight: 700; color: #14213D; vertical-align: top;">${addon.name}</td>
+        <td style="padding: 10px 8px; color: #4A4E58; vertical-align: top;">
+          ${desc?.visaType ? `<p style="margin: 0 0 2px 0;"><span style="font-weight: 700; color: #14213D;">Visa Type:</span> ${desc.visaType}</p>` : ""}
+          ${desc?.length ? `<p style="margin: 0 0 2px 0;"><span style="font-weight: 700; color: #14213D;">Validity:</span> ${desc.length}</p>` : ""}
+          ${desc?.details ? `<p style="font-style: italic; color: #717680; margin: 2px 0 0 0;">${desc.details}</p>` : ""}
         </td>
-        <td class="p-3 text-right font-bold text-[#14213D] font-mono">₹ ${addon.price.toLocaleString("en-IN")} ${addon.priceType}</td>
+        <td style="padding: 10px 8px; text-align: right; font-weight: 700; color: #14213D; font-family: 'Inter', monospace; vertical-align: top;">
+          ₹ ${addon.price.toLocaleString("en-IN")} ${addon.priceType}
+        </td>
       </tr>
     `;
     })
@@ -816,12 +830,12 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
   const diningCards = trip.restaurantSuggestions
     .map(
       (rest: any) => `
-    <div class="bg-white border border-zinc-200 p-4 rounded-xl break-avoid shadow-2xs">
-      <h4 class="font-bold text-[#14213D] text-xs">${rest.name}</h4>
-      <p class="text-[10px] text-zinc-500 mt-1">📍 ${rest.location} &bull; ${rest.category} (${rest.cuisineType})</p>
-      <div class="flex items-center justify-between mt-2 pt-2 border-t border-zinc-100">
-        ${rest.rating ? `<span class="text-[10px] text-amber-600 font-bold">★ ${rest.rating} (${rest.reviewCount || 100}+ reviews)</span>` : "<span></span>"}
-        ${rest.isVeg ? `<span class="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">Pure Veg / Jain</span>` : ""}
+    <div class="break-avoid dining-card" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.2); padding: 14px 16px; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
+      <h4 class="font-serif-luxury" style="font-weight: 700; color: #14213D; font-size: 12px; margin: 0;">${rest.name}</h4>
+      <p style="font-size: 9.5px; color: #717680; margin: 4px 0 0 0;">📍 ${rest.location} &bull; ${rest.category} (${rest.cuisineType})</p>
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(184, 148, 79, 0.15);">
+        ${rest.rating ? `<span style="font-size: 9.5px; color: #B8944F; font-weight: 700;">★ ${rest.rating} (${rest.reviewCount || 100}+ reviews)</span>` : "<span></span>"}
+        ${rest.isVeg ? `<span style="font-size: 8px; font-weight: 700; color: #4A5641; background-color: rgba(107, 122, 94, 0.12); border: 1px solid rgba(107, 122, 94, 0.3); padding: 2px 8px; border-radius: 9999px;">Pure Veg / Jain</span>` : ""}
       </div>
     </div>
   `
@@ -838,11 +852,11 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       <title>${trip.title}</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <style>
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400;1,600&family=Inter:wght@300;400;500;600;700;800&display=swap');
         
         @page {
           size: A4 portrait;
-          margin: 12mm 14mm 14mm 14mm;
+          margin: 10mm 12mm 12mm 12mm;
         }
         
         *, *::before, *::after {
@@ -851,15 +865,16 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           word-spacing: normal !important;
         }
 
-        html, body {
-          background-color: transparent !important;
+        html {
+          background-color: #F8F6F0 !important;
         }
 
         body {
           font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
           color: #14213D;
+          background-color: #F8F6F0 !important;
           margin: 0;
-          padding: 24px 30px;
+          padding: 16px 20px;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
           width: 100%;
@@ -871,8 +886,13 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           position: relative;
         }
 
-        .font-fraunces {
-          font-family: 'Fraunces', Georgia, serif;
+        .font-serif-luxury {
+          font-family: 'Playfair Display', 'Cormorant Garamond', Georgia, serif;
+          letter-spacing: -0.01em;
+        }
+
+        .font-serif-sub {
+          font-family: 'Cormorant Garamond', Georgia, serif;
         }
 
         .pdf-watermark-container {
@@ -887,22 +907,23 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           align-items: center;
           justify-content: center;
           pointer-events: none;
-          z-index: -10;
+          z-index: 0;
           opacity: ${watermarkOpacity};
         }
 
         .pdf-watermark-logo {
-          max-width: 50%;
-          max-height: 35%;
+          max-width: 45%;
+          max-height: 30%;
           object-fit: contain;
           filter: grayscale(100%);
         }
 
         .pdf-watermark-text {
-          font-family: 'Fraunces', Georgia, serif;
-          font-size: 4.5rem;
-          font-weight: 900;
+          font-family: 'Playfair Display', Georgia, serif;
+          font-size: 5rem;
+          font-weight: 800;
           text-transform: uppercase;
+          letter-spacing: 0.15em;
           color: #14213D;
           transform: rotate(-25deg);
         }
@@ -929,11 +950,6 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         .pdf-section {
           position: relative;
           z-index: 2;
-          background-color: transparent !important;
-        }
-        
-        .bg-white {
-          background-color: transparent !important;
         }
 
         .prose ul {
@@ -973,8 +989,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           : ""
       }
     </head>
-    <body class="space-y-5 bg-transparent">
+    <body class="space-y-5">
       
+      <!-- BACKGROUND WATERMARK -->
       <div class="pdf-watermark-container">
         ${
           logoDataUri
@@ -983,73 +1000,89 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         }
       </div>
 
-      <!-- HERO COVER BANNER -->
-      <div class="pdf-section break-avoid bg-white border border-zinc-200 rounded-2xl overflow-hidden shadow-2xs mb-5">
-        <div class="h-[75mm] w-full relative">
-          <img src="${coverImageDataUri}" class="h-full w-full object-cover" />
-          <div class="absolute inset-0 bg-gradient-to-t from-[#14213D] via-[#14213D]/50 to-transparent"></div>
+      <!-- 1. MAGAZINE COVER BANNER -->
+      <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.3); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 16px rgba(20, 33, 61, 0.06); margin-bottom: 18px;">
+        <!-- Full-bleed Hero Visual with Dark Luxury Overlay -->
+        <div style="height: 85mm; width: 100%; position: relative; overflow: hidden;">
+          <img src="${coverImageDataUri}" alt="Cover Image" style="height: 100%; width: 100%; object-fit: cover;" />
+          <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20, 33, 61, 0.4) 0%, rgba(20, 33, 61, 0.25) 40%, rgba(20, 33, 61, 0.88) 85%, rgba(20, 33, 61, 0.98) 100%);"></div>
           
-          <div class="absolute top-4 left-5 right-5 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <span class="text-lg font-black text-white font-fraunces drop-shadow-sm">
-                  TripPlanner
-                </span>
+          <!-- Top Brand Header Bar on Cover -->
+          <div style="position: absolute; top: 16px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="font-serif-luxury" style="font-size: 18px; font-weight: 900; color: #FFFFFF; letter-spacing: 0.08em; text-transform: uppercase;">
+                TRIPPLANNER
+              </span>
+              <span style="font-size: 9px; font-weight: 700; color: #B8944F; border-left: 1px solid rgba(184, 148, 79, 0.6); padding-left: 8px; letter-spacing: 0.12em; text-transform: uppercase;">
+                BESPOKE ITINERARY
+              </span>
             </div>
+            <span style="font-size: 8.5px; font-weight: 700; color: #F3ECDD; background-color: rgba(20, 33, 61, 0.6); border: 1px solid rgba(184, 148, 79, 0.4); padding: 4px 10px; border-radius: 9999px; letter-spacing: 0.06em; text-transform: uppercase;">
+              PROPOSAL ID: #${trip.id.slice(-6).toUpperCase()}
+            </span>
           </div>
           
-          <div class="absolute bottom-6 left-5 right-5">
-            <h1 class="text-2xl sm:text-3xl font-black text-white leading-tight mt-2 font-fraunces drop-shadow-sm">
+          <!-- Hero Title & Journey Summary -->
+          <div style="position: absolute; bottom: 20px; left: 24px; right: 24px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <span style="height: 2px; width: 24px; background-color: #B8944F; display: inline-block;"></span>
+              <span style="font-size: 9.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.15em;">
+                CURATED TRAVEL EXPERIENCE
+              </span>
+            </div>
+            <h1 class="font-serif-luxury" style="font-size: 28px; font-weight: 800; color: #FFFFFF; line-height: 1.15; margin: 0; text-shadow: 0 2px 8px rgba(0,0,0,0.5);">
               ${trip.title}
             </h1>
-            <p class="text-lg text-zinc-200 font-semibold mt-1">
-              Route : ${trip.destination} &rarr; ${trip.departureCity}
+            <p style="font-size: 13px; color: #F3ECDD; font-weight: 600; margin: 6px 0 0 0; letter-spacing: 0.02em;">
+              Route: <span style="color: #FFFFFF; font-weight: 700;">${trip.destination}</span> &bull; Ex-${trip.departureCity}
             </p>
           </div>
         </div>
 
-        <div class="p-5 bg-white">
-          <div class="grid grid-cols-2 gap-5 border-b border-zinc-150 pb-4">
+        <!-- Luxury Metadata Information Grid -->
+        <div style="padding: 18px 24px; background-color: #FFFFFF;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 14px;">
             <div>
-              <p class="text-zinc-400 font-bold text-[14px]">Travel Schedule</p>
-              <p class="font-bold text-[#14213D] text-xs mt-1">
-                ${new Date(trip.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}&nbsp;&ndash;&nbsp;  ${new Date(trip.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              <p style="color: #717680; font-weight: 700; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px 0;">TRAVEL SCHEDULE</p>
+              <p style="font-weight: 700; color: #14213D; font-size: 12px; margin: 0;">
+                ${new Date(trip.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}&nbsp;&ndash;&nbsp;${new Date(trip.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </p>
-              <p class="text-zinc-600 font-medium text-[16px] mt-1">
+              <p style="color: #4A4E58; font-weight: 600; font-size: 10.5px; margin: 3px 0 0 0;">
                 ${trip.durationDays} Days / ${trip.durationNights} Nights &bull; ${trip.numTravellers} Travellers
               </p>
             </div>
             <div>
-              <p class="text-zinc-400 font-bold text-[14px]">Dedicated Travel Consultant</p>
-              <p class="font-bold text-[#14213D] text-xs mt-1">${trip.consultantName}</p>
-              <p class="text-zinc-600 font-medium text-[11px] mt-1">Phone : ${trip.consultantPhone || "Agency Concierge"}</p>
+              <p style="color: #717680; font-weight: 700; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px 0;">DEDICATED TRAVEL CONSULTANT</p>
+              <p style="font-weight: 700; color: #14213D; font-size: 12px; margin: 0;">${trip.consultantName}</p>
+              <p style="color: #4A4E58; font-weight: 500; font-size: 10.5px; margin: 3px 0 0 0;">Phone: ${trip.consultantPhone || "Agency Concierge"}</p>
             </div>
           </div>
 
-          <div class="flex justify-between items-center text-[10px] text-zinc-400 font-medium pt-3">
-            <p>&copy; TripPlanner &bull; Curated Luxury Journeys</p>
-            <p>Proposal Date : ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #717680; font-weight: 500; padding-top: 10px; letter-spacing: 0.04em;">
+            <p style="margin: 0;">&copy; TripPlanner &bull; Luxury Travel Management</p>
+            <p style="margin: 0; color: #14213D; font-weight: 600;">Proposal Date: ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
           </div>
         </div>
       </div>
 
-      <!-- CLEAN ICON-BASED TRAVEL JOURNEY -->
-      <div class="pdf-section break-avoid bg-white border border-zinc-200 rounded-2xl p-5 mb-5 shadow-2xs">
-        <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 border-b border-[#B8944F]/30 pb-3 mb-4">
+      <!-- 2. VISUAL JOURNEY & ROUTE MAP -->
+      <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid rgba(184, 148, 79, 0.2); padding-bottom: 10px; margin-bottom: 14px;">
           <div>
-            <span class="text-[9px] font-bold text-[#B8944F] uppercase block">
-              Travel Itinerary &amp; Visual Journey
+            <span style="font-size: 8.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.1em; display: block;">
+              JOURNEY OVERVIEW &bull; ROUTE VISUALIZATION
             </span>
-            <h2 class="text-base sm:text-lg font-bold text-[#14213D] font-fraunces mt-0.5">
+            <h2 class="font-serif-luxury" style="font-size: 16px; font-weight: 700; color: #14213D; margin: 2px 0 0 0;">
               ${sourceCity.toUpperCase()} &rarr; ${destCity.toUpperCase()}
             </h2>
           </div>
-          <div class="text-[9.5px] font-bold text-zinc-500">
-            ${trip.itineraryDays.length} Days Connected Journey &bull; Ex-${sourceCity}
+          <div style="font-size: 9px; font-weight: 700; color: #717680; letter-spacing: 0.04em;">
+            ${trip.itineraryDays.length} DAYS CONNECTED ROUTE &bull; EX-${sourceCity.toUpperCase()}
           </div>
         </div>
 
-        <div class="relative w-full overflow-hidden" style="height: ${canvasHeight}px;">
-          <svg viewBox="0 0 ${canvasWidth} ${canvasHeight}" class="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+        <div style="position: relative; width: 100%; overflow: hidden; height: ${canvasHeight}px;">
+          <svg viewBox="0 0 ${canvasWidth} ${canvasHeight}" style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;" preserveAspectRatio="none">
             ${pathSegments.join("")}
           </svg>
           ${transitMarkers.join("")}
@@ -1057,48 +1090,51 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         </div>
       </div>
 
-      <!-- PRICING & AT A GLANCE SUMMARY -->
-      <div class="pdf-section break-avoid bg-white border border-zinc-200 rounded-2xl p-5 mb-5 shadow-2xs">
-        <div class="flex justify-between items-center text-[10px] uppercase text-zinc-400 border-b border-zinc-150 pb-2.5 mb-3.5">
-          <span class="font-bold text-[#14213D]">${trip.title}</span>
-          <span class="font-semibold text-[#B8944F]">Proposal Summary &amp; Price Quotation</span>
+      <!-- 3. FINANCIAL SUMMARY & TRIP HIGHLIGHTS AT A GLANCE -->
+      <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.15); padding-bottom: 8px; margin-bottom: 14px;">
+          <span style="font-weight: 800; color: #14213D;">${trip.title}</span>
+          <span style="font-weight: 700; color: #B8944F;">PROPOSAL SUMMARY &bull; COMMERCIAL QUOTATION</span>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-          <div class="bg-zinc-50/70 border border-zinc-200 p-4 sm:p-5 rounded-xl space-y-2.5">
-            <h3 class="text-[11px] font-bold text-[#B8944F] uppercase">Pricing Plan Breakdown</h3>
-            <div class="space-y-1">${priceLines}</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start;">
+          <!-- Pricing Plan Breakdown Card -->
+          <div style="background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.25); padding: 14px 16px; border-radius: 12px;">
+            <h3 style="font-size: 10px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px 0;">
+              PRICING PLAN BREAKDOWN
+            </h3>
+            <div style="display: flex; flex-direction: column;">${priceLines}</div>
             
-            <div class="pt-2.5 border-t border-zinc-200 space-y-1.5 text-xs">
-              <div class="flex justify-between font-semibold text-zinc-500 text-[11px]">
+            <div style="padding-top: 10px; margin-top: 6px; border-top: 1px solid rgba(184, 148, 79, 0.2); display: flex; flex-direction: column; gap: 4px; font-size: 10.5px;">
+              <div style="display: flex; justify-content: space-between; color: #717680; font-size: 10px; font-weight: 600;">
                 <span>Per-Person Subtotal</span>
-                <span class="font-mono font-bold">₹ ${priceQuoteSubtotal.toLocaleString("en-IN")}</span>
+                <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">₹ ${priceQuoteSubtotal.toLocaleString("en-IN")}</span>
               </div>
-              <div class="flex justify-between font-semibold text-zinc-500 text-[11px]">
+              <div style="display: flex; justify-content: space-between; color: #717680; font-size: 10px; font-weight: 600;">
                 <span>Number of Travellers</span>
-                <span class="font-mono font-bold">${trip.numTravellers || 1}</span>
+                <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">${trip.numTravellers || 1}</span>
               </div>
-              <div class="flex justify-between font-semibold text-zinc-500 text-[11px]">
+              <div style="display: flex; justify-content: space-between; color: #717680; font-size: 10px; font-weight: 600;">
                 <span>Total Base Package</span>
-                <span class="font-mono font-bold">₹ ${(priceQuoteSubtotal * (trip.numTravellers || 1)).toLocaleString("en-IN")}</span>
+                <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">₹ ${(priceQuoteSubtotal * (trip.numTravellers || 1)).toLocaleString("en-IN")}</span>
               </div>
-              <div class="flex justify-between font-semibold text-zinc-500 text-[11px]">
+              <div style="display: flex; justify-content: space-between; color: #717680; font-size: 10px; font-weight: 600;">
                 <span>Total TCS (${trip.tripFinancials?.tcsPercentage || 5}%)</span>
-                <span class="font-mono font-bold">₹ ${(trip.tripFinancials?.tcsAmount || 0).toLocaleString("en-IN")}</span>
+                <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">₹ ${(trip.tripFinancials?.tcsAmount || 0).toLocaleString("en-IN")}</span>
               </div>
               
-              <!-- Clean Highlighted Total Payable with Space before (with TCS) -->
-              <div class="flex justify-between bg-[#B8944F]/10 p-3 rounded-xl border border-[#B8944F]/30 font-bold text-xs text-[#14213D] mt-2">
-                <span class="text-[#14213D]">Total Payable (with TCS)</span>
-                <span class="font-mono text-sm font-black text-[#14213D]">₹ ${(trip.tripFinancials?.totalWithTcs || 0).toLocaleString("en-IN")}</span>
+              <!-- Luxury Navy Total Payable Box -->
+              <div style="display: flex; justify-content: space-between; align-items: center; background-color: #14213D; border: 1px solid #B8944F; padding: 10px 12px; border-radius: 10px; margin-top: 8px; box-shadow: 0 2px 6px rgba(20, 33, 61, 0.15);">
+                <span style="font-size: 10.5px; font-weight: 700; color: #F3ECDD; text-transform: uppercase; letter-spacing: 0.05em;">Total Payable (with TCS)</span>
+                <span style="font-family: 'Inter', monospace; font-size: 14px; font-weight: 800; color: #B8944F;">₹ ${(trip.tripFinancials?.totalWithTcs || 0).toLocaleString("en-IN")}</span>
               </div>
             </div>
 
             ${
               trip.tripFinancials?.notes
                 ? `
-              <div class="p-3 bg-white rounded-lg border border-zinc-200 text-[10px] text-zinc-600 leading-relaxed mt-2">
-                <span class="font-bold text-zinc-800 block mb-0.5">Commercial Notes :</span>
+              <div style="padding: 8px 10px; background-color: #FFFFFF; border-radius: 8px; border: 1px dashed rgba(184, 148, 79, 0.3); font-size: 9.5px; color: #4A4E58; line-height: 1.45; margin-top: 10px;">
+                <span style="font-weight: 700; color: #14213D; display: block; margin-bottom: 2px;">Commercial Notes:</span>
                 ${trip.tripFinancials.notes}
               </div>
             `
@@ -1106,14 +1142,17 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
             }
           </div>
 
-          <div class="bg-zinc-50/70 border border-zinc-200 p-4 sm:p-5 rounded-xl">
-            <h3 class="text-[11px] font-bold text-[#B8944F] uppercase mb-2.5">TRIP HIGHLIGHTS AT A GLANCE</h3>
-            <table class="w-full text-left text-xs border-collapse">
+          <!-- Trip Highlights At A Glance -->
+          <div style="background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.25); padding: 14px 16px; border-radius: 12px;">
+            <h3 style="font-size: 10px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px 0;">
+              TRIP HIGHLIGHTS AT A GLANCE
+            </h3>
+            <table style="width: 100%; text-align: left; font-size: 10.5px; border-collapse: collapse;">
               <thead>
-                <tr class="border-b border-zinc-300 text-zinc-400 font-bold uppercase text-[9px]">
-                  <th class="pb-2 w-[18%]">Day</th>
-                  <th class="pb-2 w-[32%]">Region</th>
-                  <th class="pb-2 w-[50%]">Highlight</th>
+                <tr style="border-bottom: 1.5px solid rgba(184, 148, 79, 0.25); color: #717680; font-weight: 700; text-transform: uppercase; font-size: 8px; letter-spacing: 0.06em;">
+                  <th style="padding-bottom: 6px; width: 18%;">Day</th>
+                  <th style="padding-bottom: 6px; width: 32%;">Region</th>
+                  <th style="padding-bottom: 6px; width: 50%;">Highlight</th>
                 </tr>
               </thead>
               <tbody>
@@ -1124,30 +1163,30 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         </div>
       </div>
 
-      <!-- DAY-BY-DAY DETAILED ITINERARY -->
-      <div class="pdf-section-wrapper mb-5 space-y-4">
-        <div class="flex items-center justify-between pb-1.5 break-avoid">
-          <h2 class="text-base font-bold text-[#14213D] font-fraunces">
+      <!-- 4. DAY-BY-DAY DETAILED ITINERARY -->
+      <div class="pdf-section-wrapper" style="margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #B8944F; padding-bottom: 6px; margin-bottom: 14px;" class="break-avoid">
+          <h2 class="font-serif-luxury" style="font-size: 16px; font-weight: 700; color: #14213D; margin: 0;">
             Day-by-Day Detailed Itinerary
           </h2>
-          <span class="text-[10px] font-bold text-[#B8944F] uppercase">
-            ${trip.itineraryDays.length} Days Itinerary
+          <span style="font-size: 9px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em;">
+            ${trip.itineraryDays.length} DAYS DETAILED JOURNEY
           </span>
         </div>
         ${detailedDaysHtml}
       </div>
 
-      <!-- ACCOMMODATIONS -->
+      <!-- 5. ACCOMMODATIONS & STAYS -->
       ${
         accommodationsHtml
           ? `
-        <div class="pdf-section-wrapper mb-5 space-y-4">
-          <div class="flex items-center justify-between pb-1.5 break-avoid">
-            <h2 class="text-base font-bold text-[#14213D] font-fraunces">
-              Stays &amp; Accommodations
+        <div class="pdf-section-wrapper" style="margin-bottom: 18px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #B8944F; padding-bottom: 6px; margin-bottom: 14px;" class="break-avoid">
+            <h2 class="font-serif-luxury" style="font-size: 16px; font-weight: 700; color: #14213D; margin: 0;">
+              Curated Accommodations &amp; Stays
             </h2>
-            <span class="text-[10px] font-bold text-[#B8944F] uppercase">
-              ${trip.accommodations.length} Properties Confirmed
+            <span style="font-size: 9px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em;">
+              ${trip.accommodations.length} PROPERTIES CONFIRMED
             </span>
           </div>
           ${accommodationsHtml}
@@ -1156,29 +1195,29 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           : ""
       }
 
-      <!-- TRANSPORTATION & ADD-ONS -->
+      <!-- 6. TRANSPORTATION & ADD-ONS -->
       ${
         flightsRows || addonsRows
           ? `
-        <div class="pdf-section break-avoid bg-white border border-zinc-200 rounded-2xl p-5 mb-5 shadow-2xs">
+        <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
           ${
             flightsRows
               ? `
-            <div class="space-y-3">
-              <div class="flex items-center justify-between border-b border-zinc-150 pb-2.5">
-                <h3 class="text-sm font-bold text-[#14213D] font-fraunces flex items-center gap-2">
-                  🚗 Transportation &amp; Transit Schedule
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 8px;">
+                <h3 class="font-serif-luxury" style="font-size: 14px; font-weight: 700; color: #14213D; margin: 0; display: flex; align-items: center; gap: 6px;">
+                  <span>🚗</span> Transportation &amp; Transit Schedule
                 </h3>
-                <span class="text-[10px] font-bold text-[#B8944F] uppercase">
-                  Arrangement : ${trip.transportationArrangement}
+                <span style="font-size: 8.5px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.06em;">
+                  Arrangement: ${trip.transportationArrangement}
                 </span>
               </div>
 
               ${
                 trip.transportationArrangement === "Own"
                   ? `
-                <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; color: #475569; font-size: 10px; padding: 10px; border-radius: 8px; line-height: 1.5;">
-                  ℹ️ <strong>Own Transportation :</strong> Traveller has opted to arrange their own transit for this journey. The schedule below is provided for itinerary reference.
+                <div style="background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.25); color: #4A4E58; font-size: 9.5px; padding: 8px 12px; border-radius: 8px; line-height: 1.45;">
+                  ℹ️ <strong style="color: #14213D;">Own Transportation:</strong> Traveller has opted to arrange their own transit for this journey. The schedule below is provided for itinerary reference.
                 </div>
               `
                   : ""
@@ -1187,8 +1226,8 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
               ${
                 trip.startingTransferDetails
                   ? `
-                <div style="background-color: #EFF6FF; border: 1px solid #DBEAFE; color: #1E40AF; font-size: 10px; padding: 10px; border-radius: 8px; line-height: 1.5;">
-                  🗺️ <strong>Starting Hub Transfer Details :</strong> ${trip.startingTransferDetails}
+                <div style="background-color: rgba(20, 33, 61, 0.06); border: 1px solid rgba(20, 33, 61, 0.15); color: #14213D; font-size: 9.5px; padding: 8px 12px; border-radius: 8px; line-height: 1.45;">
+                  🗺️ <strong>Starting Hub Transfer Details:</strong> ${trip.startingTransferDetails}
                 </div>
               `
                   : ""
@@ -1197,22 +1236,22 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
               ${
                 trip.packageTransportationDetails
                   ? `
-                <div style="background-color: #ECFDF5; border: 1px solid #D1FAE5; color: #065F46; font-size: 10px; padding: 10px; border-radius: 8px; line-height: 1.5;">
-                  🎁 <strong>Package Included Transit :</strong> ${trip.packageTransportationDetails}
+                <div style="background-color: rgba(107, 122, 94, 0.08); border: 1px solid rgba(107, 122, 94, 0.25); color: #4A5641; font-size: 9.5px; padding: 8px 12px; border-radius: 8px; line-height: 1.45;">
+                  🎁 <strong>Package Included Transit:</strong> ${trip.packageTransportationDetails}
                 </div>
               `
                   : ""
               }
 
-              <table class="w-full text-left text-xs border-collapse mt-2">
-                <thead class="bg-zinc-50 text-zinc-500 font-bold border-b border-zinc-200 text-[10px]">
+              <table style="width: 100%; text-align: left; font-size: 10.5px; border-collapse: collapse; margin-top: 4px;">
+                <thead style="background-color: #FAF8F3; color: #717680; font-weight: 700; border-bottom: 1.5px solid rgba(184, 148, 79, 0.25); font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em;">
                   <tr>
-                    <th class="p-2.5">Route / Sector</th>
-                    <th class="p-2.5">Carrier</th>
-                    <th class="p-2.5">Departure</th>
-                    <th class="p-2.5">Arrival</th>
-                    <th class="p-2.5">Duration</th>
-                    <th class="p-2.5 text-right">Baggage Allowance</th>
+                    <th style="padding: 8px;">Route / Sector</th>
+                    <th style="padding: 8px;">Carrier</th>
+                    <th style="padding: 8px;">Departure</th>
+                    <th style="padding: 8px;">Arrival</th>
+                    <th style="padding: 8px;">Duration</th>
+                    <th style="padding: 8px; text-align: right;">Baggage Allowance</th>
                   </tr>
                 </thead>
                 <tbody>${flightsRows}</tbody>
@@ -1225,18 +1264,18 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           ${
             addonsRows
               ? `
-            <div class="space-y-3 pt-4 ${flightsRows ? "border-t border-zinc-200 mt-4" : ""}">
-              <div class="flex items-center justify-between border-b border-zinc-150 pb-2.5">
-                <h3 class="text-sm font-bold text-[#14213D] font-fraunces">
-                  ➕ Included Add-ons &amp; Visa Packages
+            <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 14px; ${flightsRows ? "border-top: 1px solid rgba(184, 148, 79, 0.18); margin-top: 14px;" : ""}">
+              <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 8px;">
+                <h3 class="font-serif-luxury" style="font-size: 14px; font-weight: 700; color: #14213D; margin: 0; display: flex; align-items: center; gap: 6px;">
+                  <span>➕</span> Included Add-ons &amp; Visa Packages
                 </h3>
               </div>
-              <table class="w-full text-left text-xs border-collapse">
-                <thead class="bg-zinc-50 text-zinc-500 font-bold border-b border-zinc-200 text-[10px]">
+              <table style="width: 100%; text-align: left; font-size: 10.5px; border-collapse: collapse;">
+                <thead style="background-color: #FAF8F3; color: #717680; font-weight: 700; border-bottom: 1.5px solid rgba(184, 148, 79, 0.25); font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em;">
                   <tr>
-                    <th class="p-2.5">Package / Service Name</th>
-                    <th class="p-2.5">Validity &amp; Processing Details</th>
-                    <th class="p-2.5 text-right">Cost</th>
+                    <th style="padding: 8px;">Package / Service Name</th>
+                    <th style="padding: 8px;">Validity &amp; Processing Details</th>
+                    <th style="padding: 8px; text-align: right;">Cost</th>
                   </tr>
                 </thead>
                 <tbody>${addonsRows}</tbody>
@@ -1250,20 +1289,20 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           : ""
       }
 
-      <!-- DINING SUGGESTIONS -->
+      <!-- 7. DINING & CULINARY SUGGESTIONS -->
       ${
         diningCards
           ? `
-        <div class="pdf-section break-avoid bg-white border border-zinc-200 rounded-2xl p-5 mb-5 shadow-2xs">
-          <div class="flex items-center justify-between border-b border-zinc-150 pb-2.5 mb-3.5">
-            <h3 class="text-sm font-bold text-[#14213D] font-fraunces flex items-center gap-2">
-              🍴 Recommended Dining &amp; Hotspots
+        <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 8px; margin-bottom: 12px;">
+            <h3 class="font-serif-luxury" style="font-size: 14px; font-weight: 700; color: #14213D; margin: 0; display: flex; align-items: center; gap: 6px;">
+              <span>🍴</span> Curated Dining &amp; Hotspots
             </h3>
-            <span class="text-[10px] font-bold text-[#B8944F] uppercase">
-              Curated Suggestions
+            <span style="font-size: 8.5px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.06em;">
+              HANDPICKED SUGGESTIONS
             </span>
           </div>
-          <div class="grid grid-cols-2 gap-3.5">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             ${diningCards}
           </div>
         </div>
@@ -1271,45 +1310,45 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           : ""
       }
 
-      <!-- MASTER POLICIES & TERMS -->
+      <!-- 8. MASTER POLICIES & TERMS -->
       ${
         terms
           ? `
-        <div class="pdf-section break-avoid bg-white border border-zinc-200 rounded-2xl p-5 shadow-2xs mb-5">
-          <div class="flex justify-between items-center text-[10px] uppercase text-zinc-400 border-b border-zinc-200 pb-2 mb-3.5">
-            <span class="font-bold text-[#14213D]">${trip.title}</span>
-            <span class="font-semibold text-[#B8944F]">Policies &amp; Commercial Guidelines</span>
+        <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04); margin-bottom: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 8px; margin-bottom: 12px;">
+            <span style="font-weight: 800; color: #14213D;">${trip.title}</span>
+            <span style="font-weight: 700; color: #B8944F;">TERMS &bull; POLICIES &bull; COMMERCIAL GUIDELINES</span>
           </div>
 
-          <h2 class="text-base font-bold text-[#14213D] mb-3.5 font-fraunces">
-            Master Policies &amp; Guidelines
+          <h2 class="font-serif-luxury" style="font-size: 16px; font-weight: 700; color: #14213D; margin: 0 0 12px 0;">
+            Master Policies &amp; Booking Terms
           </h2>
           
-          <div class="space-y-3.5 text-xs text-zinc-700 font-normal prose max-w-none">
-            <div class="bg-zinc-50/70 p-4 border border-zinc-200 rounded-xl">
-              <h4 class="font-bold text-[#14213D] text-xs mb-1.5">1. Payment Policy</h4>
-              <div class="leading-relaxed">${terms.paymentPolicy || "Standard booking deposit and structured payment schedule apply."}</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 10.5px; color: #2B2E36;" class="prose max-w-none">
+            <div style="background-color: #FAF8F3; padding: 12px 14px; border: 1px solid rgba(184, 148, 79, 0.2); border-radius: 10px;">
+              <h4 style="font-weight: 800; color: #14213D; font-size: 11px; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.04em;">1. Payment Policy</h4>
+              <div style="line-height: 1.5; color: #4A4E58;">${terms.paymentPolicy || "Standard booking deposit and structured payment schedule apply."}</div>
             </div>
             
-            <div class="bg-zinc-50/70 p-4 border border-zinc-200 rounded-xl">
-              <h4 class="font-bold text-[#14213D] text-xs mb-1.5">2. Cancellation Policy</h4>
-              <div class="leading-relaxed">${terms.cancellationPolicy || "Strict operator cancellation policy and supplier penalties apply."}</div>
+            <div style="background-color: #FAF8F3; padding: 12px 14px; border: 1px solid rgba(184, 148, 79, 0.2); border-radius: 10px;">
+              <h4 style="font-weight: 800; color: #14213D; font-size: 11px; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.04em;">2. Cancellation Policy</h4>
+              <div style="line-height: 1.5; color: #4A4E58;">${terms.cancellationPolicy || "Strict operator cancellation policy and supplier penalties apply."}</div>
             </div>
 
-            <div class="bg-zinc-50/70 p-4 border border-zinc-200 rounded-xl">
-              <h4 class="font-bold text-[#14213D] text-xs mb-1.5">3. Visa Rules &amp; Entry Requirements</h4>
-              <div class="leading-relaxed">${terms.visaRules || "Minimum 6 months passport validity required from scheduled date of return."}</div>
+            <div style="background-color: #FAF8F3; padding: 12px 14px; border: 1px solid rgba(184, 148, 79, 0.2); border-radius: 10px;">
+              <h4 style="font-weight: 800; color: #14213D; font-size: 11px; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.04em;">3. Visa Rules &amp; Entry Requirements</h4>
+              <div style="line-height: 1.5; color: #4A4E58;">${terms.visaRules || "Minimum 6 months passport validity required from scheduled date of return."}</div>
             </div>
 
-            <div class="bg-zinc-50/70 p-4 border border-zinc-200 rounded-xl">
-              <h4 class="font-bold text-[#14213D] text-xs mb-1.5">4. General Notes &amp; Advisory</h4>
-              <div class="leading-relaxed">${terms.generalNotes || "Standard international travel advisories, health regulations, and insurance conditions apply."}</div>
+            <div style="background-color: #FAF8F3; padding: 12px 14px; border: 1px solid rgba(184, 148, 79, 0.2); border-radius: 10px;">
+              <h4 style="font-weight: 800; color: #14213D; font-size: 11px; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.04em;">4. General Notes &amp; Advisory</h4>
+              <div style="line-height: 1.5; color: #4A4E58;">${terms.generalNotes || "Standard international travel advisories, health regulations, and insurance conditions apply."}</div>
             </div>
           </div>
 
-          <div class="border-t border-zinc-200 pt-3.5 mt-5 flex justify-between items-center text-[10px] text-zinc-400 font-medium">
+          <div style="border-top: 1px solid rgba(184, 148, 79, 0.18); padding-top: 12px; margin-top: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #717680; font-weight: 500;">
             <span>&copy; TripPlanner &bull; Custom Travel Proposal</span>
-            <span class="font-bold text-[#14213D]">Official Customer Travel Proposal</span>
+            <span style="font-weight: 700; color: #14213D; text-transform: uppercase; letter-spacing: 0.05em;">Official Customer Travel Proposal</span>
           </div>
         </div>
       `
@@ -1322,3 +1361,4 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
 
   return { html, title: trip.title || trip.destination || "Itinerary" };
 }
+

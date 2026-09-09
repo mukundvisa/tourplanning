@@ -35,6 +35,7 @@ model Trip {
   transportationArrangement String                 @default("Planner")
   startingTransferDetails   String?
   packageTransportationDetails String?
+  ownArrivalArrangement     String?
 }
 
 model PriceQuoteItem {
@@ -393,3 +394,38 @@ model StorageFile {
   fileSize   Int?     @default(0)
   createdAt  DateTime @default(now())
 }
+
+model MasterPlaceCategory {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model MasterVehicleType {
+  id               String   @id @default(uuid())
+  name             String   @unique
+  applicableFields String[] @default([])
+  isDefault        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+}
+
+model MasterAddOnCategory {
+  id               String   @id @default(uuid())
+  name             String   @unique
+  applicableFields String[] @default([])
+  isDefault        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+}
+
+model MasterRestaurantCategory {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+

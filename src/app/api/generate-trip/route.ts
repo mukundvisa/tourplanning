@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limiter";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getMasterPlaceDefaults } from "@/actions/master-data";
+import { generateTripWithFallback } from "@/lib/ai/providers";
 
 export const dynamic = "force-dynamic";
 
@@ -237,13 +237,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    const hasAnyApiKey = Boolean(
+      process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY
+    );
+
+    if (!hasAnyApiKey) {
       return NextResponse.json(
         {
           status: "error",
           error:
-            "Google Gemini API key is missing. Please configure GEMINI_API_KEY in your environment (.env.local file).",
+            "No AI API keys configured. Please configure GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY in your environment (.env.local file).",
         },
         { status: 500 }
       );
@@ -378,215 +381,36 @@ export async function POST(req: NextRequest) {
 
     const selectedMode = isMode1Input ? "mode1" : "mode2";
 
-    // 4. Build System Instruction for Gemini
-    const systemPromptMode1 = `SYSTEM PROMPT — MODE 1 (Full Detail Ingestion)
-
-You are the data-structuring engine for a Trip Planner Dashboard. You will receive:
-1. A raw trip description written by a travel consultant (unstructured text).
-2. A JSON dump of CURRENT MASTER DATA (existing cities, hotels, consultants, places,
-   restaurants, add-ons, transportation, the single policy template, and the tax setting).
-
-YOUR JOB
-- Parse the raw trip description completely. Do not skip or summarize away any detail —
-  every hotel, place, meal plan, price, date, and policy note mentioned must land in a field.
-- For every entity you extract (city, hotel, consultant, place, restaurant, add-on,
-  transportation route), FIRST check it against CURRENT MASTER DATA using
-  case-insensitive fuzzy matching on name + city.
-    - If a close match exists, set "action": "existing" and reuse its ID/name exactly
-      as stored — do NOT create a duplicate row even if wording differs slightly
-      (e.g. "Taj Palace" vs "The Taj Palace Hotel" = same hotel).
-    - If no match exists, set "action": "new" and populate every field you can find
-      evidence for in the raw text. Never invent data that wasn't stated or clearly implied.
-- Auto-calculate: duration_days, duration_nights (from start_date/end_date), and
-  tab9 total (sum of line items + tax_percentage_from_master, where the tax percentage
-  is ALWAYS pulled from master_data.tax_setting, never invented).
-- tab8_master_policies and the tax percentage are NEVER generated fresh — always
-  reference the single existing Policy Template and Tax Setting from master data.
-- Populate ALL 9 Trip Blueprint tabs. If a tab has no information in the raw text,
-  leave its fields empty and list the gap in validation.missing_fields — never guess.
-- consultant_name/consultant_phone in tab1 must be auto-selected from master_data
-  based on the destination city's assigned consultant — not asked of the user again.
-- Output ONLY the JSON object matching the schema below. No prose, no markdown fences.`;
-
-    const systemPromptMode2 = `SYSTEM PROMPT — MODE 2 (Destination-Only Auto-Research)
-
-You are the trip-research and data-structuring engine for a Trip Planner Dashboard.
-You have WEB SEARCH access. You will receive:
-1. A minimal brief: destination (city/country), number of travellers, and optionally
-   dates, budget level, or trip length.
-2. A JSON dump of CURRENT MASTER DATA (same as Mode 1).
-
-YOUR JOB
-- Use web search to find REAL, currently-operating options for the destination:
-  - 4-6 real hotels across a spread of star ratings, with genuine star rating,
-    an approximate current nightly price, and real amenities/room types where available.
-  - 6-10 real places/attractions with accurate category and a short factual
-    description or historical note — verify names exist, don't fabricate landmarks.
-  - 4-6 real restaurants, tagging veg/Jain-friendly options only when you have
-    actual evidence (menu, reviews) — never assume.
-  - Realistic transportation options for reaching/moving within the destination
-    (typical carriers, routes, baggage allowances for that market).
-- Cross-check every found entity against CURRENT MASTER DATA first (same fuzzy
-  matching rule as Mode 1): reuse existing entries via "action": "existing",
-  only create "action": "new" entries for things genuinely not yet stored.
-- Build a sensible default day-by-day plan sized to the traveller count and any
-  stated trip length (default to a reasonable 4-6 day itinerary if no length given),
-  distributing the researched places and one hotel per stay logically by proximity.
-- Where you cannot verify a fact via search (e.g. exact current price), mark it in
-  validation.assumptions_made with your best estimate AND flag it in
-  validation.needs_admin_review — never present an unverified figure as certain.
-- tab8_master_policies and tax percentage: always reference the existing single
-  Policy Template + Tax Setting from master data, never generate new ones.
-- Populate ALL 9 Trip Blueprint tabs fully, using the researched + matched data.
-- Output ONLY the JSON object matching the schema below. No prose, no markdown fences.`;
-
-    const commonSchemaDefinition = `
-OUTPUT JSON SCHEMA:
-{
-  "master_data": {
-    "city": { "action": "existing|new", "city_id": "", "city_name": "", "state_name": "", "country_name": "" },
-    "banner": { "action": "existing|new", "city": "", "badge_text": "", "image_url_or_prompt": "" },
-    "consultant": { "action": "existing|new", "consultant_name": "", "assigned_departure_city": "", "direct_phone": "", "email_address": "" },
-    "places": [
-      { "action": "existing|new", "city": "", "place_name": "", "category": "", "description_historical_significance": "", "place_inclusions": [], "place_exclusions": [] }
-    ],
-    "global_inclusions_exclusions": { "inclusions": [], "exclusions": [] },
-    "hotels": [
-      { "action": "existing|new", "hotel_name": "", "destination_city": "", "star_rating": 0, "price_per_night": 0, "price_per_person": 0, "guest_score": 0.0, "guest_score_label": "", "room_types": [], "meal_plans": [], "amenities": [], "photo_urls": [] }
-    ],
-    "transportation": [
-      { "action": "existing|new", "transportation_type": "", "preferred_travel_time": "", "route_sector": "", "carrier_provider_name": "", "route_vehicle_code": "", "number_of_stops": 0, "transit_details": "", "cabin_baggage_kg": 0, "checkin_baggage_kg": 0, "cancellation_advisory_policy": "", "route_notes_advisory": "" }
-    ],
-    "addons": [
-      { "action": "existing|new", "package_item_name": "", "category_type": "", "default_price": 0, "visa_service_subtype": "", "stay_validity_window_expiry": "", "description_features": "", "city": "" }
-    ],
-    "restaurants": [
-      { "action": "existing|new", "restaurant_club_name": "", "destination_city": "", "category_types": [], "cuisine_specialties": [], "star_rating": 0, "reviews_count": 0, "veg_jain_option": true }
-    ]
-  },
-  "trip_blueprint": {
-    "tab1_core_trip_consultant": { "itinerary_title": "", "main_tour_planner_image": "", "destination_country_city": "", "departure_city": "", "start_date": "", "end_date": "", "duration_days": 0, "duration_nights": 0, "number_of_travellers": 0, "consultant_name": "", "consultant_phone": "" },
-    "tab2_day_wise_planning": [ { "day_number": 1, "date": "", "city": "", "hotel_ref": "", "places_selected": [] } ],
-    "tab3_day_by_day_itinerary": [ { "day_number": 1, "day_theme_title": "", "duration": "", "places_included": [], "hotel_shown": "", "day_description": "" } ],
-    "tab4_stays_accommodations": [ { "day_number": 1, "date": "", "location_city": "", "hotel_name": "", "price_per_night": 0, "rating": 0 } ],
-    "tab5_transportation": { "mode": "own|trip_planner", "starting_point_hub_transfer": "", "package_level_included_transportation": "", "transportation_entries": [ { "transit_type": "", "sector_route": "", "carrier_airline": "", "preferred_travel_time": "", "estimated_departure": "", "estimated_arrival": "", "transit_notes_instructions": "" } ] },
-    "tab6_addons": [ { "ref_or_new": "", "package_item_name": "" } ],
-    "tab7_restaurants": [ { "ref_or_new": "", "restaurant_name": "" } ],
-    "tab8_master_policies": { "note": "always reference the single default Policy Template + Tax Setting from master_data — never generate a new one" },
-    "tab9_price_quotes": { "line_items": [ { "item_name": "", "price": 0 } ], "tax_percentage_from_master": 0, "total_auto_calculated": 0 }
-  },
-  "validation": { "missing_fields": [], "assumptions_made": [], "needs_admin_review": [] }
-}`;
-
-    const activeSystemInstruction =
-      (selectedMode === "mode1" ? systemPromptMode1 : systemPromptMode2) +
-      "\n\n" +
-      commonSchemaDefinition;
-
-    // 5. Initialize Google Generative AI
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const CANDIDATE_MODELS = Array.from(
-      new Set(
-        [
-          process.env.GEMINI_MODEL,
-          "gemini-2.5-flash",
-          "gemini-2.0-flash",
-          "gemini-1.5-flash",
-          "gemini-1.5-pro",
-          "gemini-flash-latest",
-        ].filter((m): m is string => Boolean(m && m.trim()))
-      )
-    );
-
-    const userPromptPayload = `${selectedMode === "mode1" ? "RAW_TRIP_TEXT" : "DESTINATION_BRIEF"}:\n${prompt}\n\nCURRENT_MASTER_DATA:\n${JSON.stringify(
-      currentMasterDataForAI,
-      null,
-      2
-    )}`;
-
-    // Build chat contents
-    const contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
-
-    for (const msg of chatHistory) {
-      if (msg.role === "user") {
-        contents.push({ role: "user", parts: [{ text: msg.content }] });
-      } else if (msg.role === "assistant") {
-        contents.push({ role: "model", parts: [{ text: msg.content }] });
-      }
-    }
-
-    contents.push({
-      role: "user",
-      parts: [{ text: userPromptPayload }],
-    });
-
-    let aiRawText = "";
-    let lastError: any = null;
-
-    for (const modelName of CANDIDATE_MODELS) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          systemInstruction: activeSystemInstruction,
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.2,
-          },
-        });
-
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            const result = await model.generateContent({ contents });
-            aiRawText = result.response.text();
-            if (aiRawText) break;
-          } catch (err: any) {
-            lastError = err;
-            console.warn(`Gemini attempt ${attempt} on ${modelName} failed:`, err?.message || err);
-            const isTransient =
-              err?.status === 503 ||
-              err?.message?.includes("503") ||
-              err?.message?.includes("high demand") ||
-              err?.status === 429;
-
-            if (attempt < 2 && isTransient) {
-              await new Promise((res) => setTimeout(res, 1200));
-            } else {
-              break;
-            }
-          }
-        }
-
-        if (aiRawText) break;
-      } catch (initErr: any) {
-        lastError = initErr;
-        console.warn(`Failed to initialize model ${modelName}:`, initErr?.message || initErr);
-      }
-    }
-
-    if (!aiRawText) {
-      const is503 =
-        lastError?.status === 503 ||
-        lastError?.message?.includes("503") ||
-        lastError?.message?.includes("high demand");
-
+    // 4. Multi-Provider Invocation with Fallback Chain & Retries
+    let aiResult;
+    try {
+      aiResult = await generateTripWithFallback({
+        mode: selectedMode,
+        prompt: prompt,
+        currentMasterData: currentMasterDataForAI,
+        chatHistory: chatHistory as any,
+      });
+    } catch (routingErr: any) {
+      console.error("[API /api/generate-trip] AI Provider routing failed:", routingErr);
       return NextResponse.json(
         {
           status: "error",
-          error: is503
-            ? "AI service is currently under peak demand. Please click generate again in a moment."
-            : lastError?.message || "No response received from Google Gemini API.",
+          error:
+            "AI service is currently under peak demand or temporarily unavailable. Please try again in a moment.",
         },
-        { status: is503 ? 503 : 500 }
+        { status: 503 }
       );
     }
 
-    // 6. Parse JSON output safely
+    const { rawText, providerUsed, isFallback, needsAdminReview, modelName } = aiResult;
+
+    // 5. Parse JSON output safely
     let aiResponse: any;
     try {
-      const cleanJson = aiRawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+      const cleanJson = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
       aiResponse = JSON.parse(cleanJson);
     } catch (parseErr: any) {
-      console.error("Failed to parse Gemini JSON:", parseErr, aiRawText);
+      console.error("Failed to parse AI JSON response:", parseErr, rawText);
       return NextResponse.json(
         { status: "error", error: "Failed to parse structured trip blueprint. Please refine the prompt." },
         { status: 500 }
@@ -600,6 +424,16 @@ OUTPUT JSON SCHEMA:
       assumptions_made: [],
       needs_admin_review: [],
     };
+
+    if (needsAdminReview) {
+      if (!validationExtracted.needs_admin_review) {
+        validationExtracted.needs_admin_review = [];
+      }
+      const notice = "Some details were generated without live verification — please review before finalizing this trip.";
+      if (!validationExtracted.needs_admin_review.includes(notice)) {
+        validationExtracted.needs_admin_review.unshift(notice);
+      }
+    }
 
     // 7. Auto-Sync Master Data to Prisma Database
     const matchedSummary = {
@@ -1150,10 +984,25 @@ OUTPUT JSON SCHEMA:
       tripTerms: tripTerms,
     };
 
+    const hasReviewRequirement = Boolean(
+      needsAdminReview ||
+      (validationExtracted.needs_admin_review && validationExtracted.needs_admin_review.length > 0)
+    );
+
+    const finalPrefillTripDataWithReview = {
+      ...finalPrefillTripData,
+      needsAdminReview: hasReviewRequirement,
+      generatedBy: providerUsed,
+    };
+
     return NextResponse.json({
       status: "success",
       modeUsed: selectedMode,
-      tripBlueprint: finalPrefillTripData,
+      generated_by: providerUsed,
+      isFallback: isFallback,
+      needsAdminReview: hasReviewRequirement,
+      modelUsed: modelName,
+      tripBlueprint: finalPrefillTripDataWithReview,
       rawStructuredJson: aiResponse,
       matchedSummary: matchedSummary,
       validation: validationExtracted,

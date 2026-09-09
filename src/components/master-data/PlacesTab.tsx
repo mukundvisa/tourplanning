@@ -7,8 +7,13 @@ import {
   updateMasterPlace, 
   deleteMasterPlace,
   getMasterPlaceDefaults,
-  updateMasterPlaceDefaults
+  updateMasterPlaceDefaults,
+  getMasterPlaceCategories,
+  createMasterPlaceCategory,
+  updateMasterPlaceCategory,
+  deleteMasterPlaceCategory,
 } from "@/actions/master-data";
+import { DEFAULT_PLACE_CATEGORIES } from "@/lib/master-data-defaults";
 import { useRouter } from "next/navigation";
 import { Pagination } from "./Pagination";
 import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
@@ -72,6 +77,12 @@ export function PlacesTab({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PlaceItem | null>(null);
 
+  const [categories, setCategories] = useState<{ id: string; name: string; isDefault?: boolean }[]>([]);
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [editingCat, setEditingCat] = useState<{ id: string; name: string } | null>(null);
+  const [catSaving, setCatSaving] = useState(false);
+
   // Central Default Inclusions & Exclusions State
   const [defaultInclusions, setDefaultInclusions] = useState<string[]>([
     "Entry Ticket & Monument Access",
@@ -90,20 +101,28 @@ export function PlacesTab({
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSavedNotice, setDefaultsSavedNotice] = useState(false);
 
-  // Load defaults from server
+  // Load defaults and categories from server
   useEffect(() => {
-    async function loadDefaults() {
-      const res = await getMasterPlaceDefaults();
-      if (res.success && res.data) {
-        if (res.data.defaultInclusions && res.data.defaultInclusions.length > 0) {
-          setDefaultInclusions(res.data.defaultInclusions);
+    async function loadData() {
+      const [defaultsRes, catRes] = await Promise.all([
+        getMasterPlaceDefaults(),
+        getMasterPlaceCategories(),
+      ]);
+
+      if (defaultsRes.success && defaultsRes.data) {
+        if (defaultsRes.data.defaultInclusions && defaultsRes.data.defaultInclusions.length > 0) {
+          setDefaultInclusions(defaultsRes.data.defaultInclusions);
         }
-        if (res.data.defaultExclusions && res.data.defaultExclusions.length > 0) {
-          setDefaultExclusions(res.data.defaultExclusions);
+        if (defaultsRes.data.defaultExclusions && defaultsRes.data.defaultExclusions.length > 0) {
+          setDefaultExclusions(defaultsRes.data.defaultExclusions);
         }
       }
+
+      if (catRes.success && catRes.data) {
+        setCategories(catRes.data);
+      }
     }
-    loadDefaults();
+    loadData();
   }, []);
 
   const handleSaveDefaults = async () => {
@@ -571,13 +590,24 @@ export function PlacesTab({
           </div>
         </div>
 
-        <button
-          onClick={openCreate}
-          className="flex items-center space-x-2 px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add Place</span>
-        </button>
+        <div className="flex items-center space-x-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setCatModalOpen(true)}
+            className="flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-zinc-50 border border-[#B8944F]/40 text-[#8F6F33] rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
+          >
+            <Tag className="h-3.5 w-3.5" />
+            <span>Manage Categories</span>
+          </button>
+
+          <button
+            onClick={openCreate}
+            className="flex items-center space-x-2 px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Place</span>
+          </button>
+        </div>
       </div>
 
       {/* Places Grid */}
@@ -782,17 +812,26 @@ export function PlacesTab({
 
               {/* Category */}
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Category
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-zinc-700">
+                    Category
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setCatModalOpen(true)}
+                    className="text-[11px] text-[#B8944F] hover:underline font-medium cursor-pointer"
+                  >
+                    + Manage Categories
+                  </button>
+                </div>
                 <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none cursor-pointer"
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none cursor-pointer font-medium"
                 >
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.name}>
+                      {cat.name}
                     </option>
                   ))}
                 </select>
@@ -814,7 +853,7 @@ export function PlacesTab({
 
               {/* Special Transport Requirement */}
               <div className="space-y-2 pt-2 border-t border-zinc-100">
-                <label className="flex items-start space-x-2.5 cursor-pointer select-none">
+                <label className="flex items-center space-x-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={formData.requiresSpecialTransport}
@@ -824,13 +863,13 @@ export function PlacesTab({
                         requiresSpecialTransport: e.target.checked,
                       })
                     }
-                    className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F] cursor-pointer"
+                    className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F] cursor-pointer shrink-0"
                   />
-                  <div>
-                    <span className="text-xs font-bold text-[#14213D]">
+                  <div className="flex flex-col justify-center">
+                    <span className="text-xs font-bold text-[#14213D] leading-tight">
                       Requires Dedicated / Special Transport
                     </span>
-                    <p className="text-[11px] text-zinc-500">
+                    <p className="text-[11px] text-zinc-500 leading-normal mt-0.5">
                       Check if visitors need special transport to reach this place (e.g. Boat, Helicopter, Horse, Palki, etc.)
                     </p>
                   </div>
@@ -1022,6 +1061,145 @@ export function PlacesTab({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Category Management Modal */}
+      {catModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center pb-3 border-b border-zinc-100 mb-4">
+              <h3 className="text-base font-bold text-[#14213D] font-fraunces flex items-center gap-2">
+                <Tag className="h-4 w-4 text-[#B8944F]" />
+                <span>Manage Place Categories</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setCatModalOpen(false);
+                  setEditingCat(null);
+                }}
+                className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Add new Category */}
+            <div className="space-y-3 mb-4">
+              <label className="block text-xs font-semibold text-zinc-700">
+                {editingCat ? "Edit Category Name" : "Create New Category"}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={editingCat ? editingCat.name : newCatName}
+                  onChange={(e) => {
+                    if (editingCat) {
+                      setEditingCat({ ...editingCat, name: e.target.value });
+                    } else {
+                      setNewCatName(e.target.value);
+                    }
+                  }}
+                  placeholder="e.g. Wildlife Safari, Heritage Walk..."
+                  className="flex-1 px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#B8944F]"
+                />
+                {editingCat ? (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      disabled={catSaving || !editingCat.name.trim()}
+                      onClick={async () => {
+                        setCatSaving(true);
+                        const res = await updateMasterPlaceCategory(editingCat.id, editingCat.name);
+                        if (res.success) {
+                          setCategories((prev) =>
+                            prev.map((c) => (c.id === editingCat.id ? { ...c, name: editingCat.name.trim() } : c))
+                          );
+                          setEditingCat(null);
+                        }
+                        setCatSaving(false);
+                      }}
+                      className="px-3 py-2 bg-[#B8944F] text-white rounded-lg text-xs font-bold hover:bg-[#8F6F33] disabled:opacity-50 cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCat(null)}
+                      className="px-2 py-2 border border-zinc-200 text-zinc-600 rounded-lg text-xs font-semibold hover:bg-zinc-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={catSaving || !newCatName.trim()}
+                    onClick={async () => {
+                      setCatSaving(true);
+                      const res = await createMasterPlaceCategory(newCatName);
+                      if (res.success && res.data) {
+                        setCategories((prev) => [...prev, res.data]);
+                        setNewCatName("");
+                      }
+                      setCatSaving(false);
+                    }}
+                    className="px-3.5 py-2 bg-[#14213D] hover:bg-[#2B2E36] text-white rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Existing Categories List */}
+            <div className="border border-zinc-100 rounded-lg max-h-60 overflow-y-auto divide-y divide-zinc-100 bg-zinc-50/50">
+              {categories.map((cat) => (
+                <div key={cat.id} className="flex items-center justify-between p-2.5 text-xs">
+                  <span className="font-semibold text-zinc-800">{cat.name}</span>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingCat({ id: cat.id, name: cat.name })}
+                      className="p-1 text-zinc-400 hover:text-[#B8944F] rounded cursor-pointer"
+                      title="Edit Category"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (confirm(`Delete category "${cat.name}"?`)) {
+                          const res = await deleteMasterPlaceCategory(cat.id);
+                          if (res.success) {
+                            setCategories((prev) => prev.filter((c) => c.id !== cat.id));
+                          }
+                        }
+                      }}
+                      className="p-1 text-zinc-400 hover:text-red-600 rounded cursor-pointer"
+                      title="Delete Category"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-4 mt-4 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setCatModalOpen(false);
+                  setEditingCat(null);
+                }}
+                className="px-4 py-2 bg-[#14213D] hover:bg-[#2B2E36] text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

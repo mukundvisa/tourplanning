@@ -126,28 +126,28 @@ export async function GET(
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     await page.setContent(htmlContent, { waitUntil: "networkidle0" as any });
 
-    // Export A4 PDF with guaranteed 0.5in (13mm/40px) margins and repeating header/footer
+    // Export A4 PDF with guaranteed margins and luxury repeating header/footer
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       displayHeaderFooter: true,
       headerTemplate: `
-        <div style="font-size: 8px; color: #9CA3AF; width: 100%; padding: 0 0.5in; display: flex; justify-content: space-between; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 600;">
-          <span style="color: #14213D; font-weight: 700;">TripPlanner</span>
-          <span style="color: #6B7280;">${rawTitle}</span>
+        <div style="font-size: 8px; color: #717680; width: 100%; padding: 0 12mm; display: flex; justify-content: space-between; align-items: center; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">
+          <span style="color: #14213D; font-weight: 800;">TRIPPLANNER <span style="color: #B8944F; margin-left: 4px;">&bull;</span></span>
+          <span style="color: #717680; font-weight: 600;">${rawTitle}</span>
         </div>
       `,
       footerTemplate: `
-        <div style="font-size: 7.5px; color: #9CA3AF; width: 100%; padding: 0 0.5in; display: flex; justify-content: space-between; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-          <span>Confidential Travel Itinerary Proposal</span>
-          <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+        <div style="font-size: 7.5px; color: #717680; width: 100%; padding: 0 12mm; display: flex; justify-content: space-between; align-items: center; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; letter-spacing: 0.06em; text-transform: uppercase;">
+          <span style="font-weight: 700; color: #14213D;">TRIPPLANNER <span style="color: #B8944F;">&bull;</span> BESPOKE TRAVEL PROPOSAL</span>
+          <span>PAGE <span class="pageNumber"></span> OF <span class="totalPages"></span></span>
         </div>
       `,
       margin: {
-        top: "0.5in",
-        bottom: "0.5in",
-        left: "0.5in",
-        right: "0.5in",
+        top: "10mm",
+        bottom: "12mm",
+        left: "12mm",
+        right: "12mm",
       },
     });
 

@@ -1,12 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
-import { Plus, Search, Edit2, Trash2, UtensilsCrossed, Star, MapPin, X, Loader2, Check, Filter } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Plus, Search, Edit2, Trash2, UtensilsCrossed, Star, MapPin, X, Loader2, Check, Filter, Tag } from "lucide-react";
 import {
   createMasterRestaurant,
   updateMasterRestaurant,
   deleteMasterRestaurant,
+  getMasterRestaurantCategories,
+  createMasterRestaurantCategory,
+  updateMasterRestaurantCategory,
+  deleteMasterRestaurantCategory,
 } from "@/actions/master-data";
+import { DEFAULT_RESTAURANT_CATEGORIES } from "@/lib/master-data-defaults";
 import { useRouter } from "next/navigation";
 import { Pagination } from "./Pagination";
 import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
@@ -30,6 +35,12 @@ interface CityOption {
   country: string;
 }
 
+interface CategoryItem {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+}
+
 export function RestaurantsTab({
   initialData,
   cities,
@@ -47,6 +58,13 @@ export function RestaurantsTab({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<RestaurantItem | null>(null);
 
+  // Dynamic Restaurant Categories State
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [catModalOpen, setCatModalOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [editingCat, setEditingCat] = useState<CategoryItem | null>(null);
+  const [catSaving, setCatSaving] = useState(false);
+
   const [formData, setFormData] = useState({
     name: "",
     cityId: "",
@@ -60,12 +78,24 @@ export function RestaurantsTab({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Load categories
+  useEffect(() => {
+    async function loadCategories() {
+      const res = await getMasterRestaurantCategories();
+      if (res.success && res.data) {
+        setCategories(res.data as CategoryItem[]);
+      }
+    }
+    loadCategories();
+  }, []);
+
   const filteredByCity = selectedCityFilter === "all" ? data : data.filter((r) => r.cityId === selectedCityFilter);
   const filtered = filteredByCity.filter(
     (r) =>
       r.name.toLowerCase().includes(search.toLowerCase()) ||
       r.cuisineType.toLowerCase().includes(search.toLowerCase()) ||
-      (r.city && r.city.name.toLowerCase().includes(search.toLowerCase()))
+      (r.city && r.city.name.toLowerCase().includes(search.toLowerCase())) ||
+      (r.categoryType && r.categoryType.toLowerCase().includes(search.toLowerCase()))
   );
 
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -82,11 +112,12 @@ export function RestaurantsTab({
 
   const openCreate = () => {
     setEditingItem(null);
+    const defaultCat = categories[0]?.name || "Restaurant";
     setFormData({
       name: "",
       cityId: selectedCityFilter !== "all" ? selectedCityFilter : (cities[0]?.id || ""),
       cuisineType: "Indian & Continental",
-      categoryType: "Restaurant",
+      categoryType: defaultCat,
       starRating: "4.5",
       reviewsCount: "150",
       offersPureVegJain: true,
@@ -188,13 +219,22 @@ export function RestaurantsTab({
             Manage recommended dining places, Indian restaurants, beach clubs, and cafes across destinations
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add Master Dining</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setCatModalOpen(true)}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg bg-white border border-[#B8944F]/40 hover:bg-zinc-50 text-[#8F6F33] text-xs font-bold transition-all shadow-2xs cursor-pointer"
+          >
+            <Tag className="h-3.5 w-3.5" />
+            <span>Manage Categories</span>
+          </button>
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-[#B8944F] hover:bg-[#8F6F33] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Master Dining</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search */}
@@ -203,7 +243,7 @@ export function RestaurantsTab({
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
           <input
             type="text"
-            placeholder="Search dining by name, cuisine, or city..."
+            placeholder="Search dining by name, cuisine, category or city..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
@@ -331,8 +371,6 @@ export function RestaurantsTab({
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-
-
                 <div className="col-span-2">
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
                     Restaurant / Club Name *
@@ -370,13 +408,13 @@ export function RestaurantsTab({
                     Category Types (Select all that apply) *
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {["Restaurant", "Beach Club", "Night Club", "Cafe", "Rooftop Bar", "Bakery", "Bar", "Lounge"].map((cat) => {
+                    {categories.map((cat) => {
                       const selected = formData.categoryType
-                        ? formData.categoryType.split(",").map((c: string) => c.trim()).includes(cat)
+                        ? formData.categoryType.split(",").map((c: string) => c.trim()).includes(cat.name)
                         : false;
                       return (
                         <label
-                          key={cat}
+                          key={cat.id}
                           className={`flex items-center space-x-2 p-2 border rounded-lg cursor-pointer text-xs select-none transition-all ${
                             selected
                               ? "border-[#B8944F] bg-[#B8944F]/5 font-bold text-[#14213D]"
@@ -391,19 +429,19 @@ export function RestaurantsTab({
                                 ? formData.categoryType.split(",").map((c: string) => c.trim()).filter(Boolean)
                                 : [];
                               let updatedArray: string[];
-                              if (currentArray.includes(cat)) {
-                                updatedArray = currentArray.filter((c) => c !== cat);
+                              if (currentArray.includes(cat.name)) {
+                                updatedArray = currentArray.filter((c) => c !== cat.name);
                               } else {
-                                updatedArray = [...currentArray, cat];
+                                updatedArray = [...currentArray, cat.name];
                               }
                               setFormData({
                                 ...formData,
-                                categoryType: updatedArray.length > 0 ? updatedArray.join(", ") : "Restaurant",
+                                categoryType: updatedArray.length > 0 ? updatedArray.join(", ") : categories[0]?.name || "Restaurant",
                               });
                             }}
                             className="rounded text-[#B8944F] focus:ring-[#B8944F] border-zinc-300 h-4 w-4 cursor-pointer"
                           />
-                          <span>{cat}</span>
+                          <span className="truncate">{cat.name}</span>
                         </label>
                       );
                     })}
@@ -494,6 +532,146 @@ export function RestaurantsTab({
           </div>
         </div>
       )}
+
+      {/* RESTAURANT CATEGORIES MODAL */}
+      {catModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center pb-3 border-b border-zinc-100 mb-4">
+              <h3 className="text-base font-bold text-[#14213D] font-fraunces flex items-center gap-2">
+                <Tag className="h-4 w-4 text-[#B8944F]" />
+                <span>Manage Dining Categories</span>
+              </h3>
+              <button
+                onClick={() => {
+                  setCatModalOpen(false);
+                  setEditingCat(null);
+                }}
+                className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Add new Category */}
+            <div className="space-y-3 mb-4">
+              <label className="block text-xs font-semibold text-zinc-700">
+                {editingCat ? "Edit Category Name" : "Create New Category"}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={editingCat ? editingCat.name : newCatName}
+                  onChange={(e) => {
+                    if (editingCat) {
+                      setEditingCat({ ...editingCat, name: e.target.value });
+                    } else {
+                      setNewCatName(e.target.value);
+                    }
+                  }}
+                  placeholder="e.g. Floating Cafe, Wine Cellar, Beach Shack..."
+                  className="flex-1 px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#B8944F]"
+                />
+                {editingCat ? (
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      disabled={catSaving || !editingCat.name.trim()}
+                      onClick={async () => {
+                        setCatSaving(true);
+                        const res = await updateMasterRestaurantCategory(editingCat.id, editingCat.name);
+                        if (res.success) {
+                          setCategories((prev) =>
+                            prev.map((c) => (c.id === editingCat.id ? { ...c, name: editingCat.name.trim() } : c))
+                          );
+                          setEditingCat(null);
+                        }
+                        setCatSaving(false);
+                      }}
+                      className="px-3 py-2 bg-[#B8944F] text-white rounded-lg text-xs font-bold hover:bg-[#8F6F33] disabled:opacity-50 cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCat(null)}
+                      className="px-2 py-2 border border-zinc-200 text-zinc-600 rounded-lg text-xs font-semibold hover:bg-zinc-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={catSaving || !newCatName.trim()}
+                    onClick={async () => {
+                      setCatSaving(true);
+                      const res = await createMasterRestaurantCategory(newCatName);
+                      if (res.success && res.data) {
+                        setCategories((prev) => [...prev, res.data]);
+                        setNewCatName("");
+                      }
+                      setCatSaving(false);
+                    }}
+                    className="px-3.5 py-2 bg-[#14213D] hover:bg-[#2B2E36] text-white rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Existing Categories List */}
+            <div className="border border-zinc-100 rounded-lg max-h-60 overflow-y-auto divide-y divide-zinc-100 bg-zinc-50/50">
+              {categories.map((cat) => (
+                <div key={cat.id} className="flex items-center justify-between p-2.5 text-xs">
+                  <span className="font-semibold text-zinc-800">{cat.name}</span>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingCat({ id: cat.id, name: cat.name })}
+                      className="p-1 text-zinc-400 hover:text-[#B8944F] rounded cursor-pointer"
+                      title="Edit Category"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (confirm(`Delete category "${cat.name}"?`)) {
+                          const res = await deleteMasterRestaurantCategory(cat.id);
+                          if (res.success) {
+                            setCategories((prev) => prev.filter((c) => c.id !== cat.id));
+                          }
+                        }
+                      }}
+                      className="p-1 text-zinc-400 hover:text-red-600 rounded cursor-pointer"
+                      title="Delete Category"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-4 mt-4 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setCatModalOpen(false);
+                  setEditingCat(null);
+                }}
+                className="px-4 py-2 bg-[#14213D] hover:bg-[#2B2E36] text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

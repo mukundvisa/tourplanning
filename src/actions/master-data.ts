@@ -2,6 +2,12 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import {
+  DEFAULT_PLACE_CATEGORIES,
+  DEFAULT_VEHICLE_TYPES,
+  DEFAULT_ADDON_CATEGORIES,
+  DEFAULT_RESTAURANT_CATEGORIES,
+} from "@/lib/master-data-defaults";
 
 // ==========================================
 // OVERVIEW STATS & ANALYTICS
@@ -1381,6 +1387,315 @@ export async function saveTripCostCalculation(tripId: string, payload: {
 }
 
 // ==========================================
+// 15. DYNAMIC MASTER DATA CATEGORIES & VEHICLE TYPES
+// ==========================================
+
+// --- PLACE CATEGORIES ---
+export async function getMasterPlaceCategories() {
+  try {
+    let items: any[] = [];
+    try {
+      items = await (db as any).masterPlaceCategory.findMany({
+        orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      });
+    } catch {}
+
+    if (items.length === 0) {
+      // Seed default categories
+      for (const cat of DEFAULT_PLACE_CATEGORIES) {
+        try {
+          await (db as any).masterPlaceCategory.upsert({
+            where: { name: cat },
+            update: {},
+            create: { name: cat, isDefault: true },
+          });
+        } catch {}
+      }
+      try {
+        items = await (db as any).masterPlaceCategory.findMany({
+          orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        });
+      } catch {}
+    }
+
+    if (items.length === 0) {
+      items = DEFAULT_PLACE_CATEGORIES.map((c, i) => ({ id: `default-${i}`, name: c, isDefault: true }));
+    }
+
+    return { success: true, data: items };
+  } catch (err: any) {
+    return { success: true, data: DEFAULT_PLACE_CATEGORIES.map((c, i) => ({ id: `default-${i}`, name: c, isDefault: true })) };
+  }
+}
+
+export async function createMasterPlaceCategory(name: string) {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { success: false, error: "Category name is required" };
+    const item = await (db as any).masterPlaceCategory.create({
+      data: { name: trimmed, isDefault: false },
+    });
+    revalidatePath("/master-data");
+    return { success: true, data: item };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function updateMasterPlaceCategory(id: string, name: string) {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { success: false, error: "Category name is required" };
+    const item = await (db as any).masterPlaceCategory.update({
+      where: { id },
+      data: { name: trimmed },
+    });
+    revalidatePath("/master-data");
+    return { success: true, data: item };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteMasterPlaceCategory(id: string) {
+  try {
+    await (db as any).masterPlaceCategory.delete({ where: { id } });
+    revalidatePath("/master-data");
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- VEHICLE TYPES & FIELD MAPPINGS ---
+export async function getMasterVehicleTypes() {
+  try {
+    let items: any[] = [];
+    try {
+      items = await (db as any).masterVehicleType.findMany({
+        orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      });
+    } catch {}
+
+    if (items.length === 0) {
+      for (const vt of DEFAULT_VEHICLE_TYPES) {
+        try {
+          await (db as any).masterVehicleType.upsert({
+            where: { name: vt.name },
+            update: { applicableFields: vt.applicableFields },
+            create: { name: vt.name, applicableFields: vt.applicableFields, isDefault: true },
+          });
+        } catch {}
+      }
+      try {
+        items = await (db as any).masterVehicleType.findMany({
+          orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        });
+      } catch {}
+    }
+
+    if (items.length === 0) {
+      items = DEFAULT_VEHICLE_TYPES.map((vt, i) => ({ id: `default-vt-${i}`, ...vt }));
+    }
+
+    return { success: true, data: items };
+  } catch (err: any) {
+    return { success: true, data: DEFAULT_VEHICLE_TYPES.map((vt, i) => ({ id: `default-vt-${i}`, ...vt })) };
+  }
+}
+
+export async function createMasterVehicleType(name: string, applicableFields: string[]) {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { success: false, error: "Vehicle type name is required" };
+    const item = await (db as any).masterVehicleType.create({
+      data: { name: trimmed, applicableFields, isDefault: false },
+    });
+    revalidatePath("/master-data");
+    return { success: true, data: item };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function updateMasterVehicleType(id: string, name: string, applicableFields: string[]) {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { success: false, error: "Vehicle type name is required" };
+    const item = await (db as any).masterVehicleType.update({
+      where: { id },
+      data: { name: trimmed, applicableFields },
+    });
+    revalidatePath("/master-data");
+    return { success: true, data: item };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteMasterVehicleType(id: string) {
+  try {
+    await (db as any).masterVehicleType.delete({ where: { id } });
+    revalidatePath("/master-data");
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- ADDON CATEGORIES & FIELD MAPPINGS ---
+export async function getMasterAddOnCategories() {
+  try {
+    let items: any[] = [];
+    try {
+      items = await (db as any).masterAddOnCategory.findMany({
+        orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      });
+    } catch {}
+
+    if (items.length === 0) {
+      for (const ac of DEFAULT_ADDON_CATEGORIES) {
+        try {
+          await (db as any).masterAddOnCategory.upsert({
+            where: { name: ac.name },
+            update: { applicableFields: ac.applicableFields },
+            create: { name: ac.name, applicableFields: ac.applicableFields, isDefault: true },
+          });
+        } catch {}
+      }
+      try {
+        items = await (db as any).masterAddOnCategory.findMany({
+          orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        });
+      } catch {}
+    }
+
+    if (items.length === 0) {
+      items = DEFAULT_ADDON_CATEGORIES.map((ac, i) => ({ id: `default-ac-${i}`, ...ac }));
+    }
+
+    return { success: true, data: items };
+  } catch (err: any) {
+    return { success: true, data: DEFAULT_ADDON_CATEGORIES.map((ac, i) => ({ id: `default-ac-${i}`, ...ac })) };
+  }
+}
+
+export async function createMasterAddOnCategory(name: string, applicableFields: string[]) {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { success: false, error: "Category name is required" };
+    const item = await (db as any).masterAddOnCategory.create({
+      data: { name: trimmed, applicableFields, isDefault: false },
+    });
+    revalidatePath("/master-data");
+    return { success: true, data: item };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function updateMasterAddOnCategory(id: string, name: string, applicableFields: string[]) {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { success: false, error: "Category name is required" };
+    const item = await (db as any).masterAddOnCategory.update({
+      where: { id },
+      data: { name: trimmed, applicableFields },
+    });
+    revalidatePath("/master-data");
+    return { success: true, data: item };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteMasterAddOnCategory(id: string) {
+  try {
+    await (db as any).masterAddOnCategory.delete({ where: { id } });
+    revalidatePath("/master-data");
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// --- RESTAURANT CATEGORIES ---
+export async function getMasterRestaurantCategories() {
+  try {
+    let items: any[] = [];
+    try {
+      items = await (db as any).masterRestaurantCategory.findMany({
+        orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      });
+    } catch {}
+
+    if (items.length === 0) {
+      for (const rc of DEFAULT_RESTAURANT_CATEGORIES) {
+        try {
+          await (db as any).masterRestaurantCategory.upsert({
+            where: { name: rc },
+            update: {},
+            create: { name: rc, isDefault: true },
+          });
+        } catch {}
+      }
+      try {
+        items = await (db as any).masterRestaurantCategory.findMany({
+          orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+        });
+      } catch {}
+    }
+
+    if (items.length === 0) {
+      items = DEFAULT_RESTAURANT_CATEGORIES.map((c, i) => ({ id: `default-rc-${i}`, name: c, isDefault: true }));
+    }
+
+    return { success: true, data: items };
+  } catch (err: any) {
+    return { success: true, data: DEFAULT_RESTAURANT_CATEGORIES.map((c, i) => ({ id: `default-rc-${i}`, name: c, isDefault: true })) };
+  }
+}
+
+export async function createMasterRestaurantCategory(name: string) {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { success: false, error: "Category name is required" };
+    const item = await (db as any).masterRestaurantCategory.create({
+      data: { name: trimmed, isDefault: false },
+    });
+    revalidatePath("/master-data");
+    return { success: true, data: item };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function updateMasterRestaurantCategory(id: string, name: string) {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { success: false, error: "Category name is required" };
+    const item = await (db as any).masterRestaurantCategory.update({
+      where: { id },
+      data: { name: trimmed },
+    });
+    revalidatePath("/master-data");
+    return { success: true, data: item };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteMasterRestaurantCategory(id: string) {
+  try {
+    await (db as any).masterRestaurantCategory.delete({ where: { id } });
+    revalidatePath("/master-data");
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+// ==========================================
 // BATCH QUERY FOR FORM AUTO-FILL SELECTORS
 // ==========================================
 export async function getAllMasterDataForSelectors() {
@@ -1400,6 +1715,10 @@ export async function getAllMasterDataForSelectors() {
       bannerImages,
       placeDefaultsRes,
       globalPolicyRes,
+      placeCategoriesRes,
+      vehicleTypesRes,
+      addOnCategoriesRes,
+      restaurantCategoriesRes,
     ] = await Promise.all([
       db.masterCity.findMany({ orderBy: [{ country: "asc" }, { name: "asc" }] }),
       db.masterConsultant.findMany({ orderBy: { name: "asc" } }),
@@ -1409,12 +1728,16 @@ export async function getAllMasterDataForSelectors() {
       db.masterHotel.findMany({ include: { city: true }, orderBy: { name: "asc" } }),
       db.masterFlightRoute.findMany({ include: { city: true }, orderBy: [{ transportCategory: "asc" }, { sector: "asc" }] }),
       db.masterAddOn.findMany({ include: { city: true }, orderBy: { name: "asc" } }),
-      db.masterRestaurant.findMany({ orderBy: { name: "asc" } }),
+      db.masterRestaurant.findMany({ include: { city: true }, orderBy: { name: "asc" } }),
       db.masterPolicyTemplate.findMany({ orderBy: { name: "asc" } }),
       db.masterTitleTemplate.findMany({ orderBy: { title: "asc" } }),
       db.masterBannerImage.findMany({ orderBy: { label: "asc" } }),
       getMasterPlaceDefaults(),
       getGlobalPolicy(),
+      getMasterPlaceCategories(),
+      getMasterVehicleTypes(),
+      getMasterAddOnCategories(),
+      getMasterRestaurantCategories(),
     ]);
 
     const defaultInc = placeDefaultsRes.data?.defaultInclusions || [];
@@ -1445,6 +1768,10 @@ export async function getAllMasterDataForSelectors() {
         titleTemplates,
         bannerImages,
         placeDefaults: placeDefaultsRes.data,
+        placeCategories: placeCategoriesRes.data || [],
+        vehicleTypes: vehicleTypesRes.data || [],
+        addOnCategories: addOnCategoriesRes.data || [],
+        restaurantCategories: restaurantCategoriesRes.data || [],
       },
     };
   } catch (err: any) {
@@ -1452,3 +1779,4 @@ export async function getAllMasterDataForSelectors() {
     return { success: false, error: err.message };
   }
 }
+
