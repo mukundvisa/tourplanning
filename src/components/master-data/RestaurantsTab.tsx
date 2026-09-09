@@ -213,7 +213,7 @@ export function RestaurantsTab({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Dining & Hotspots Guide
+            Dining
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
             Manage recommended dining places, Indian restaurants, beach clubs, and cafes across destinations
@@ -638,13 +638,24 @@ export function RestaurantsTab({
                     </button>
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (confirm(`Delete category "${cat.name}"?`)) {
-                          const res = await deleteMasterRestaurantCategory(cat.id);
-                          if (res.success) {
-                            setCategories((prev) => prev.filter((c) => c.id !== cat.id));
-                          }
-                        }
+                      onClick={() => {
+                        executeDeleteWithUndo<{ id: string; name: string }>({
+                          item: cat,
+                          itemType: "Restaurant Category",
+                          itemName: cat.name,
+                          onOptimisticRemove: (item) => {
+                            setCategories((prev) => prev.filter((c) => c.id !== item.id));
+                          },
+                          onUndo: (item) => {
+                            setCategories((prev) => [item, ...prev.filter((c) => c.id !== item.id)]);
+                          },
+                          onPermanentDelete: async (item) => {
+                            const res = await deleteMasterRestaurantCategory(item.id);
+                            if (!res.success) {
+                              throw new Error(res.error || "Failed to delete category");
+                            }
+                          },
+                        });
                       }}
                       className="p-1 text-zinc-400 hover:text-red-600 rounded cursor-pointer"
                       title="Delete Category"

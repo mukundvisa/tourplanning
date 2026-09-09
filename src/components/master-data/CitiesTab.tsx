@@ -150,7 +150,7 @@ export function CitiesTab({ initialData }: { initialData: CityItem[] }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Cities & States Directory
+            Cities
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
             Manage Indian departure hubs and international destination cities

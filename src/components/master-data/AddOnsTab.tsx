@@ -35,6 +35,7 @@ import { DEFAULT_ADDON_CATEGORIES } from "@/lib/master-data-defaults";
 import { useRouter } from "next/navigation";
 import { Pagination } from "./Pagination";
 import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
+import toast from "react-hot-toast";
 
 export interface AddOnCity {
   id: string;
@@ -335,11 +336,8 @@ export function AddOnsTab({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Add-ons, Visas & Experiences Catalog
+            Add-ons
           </h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Manage city-connected visa packages, SIM cards, airport transfers, insurance, and activities
-          </p>
         </div>
         <div className="flex items-center space-x-2">
           <button
@@ -360,73 +358,42 @@ export function AddOnsTab({
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+        {/* City Filter Dropdown */}
+        <div className="relative min-w-[220px] w-full sm:w-64 shrink-0">
+          <MapPin className="h-4 w-4 text-[#B8944F] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <select
+            value={selectedCityId}
+            onChange={(e) => handleCityFilterChange(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-semibold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer shadow-2xs"
+          >
+            <option value="All">📍 All Cities ({data.length} Add-ons)</option>
+            {cities.map((city) => {
+              const count = data.filter(
+                (a) =>
+                  a.cityId === city.id ||
+                  (a.cityIds && a.cityIds.includes(city.id)) ||
+                  a.city?.id === city.id
+              ).length;
+              return (
+                <option key={city.id} value={city.id}>
+                  {city.name} ({count})
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        {/* Big Width Search Bar */}
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Search add-ons by package name, city, or description..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
+            className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] shadow-2xs"
           />
-        </div>
-
-        {/* City Filter Dropdown */}
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1.5 bg-white border border-zinc-200 rounded-lg px-3 py-1.5 shadow-2xs">
-            <MapPin className="h-3.5 w-3.5 text-[#B8944F]" />
-            <select
-              value={selectedCityId}
-              onChange={(e) => handleCityFilterChange(e.target.value)}
-              className="bg-transparent text-xs font-semibold text-[#14213D] outline-none cursor-pointer"
-            >
-              <option value="All">All Cities ({data.length})</option>
-              {cities.map((city) => {
-                const count = data.filter(
-                  (a) =>
-                    a.cityId === city.id ||
-                    (a.cityIds && a.cityIds.includes(city.id)) ||
-                    a.city?.id === city.id
-                ).length;
-                return (
-                  <option key={city.id} value={city.id}>
-                    {city.name} ({count})
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-        </div>
-
-        {/* Type Filter Buttons */}
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            onClick={() => handleTypeChange("All")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              selectedType === "All"
-                ? "bg-[#14213D] text-[#DDA74F] shadow-sm"
-                : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-            }`}
-          >
-            All ({data.length})
-          </button>
-          {categories.map((cat) => {
-            const count = data.filter((a) => a.type === cat.name).length;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => handleTypeChange(cat.name)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  selectedType === cat.name
-                    ? "bg-[#14213D] text-[#DDA74F] shadow-sm"
-                    : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-                }`}
-              >
-                {cat.name} {count > 0 ? `(${count})` : ""}
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -816,18 +783,21 @@ export function AddOnsTab({
                           setCategories((prev) =>
                             prev.map((c) => (c.id === editingCat.id ? (res.data! as any) : c))
                           );
+                          toast.success(`Category "${editingCat.name}" updated`);
                           setEditingCat(null);
                         } else {
-                          alert(res.error || "Failed to update addon category");
+                          toast.error(res.error || "Failed to update addon category");
                         }
                       } else {
-                        const res = await createMasterAddOnCategory(newCatName, newCatFields);
+                        const targetName = newCatName.trim();
+                        const res = await createMasterAddOnCategory(targetName, newCatFields);
                         if (res.success && res.data) {
                           setCategories((prev) => [...prev, res.data! as any]);
                           setNewCatName("");
-                          setNewCatFields(["detailsDescription", "defaultPrice", "cityId"]);
+                          setNewCatFields(["defaultPrice", "detailsDescription"]);
+                          toast.success(`Category "${targetName}" created`);
                         } else {
-                          alert(res.error || "Failed to create addon category");
+                          toast.error(res.error || "Failed to create addon category");
                         }
                       }
                     } finally {
@@ -865,7 +835,7 @@ export function AddOnsTab({
                           return (
                             <span
                               key={f}
-                              className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200/70 px-1.5 py-0.2 rounded"
+                              className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200/70 px-1.5 py-0.2 rounded"
                             >
                               {matched ? matched.label : f}
                             </span>
@@ -885,15 +855,24 @@ export function AddOnsTab({
                       </button>
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (confirm(`Delete category "${cat.name}"?`)) {
-                            const res = await deleteMasterAddOnCategory(cat.id);
-                            if (res.success) {
-                              setCategories((prev) => prev.filter((item) => item.id !== cat.id));
-                            } else {
-                              alert(res.error || "Failed to delete category");
-                            }
-                          }
+                        onClick={() => {
+                          executeDeleteWithUndo<AddOnCategoryItem>({
+                            item: cat,
+                            itemType: "Add-on Category",
+                            itemName: cat.name,
+                            onOptimisticRemove: (item) => {
+                              setCategories((prev) => prev.filter((c) => c.id !== item.id));
+                            },
+                            onUndo: (item) => {
+                              setCategories((prev) => [item, ...prev.filter((c) => c.id !== item.id)]);
+                            },
+                            onPermanentDelete: async (item) => {
+                              const res = await deleteMasterAddOnCategory(item.id);
+                              if (!res.success) {
+                                throw new Error(res.error || "Failed to delete category");
+                              }
+                            },
+                          });
                         }}
                         className="p-1 text-zinc-400 hover:text-red-600 rounded cursor-pointer"
                         title="Delete Category"

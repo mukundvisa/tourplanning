@@ -6,6 +6,7 @@ import { createMasterHotel, updateMasterHotel, deleteMasterHotel } from "@/actio
 import { useRouter } from "next/navigation";
 import { Pagination } from "./Pagination";
 import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
+import toast from "react-hot-toast";
 
 interface HotelItem {
   id: string;
@@ -56,12 +57,12 @@ export function HotelsTab({
     name: "",
     cityId: "",
     starRating: 4,
-    pricePerNight: "0",
-    pricePerPerson: "0",
+    pricePerNight: "",
+    pricePerPerson: "",
     roomTypes: [] as string[],
     mealPlans: [] as string[],
-    guestScore: "4.5",
-    guestScoreLabel: "Very Good",
+    guestScore: "",
+    guestScoreLabel: "",
     facilities: [] as string[],
     nearbyAttractions: [] as { name: string; distanceKm: number }[],
     nearbyRestaurants: [] as { name: string; distance: string }[],
@@ -94,13 +95,13 @@ export function HotelsTab({
       name: "",
       cityId: selectedCityId !== "all" ? selectedCityId : (cities[0]?.id || ""),
       starRating: 4,
-      pricePerNight: "3500",
-      pricePerPerson: "1750",
-      roomTypes: ["Standard Room"],
-      mealPlans: ["CP (Breakfast Included)"],
-      guestScore: "4.5",
-      guestScoreLabel: "Very Good",
-      facilities: ["Free Wi-Fi", "Swimming Pool"],
+      pricePerNight: "",
+      pricePerPerson: "",
+      roomTypes: [],
+      mealPlans: [],
+      guestScore: "",
+      guestScoreLabel: "",
+      facilities: [],
       nearbyAttractions: [],
       nearbyRestaurants: [],
       photos: [],
@@ -113,13 +114,13 @@ export function HotelsTab({
     setFormData({
       name: item.name,
       cityId: item.cityId || "",
-      starRating: item.starRating,
-      pricePerNight: item.pricePerNight?.toString() || "0",
-      pricePerPerson: item.pricePerPerson?.toString() || "0",
+      starRating: item.starRating || 4,
+      pricePerNight: item.pricePerNight !== null && item.pricePerNight !== undefined ? item.pricePerNight.toString() : "",
+      pricePerPerson: item.pricePerPerson !== null && item.pricePerPerson !== undefined ? item.pricePerPerson.toString() : "",
       roomTypes: item.roomTypes || [],
       mealPlans: item.mealPlans || [],
-      guestScore: item.guestScore?.toString() || "4.5",
-      guestScoreLabel: item.guestScoreLabel || "Very Good",
+      guestScore: item.guestScore !== null && item.guestScore !== undefined ? item.guestScore.toString() : "",
+      guestScoreLabel: item.guestScoreLabel || "",
       facilities: item.facilities || [],
       nearbyAttractions: typeof item.nearbyAttractions === "string" ? JSON.parse(item.nearbyAttractions) : item.nearbyAttractions || [],
       nearbyRestaurants: typeof item.nearbyRestaurants === "string" ? JSON.parse(item.nearbyRestaurants) : item.nearbyRestaurants || [],
@@ -147,11 +148,12 @@ export function HotelsTab({
           ...prev,
           photos: [...prev.photos, resData.url],
         }));
+        toast.success("Photo uploaded successfully");
       } else {
-        alert("Upload failed: " + resData.error);
+        toast.error("Upload failed: " + (resData.error || "Unknown error"));
       }
     } catch (err) {
-      alert("Error uploading image");
+      toast.error("Error uploading image");
     } finally {
       setUploadingPhoto(false);
     }
@@ -166,11 +168,11 @@ export function HotelsTab({
         name: formData.name,
         cityId: formData.cityId || undefined,
         starRating: Number(formData.starRating),
-        pricePerNight: parseFloat(formData.pricePerNight) || 0,
-        pricePerPerson: parseFloat(formData.pricePerPerson) || 0,
+        pricePerNight: formData.pricePerNight !== "" ? (parseFloat(formData.pricePerNight) || 0) : 0,
+        pricePerPerson: formData.pricePerPerson !== "" ? (parseFloat(formData.pricePerPerson) || 0) : 0,
         roomTypes: formData.roomTypes,
         mealPlans: formData.mealPlans,
-        guestScore: parseFloat(formData.guestScore) || undefined,
+        guestScore: formData.guestScore !== "" ? (parseFloat(formData.guestScore) || undefined) : undefined,
         guestScoreLabel: formData.guestScoreLabel || undefined,
         facilities: formData.facilities,
         nearbyAttractions: formData.nearbyAttractions,
@@ -186,10 +188,11 @@ export function HotelsTab({
             city: cities.find((c) => c.id === res.data!.cityId) || null,
           } as HotelItem;
           setData((prev) => prev.map((h) => (h.id === editingItem.id ? updated : h)));
+          toast.success("Hotel updated successfully");
           setModalOpen(false);
           router.refresh();
         } else {
-          alert(res.error || "Failed to update hotel");
+          toast.error(res.error || "Failed to update hotel");
         }
       } else {
         const res = await createMasterHotel(payload);
@@ -199,10 +202,11 @@ export function HotelsTab({
             city: cities.find((c) => c.id === res.data!.cityId) || null,
           } as HotelItem;
           setData((prev) => [created, ...prev]);
+          toast.success("Hotel created successfully");
           setModalOpen(false);
           router.refresh();
         } else {
-          alert(res.error || "Failed to create hotel");
+          toast.error(res.error || "Failed to create hotel");
         }
       }
     } finally {
@@ -237,11 +241,8 @@ export function HotelsTab({
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces flex items-center">
-            <BedDouble className="h-5 w-5 mr-2 text-[#B8944F]" /> Master Hotel Catalog
+            <BedDouble className="h-5 w-5 mr-2 text-[#B8944F]" /> Hotels
           </h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            Configure premium stays, room types, meal plans, and pricing per night / per person.
-          </p>
         </div>
 
         <button
@@ -554,7 +555,7 @@ export function HotelsTab({
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Star Rating (1-5 Stars)
+                    Star Rating
                   </label>
                   <select
                     value={formData.starRating}
@@ -566,6 +567,7 @@ export function HotelsTab({
                     <option value={3}>3 Star Hotel</option>
                     <option value={4}>4 Star Deluxe Hotel</option>
                     <option value={5}>5 Star Luxury Resort / Villa</option>
+                    <option value={7}>7 Star Hotel</option>
                   </select>
                 </div>
 
@@ -576,10 +578,10 @@ export function HotelsTab({
                   <input
                     type="number"
                     min="0"
-                    step="50"
+                    step="any"
                     value={formData.pricePerNight}
                     onChange={(e) => setFormData({ ...formData, pricePerNight: e.target.value })}
-                    placeholder="e.g. 4500"
+                    placeholder="e.g. 1450"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-emerald-800 focus:ring-1 focus:ring-[#B8944F] outline-none"
                   />
                 </div>
@@ -591,10 +593,10 @@ export function HotelsTab({
                   <input
                     type="number"
                     min="0"
-                    step="50"
+                    step="any"
                     value={formData.pricePerPerson}
                     onChange={(e) => setFormData({ ...formData, pricePerPerson: e.target.value })}
-                    placeholder="e.g. 2250"
+                    placeholder="e.g. 725"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-blue-800 focus:ring-1 focus:ring-[#B8944F] outline-none"
                   />
                 </div>
@@ -605,9 +607,12 @@ export function HotelsTab({
                   </label>
                   <input
                     type="number"
-                    step="0.1"
+                    min="0"
+                    max="5"
+                    step="any"
                     value={formData.guestScore}
                     onChange={(e) => setFormData({ ...formData, guestScore: e.target.value })}
+                    placeholder="e.g. 4.8"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>
@@ -622,6 +627,7 @@ export function HotelsTab({
                     onChange={(e) =>
                       setFormData({ ...formData, guestScoreLabel: e.target.value })
                     }
+                    placeholder="e.g. Exceptional"
                     className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                   />
                 </div>

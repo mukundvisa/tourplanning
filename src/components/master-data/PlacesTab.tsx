@@ -400,12 +400,9 @@ export function PlacesTab({
             <div className="flex items-center space-x-2">
               <ShieldCheck className="h-4 w-4 text-[#B8944F]" />
               <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                Default Inclusions & Exclusions (Global Master Rules)
+                Default Inclusions & Exclusions
               </h3>
             </div>
-            <p className="text-[11px] text-zinc-500">
-              One common set of default inclusions and exclusions automatically applied to all Places in Master Data and Day Planning.
-            </p>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -440,12 +437,11 @@ export function PlacesTab({
           <div className="space-y-2.5 bg-emerald-50/40 border border-emerald-200/60 rounded-lg p-3.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                <span>✓ Common Default Inclusions</span>
+                <span>✓ Default Inclusions</span>
                 <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-1.5 py-0.2 rounded">
                   {defaultInclusions.length} Rules
                 </span>
               </label>
-              <span className="text-[10px] text-emerald-700 font-medium">Auto-applied to every Place</span>
             </div>
 
             <div className="flex gap-1.5">
@@ -495,12 +491,11 @@ export function PlacesTab({
           <div className="space-y-2.5 bg-red-50/40 border border-red-200/60 rounded-lg p-3.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-red-900 flex items-center gap-1.5">
-                <span>✗ Common Default Exclusions</span>
+                <span>✗ Default Exclusions</span>
                 <span className="text-[10px] bg-red-100 text-red-800 font-semibold px-1.5 py-0.2 rounded">
                   {defaultExclusions.length} Rules
                 </span>
               </label>
-              <span className="text-[10px] text-red-700 font-medium">Auto-applied to every Place</span>
             </div>
 
             <div className="flex gap-1.5">
@@ -549,17 +544,18 @@ export function PlacesTab({
       </div>
 
       {/* Header controls */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+      <div className="space-y-3">
+        {/* Top row: City selector on left, Actions on right */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           {/* City selector filter */}
-          <div className="relative min-w-[200px]">
+          <div className="relative min-w-[220px] w-full sm:w-auto">
             <select
               value={selectedCityId}
               onChange={(e) => {
                 setSelectedCityId(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full pl-9 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-semibold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] outline-none cursor-pointer"
+              className="w-full sm:w-64 pl-9 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-semibold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] outline-none cursor-pointer shadow-2xs"
             >
               <option value="all">📍 All Cities ({data.length} Places)</option>
               {cities.map((c) => {
@@ -574,39 +570,39 @@ export function PlacesTab({
             <MapPin className="h-4 w-4 text-zinc-400 absolute left-3 top-2.5 pointer-events-none" />
           </div>
 
-          {/* Search box */}
-          <div className="relative flex-1 sm:w-64">
-            <Search className="h-4 w-4 text-zinc-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Search places by name, category..."
-              className="w-full pl-9 pr-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#B8944F]"
-            />
+          <div className="flex items-center space-x-2 shrink-0 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={() => setCatModalOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-zinc-50 border border-[#B8944F]/40 text-[#8F6F33] rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            >
+              <Tag className="h-3.5 w-3.5" />
+              <span>Manage Categories</span>
+            </button>
+
+            <button
+              onClick={openCreate}
+              className="flex items-center space-x-2 px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Add Place</span>
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setCatModalOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-2 bg-white hover:bg-zinc-50 border border-[#B8944F]/40 text-[#8F6F33] rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer"
-          >
-            <Tag className="h-3.5 w-3.5" />
-            <span>Manage Categories</span>
-          </button>
-
-          <button
-            onClick={openCreate}
-            className="flex items-center space-x-2 px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Add Place</span>
-          </button>
+        {/* Bottom row: Full-width search bar */}
+        <div className="relative w-full">
+          <Search className="h-4 w-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Search places by name, category, city..."
+            className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] shadow-2xs"
+          />
         </div>
       </div>
 
@@ -1170,13 +1166,24 @@ export function PlacesTab({
                     </button>
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (confirm(`Delete category "${cat.name}"?`)) {
-                          const res = await deleteMasterPlaceCategory(cat.id);
-                          if (res.success) {
-                            setCategories((prev) => prev.filter((c) => c.id !== cat.id));
-                          }
-                        }
+                      onClick={() => {
+                        executeDeleteWithUndo<{ id: string; name: string }>({
+                          item: cat,
+                          itemType: "Place Category",
+                          itemName: cat.name,
+                          onOptimisticRemove: (item) => {
+                            setCategories((prev) => prev.filter((c) => c.id !== item.id));
+                          },
+                          onUndo: (item) => {
+                            setCategories((prev) => [item, ...prev.filter((c) => c.id !== item.id)]);
+                          },
+                          onPermanentDelete: async (item) => {
+                            const res = await deleteMasterPlaceCategory(item.id);
+                            if (!res.success) {
+                              throw new Error(res.error || "Failed to delete category");
+                            }
+                          },
+                        });
                       }}
                       className="p-1 text-zinc-400 hover:text-red-600 rounded cursor-pointer"
                       title="Delete Category"

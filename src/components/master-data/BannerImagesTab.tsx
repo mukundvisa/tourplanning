@@ -189,10 +189,10 @@ export function BannerImagesTab({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Curated Banner & Cover Library
+            Curated Banner
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            High-resolution hero images linked to destination cities, selectable in Step 1
+            High-resolution hero images linked to destination cities
           </p>
         </div>
         <button

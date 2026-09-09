@@ -36,6 +36,7 @@ import { DEFAULT_VEHICLE_TYPES } from "@/lib/master-data-defaults";
 import { useRouter } from "next/navigation";
 import { Pagination } from "./Pagination";
 import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
+import toast from "react-hot-toast";
 
 export interface FlightRouteItem {
   id: string;
@@ -229,7 +230,7 @@ export function FlightRoutesTab({
     let computedSector = formData.sector.trim();
     if (formData.transportCategory === "Inter-City Transfer") {
       if (!formData.fromCity || !formData.toCity) {
-        alert("Please select both From City and To City for an Inter-City route.");
+        toast.error("Please select both From City and To City for an Inter-City route.");
         return;
       }
       if (!computedSector) {
@@ -237,7 +238,7 @@ export function FlightRoutesTab({
       }
     } else {
       if (!formData.cityName) {
-        alert("Please select a City for this Local Transfer.");
+        toast.error("Please select a City for this Local Transfer.");
         return;
       }
       if (!computedSector) {
@@ -246,7 +247,7 @@ export function FlightRoutesTab({
     }
 
     if (!formData.airline.trim()) {
-      alert("Please enter a Carrier / Vehicle Provider Name.");
+      toast.error("Please enter a Carrier / Vehicle Provider Name.");
       return;
     }
 
@@ -282,19 +283,21 @@ export function FlightRoutesTab({
           setData((prev) =>
             prev.map((f) => (f.id === editingItem.id ? (res.data! as any) : f))
           );
+          toast.success("Transportation route updated successfully");
           setModalOpen(false);
           router.refresh();
         } else {
-          alert(res.error || "Failed to update transportation route");
+          toast.error(res.error || "Failed to update transportation route");
         }
       } else {
         const res = await createMasterFlightRoute(payload);
         if (res.success && res.data) {
           setData((prev) => [(res.data! as any), ...prev]);
+          toast.success("Transportation route created successfully");
           setModalOpen(false);
           router.refresh();
         } else {
-          alert(res.error || "Failed to create transportation route");
+          toast.error(res.error || "Failed to create transportation route");
         }
       }
     } finally {
@@ -353,7 +356,7 @@ export function FlightRoutesTab({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Transportation & Routes Catalog
+            Transportation
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
             Manage Inter-City Transfer routes (paired from-to cities) and Local City Transfers with vehicle type field routing.
@@ -1026,18 +1029,21 @@ export function FlightRoutesTab({
                           setVehicleTypes((prev) =>
                             prev.map((vt) => (vt.id === editingVt.id ? (res.data! as any) : vt))
                           );
+                          toast.success(`Vehicle type "${editingVt.name}" updated successfully`);
                           setEditingVt(null);
                         } else {
-                          alert(res.error || "Failed to update vehicle type");
+                          toast.error(res.error || "Failed to update vehicle type");
                         }
                       } else {
-                        const res = await createMasterVehicleType(newVtName, newVtFields);
+                        const targetName = newVtName.trim();
+                        const res = await createMasterVehicleType(targetName, newVtFields);
                         if (res.success && res.data) {
                           setVehicleTypes((prev) => [...prev, res.data! as any]);
                           setNewVtName("");
                           setNewVtFields(["travelTime", "flightNotes"]);
+                          toast.success(`Vehicle type "${targetName}" added successfully`);
                         } else {
-                          alert(res.error || "Failed to create vehicle type");
+                          toast.error(res.error || "Failed to create vehicle type");
                         }
                       }
                     } finally {
@@ -1095,15 +1101,24 @@ export function FlightRoutesTab({
                       </button>
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (confirm(`Delete vehicle type "${vt.name}"?`)) {
-                            const res = await deleteMasterVehicleType(vt.id);
-                            if (res.success) {
-                              setVehicleTypes((prev) => prev.filter((item) => item.id !== vt.id));
-                            } else {
-                              alert(res.error || "Failed to delete vehicle type");
-                            }
-                          }
+                        onClick={() => {
+                          executeDeleteWithUndo<VehicleTypeItem>({
+                            item: vt,
+                            itemType: "Vehicle Type",
+                            itemName: vt.name,
+                            onOptimisticRemove: (item) => {
+                              setVehicleTypes((prev) => prev.filter((v) => v.id !== item.id));
+                            },
+                            onUndo: (item) => {
+                              setVehicleTypes((prev) => [item, ...prev.filter((v) => v.id !== item.id)]);
+                            },
+                            onPermanentDelete: async (item) => {
+                              const res = await deleteMasterVehicleType(item.id);
+                              if (!res.success) {
+                                throw new Error(res.error || "Failed to delete vehicle type");
+                              }
+                            },
+                          });
                         }}
                         className="p-1 text-zinc-400 hover:text-red-600 rounded cursor-pointer"
                         title="Delete Vehicle Type"

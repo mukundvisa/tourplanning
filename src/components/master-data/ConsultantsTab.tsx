@@ -140,10 +140,10 @@ export function ConsultantsTab({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-            Travel Consultants & Departure Cities
+            Travel Consultants
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Assign consultants to specific departure cities (e.g. Vadodara, Ahmedabad, Mumbai). When a departure city is picked during itinerary drafting, the assigned consultant auto-populates.
+            Assign consultants to specific departure cities.
           </p>
         </div>
         <button
@@ -321,9 +321,6 @@ export function ConsultantsTab({
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-zinc-400 mt-1">
-                  Displays only cities managed in Master Data Hub &rarr; Cities. When selected in a trip proposal, this consultant is auto-assigned.
-                </p>
               </div>
 
               <div>

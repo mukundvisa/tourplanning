@@ -121,14 +121,11 @@ export function PolicyTab({
         <div>
           <div className="flex items-center space-x-2">
             <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-              Master Policy & Terms
+              Policy & Terms
             </h2>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
-              System Default Active
-            </span>
           </div>
           <p className="text-xs text-zinc-500 mt-1">
-            Configure the single global policy for the entire system. These 4 policy sections automatically apply to all trips and travel blueprints across the platform.
+            Configure the single global policy for the entire system.
           </p>
         </div>
 
@@ -179,9 +176,6 @@ export function PolicyTab({
               <h3 className="text-sm font-bold text-[#14213D] flex items-center space-x-1.5">
                 <span>1. Payment Policy</span>
               </h3>
-              <p className="text-[11px] text-zinc-400">
-                Specify mandatory booking deposits, stage payment schedules, and final settlement deadlines.
-              </p>
             </div>
           </div>
 
@@ -202,9 +196,6 @@ export function PolicyTab({
               <h3 className="text-sm font-bold text-[#14213D] flex items-center space-x-1.5">
                 <span>2. Cancellation Policy</span>
               </h3>
-              <p className="text-[11px] text-zinc-400">
-                Detail refund percentages and penalty tier thresholds prior to scheduled departure.
-              </p>
             </div>
           </div>
 
@@ -225,9 +216,6 @@ export function PolicyTab({
               <h3 className="text-sm font-bold text-[#14213D] flex items-center space-x-1.5">
                 <span>3. Visa Rules & Passport Validity</span>
               </h3>
-              <p className="text-[11px] text-zinc-400">
-                Specify minimum passport validity duration, tourist e-visa rules, and mandatory documents.
-              </p>
             </div>
           </div>
 
@@ -248,9 +236,6 @@ export function PolicyTab({
               <h3 className="text-sm font-bold text-[#14213D] flex items-center space-x-1.5">
                 <span>4. General Notes & Operational Advisory</span>
               </h3>
-              <p className="text-[11px] text-zinc-400">
-                Detail standard hotel check-in/out hours, daily driver duty hours, weather clauses, and baggage notes.
-              </p>
             </div>
           </div>
 

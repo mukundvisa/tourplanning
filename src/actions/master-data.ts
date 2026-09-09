@@ -1459,7 +1459,13 @@ export async function updateMasterPlaceCategory(id: string, name: string) {
 
 export async function deleteMasterPlaceCategory(id: string) {
   try {
-    await (db as any).masterPlaceCategory.delete({ where: { id } });
+    try {
+      await (db as any).masterPlaceCategory.deleteMany({
+        where: {
+          OR: [{ id }, { name: id }],
+        },
+      });
+    } catch {}
     revalidatePath("/master-data");
     return { success: true };
   } catch (err: any) {
@@ -1535,7 +1541,13 @@ export async function updateMasterVehicleType(id: string, name: string, applicab
 
 export async function deleteMasterVehicleType(id: string) {
   try {
-    await (db as any).masterVehicleType.delete({ where: { id } });
+    try {
+      await (db as any).masterVehicleType.deleteMany({
+        where: {
+          OR: [{ id }, { name: id }],
+        },
+      });
+    } catch {}
     revalidatePath("/master-data");
     return { success: true };
   } catch (err: any) {
@@ -1611,7 +1623,13 @@ export async function updateMasterAddOnCategory(id: string, name: string, applic
 
 export async function deleteMasterAddOnCategory(id: string) {
   try {
-    await (db as any).masterAddOnCategory.delete({ where: { id } });
+    try {
+      await (db as any).masterAddOnCategory.deleteMany({
+        where: {
+          OR: [{ id }, { name: id }],
+        },
+      });
+    } catch {}
     revalidatePath("/master-data");
     return { success: true };
   } catch (err: any) {
@@ -1687,7 +1705,13 @@ export async function updateMasterRestaurantCategory(id: string, name: string) {
 
 export async function deleteMasterRestaurantCategory(id: string) {
   try {
-    await (db as any).masterRestaurantCategory.delete({ where: { id } });
+    try {
+      await (db as any).masterRestaurantCategory.deleteMany({
+        where: {
+          OR: [{ id }, { name: id }],
+        },
+      });
+    } catch {}
     revalidatePath("/master-data");
     return { success: true };
   } catch (err: any) {

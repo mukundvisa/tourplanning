@@ -59,11 +59,8 @@ export function TaxSettingsTab({ initialData }: { initialData: TaxSettingItem[] 
     <div className="space-y-8 max-w-4xl">
       <div>
         <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-          Statutory Tax & TCS Regulations
+          Tax & TCS
         </h2>
-        <p className="text-xs text-zinc-500 mt-0.5">
-          Configures the single active Tax Collected at Source (TCS) rate automatically enforced on all trip quotations.
-        </p>
       </div>
 
       {/* Active Rate Configuration Card */}
@@ -77,9 +74,6 @@ export function TaxSettingsTab({ initialData }: { initialData: TaxSettingItem[] 
               <h3 className="text-sm font-bold text-[#14213D]">
                 Active Overseas Tour Package TCS
               </h3>
-              <p className="text-xs text-zinc-400">
-                Single active rule enforced across Step 2 of the Trip Blueprint
-              </p>
             </div>
           </div>
           <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center">
@@ -109,7 +103,7 @@ export function TaxSettingsTab({ initialData }: { initialData: TaxSettingItem[] 
                 </span>
               </div>
               <p className="text-[11px] text-zinc-400 mt-1">
-                Standard RBI/Income Tax benchmark: 5.0% for packages up to 7 Lakh INR.
+                Standard RBI/Income Tax benchmark: 2.0% for packages up to 7 Lakh INR.
               </p>
             </div>
 
