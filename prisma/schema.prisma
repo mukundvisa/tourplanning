@@ -8,32 +8,32 @@ generator client {
 }
 
 model Trip {
-  id                    String                 @id @default(uuid())
-  title                 String
-  pricingTitle          String?
-  destination           String
-  departureCity         String
-  startDate             DateTime
-  endDate               DateTime
-  durationDays          Int
-  durationNights        Int
-  numTravellers         Int
-  consultantName        String
-  consultantPhone       String
-  coverImage            String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  priceQuoteItems       PriceQuoteItem[]
-  tripFinancials        TripFinancials?
-  itineraryDays         ItineraryDay[]
-  accommodations        Accommodation[]
-  flightDetails         FlightDetail[]
-  addOns                AddOn[]
-  restaurantSuggestions RestaurantSuggestion[]
-  tripTerms             TripTerms?
-  costCalculation       TripCostCalculation?
-  transportationArrangement String @default("Planner")
-  startingTransferDetails String?
+  id                        String                 @id @default(uuid())
+  title                     String
+  pricingTitle              String?
+  destination               String
+  departureCity             String
+  startDate                 DateTime
+  endDate                   DateTime
+  durationDays              Int
+  durationNights            Int
+  numTravellers             Int
+  consultantName            String
+  consultantPhone           String
+  coverImage                String?
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
+  priceQuoteItems           PriceQuoteItem[]
+  tripFinancials            TripFinancials?
+  itineraryDays             ItineraryDay[]
+  accommodations            Accommodation[]
+  flightDetails             FlightDetail[]
+  addOns                    AddOn[]
+  restaurantSuggestions     RestaurantSuggestion[]
+  tripTerms                 TripTerms?
+  costCalculation           TripCostCalculation?
+  transportationArrangement String                 @default("Planner")
+  startingTransferDetails   String?
   packageTransportationDetails String?
 }
 
@@ -74,6 +74,7 @@ model ItineraryDay {
   exclusions           String[]
   customerLovedTips    String[]
   customerWatchOutTips String[]
+  placeTransportMap    Json?    @default("{}")
   sortOrder            Int      @default(0)
 }
 
@@ -107,12 +108,16 @@ model FlightDetail {
   durationText       String
   stops              Int      @default(0)
   layoverInfo        String?
-  carryOnBaggageKg   Int?
+  cabinBaggageKg     Int?
   checkInBaggageKg   Int?
   cancellationPolicy String?
   flightNotes        String?
   type               String   @default("Flight")
   travelTime         String?
+  transportCategory  String?  @default("Inter-City Transfer")
+  fromCity           String?
+  toCity             String?
+  isAutoSuggested    Boolean  @default(false)
   isStartingTransfer Boolean  @default(false)
   isPackageIncluded  Boolean  @default(false)
 }
@@ -155,16 +160,18 @@ model TripTerms {
 // ==========================================
 
 model MasterCity {
-  id           String              @id @default(uuid())
-  name         String
-  state        String
-  country      String
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @default(now()) @updatedAt
-  places       MasterPlace[]
-  hotels       MasterHotel[]
-  restaurants  MasterRestaurant[]
-  banners      MasterBannerImage[]
+  id             String              @id @default(uuid())
+  name           String
+  state          String
+  country        String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now()) @updatedAt
+  places         MasterPlace[]
+  hotels         MasterHotel[]
+  restaurants    MasterRestaurant[]
+  banners        MasterBannerImage[]
+  transportation MasterFlightRoute[]
+  addOns         MasterAddOn[]
 
   @@unique([name, country])
 }
@@ -200,16 +207,18 @@ model MasterPricingLabel {
 }
 
 model MasterPlace {
-  id          String      @id @default(uuid())
-  name        String
-  cityId      String
-  city        MasterCity  @relation(fields: [cityId], references: [id], onDelete: Cascade)
-  category    String?     @default("Sightseeing") // Sightseeing, Temple, Heritage, Nature, Market, Activity, Beach
-  description String?
-  inclusions  String[]    @default([])
-  exclusions  String[]    @default([])
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @default(now()) @updatedAt
+  id                       String      @id @default(uuid())
+  name                     String
+  cityId                   String
+  city                     MasterCity  @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  category                 String?     @default("Sightseeing") // Sightseeing, Temple, Heritage, Nature, Market, Activity, Beach
+  description              String?
+  inclusions               String[]    @default([])
+  exclusions               String[]    @default([])
+  requiresSpecialTransport Boolean     @default(false)
+  specialTransportOptions  String[]    @default([])
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @default(now()) @updatedAt
 }
 
 model MasterPlaceDefault {
@@ -244,6 +253,13 @@ model MasterHotel {
 
 model MasterFlightRoute {
   id                 String   @id @default(uuid())
+  transportCategory  String   @default("Local Transfer") // "Inter-City Transfer" | "Local Transfer"
+  fromCity           String?
+  fromCityId         String?
+  toCity             String?
+  toCityId           String?
+  cityId             String?
+  city               MasterCity? @relation(fields: [cityId], references: [id], onDelete: SetNull)
   sector             String
   airline            String
   flightCodeDefault  String?
@@ -265,6 +281,9 @@ model MasterAddOn {
   id                 String   @id @default(uuid())
   name               String
   type               String   @default("Visa") // Visa, Transfer, Activity, Insurance, SIM
+  cityId             String?
+  city               MasterCity? @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  cityIds            String[] @default([])
   visaType           String?
   validityLength     String?
   validityWindow     String?

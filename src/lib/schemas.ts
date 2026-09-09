@@ -28,6 +28,7 @@ export const itineraryDaySchema = z.object({
   exclusions: z.array(z.string()).catch([]).default([]),
   customerLovedTips: z.array(z.string()).catch([]).default([]),
   customerWatchOutTips: z.array(z.string()).catch([]).default([]),
+  placeTransportMap: z.any().optional().nullable().catch({}),
   sortOrder: z.coerce.number().int().catch(0).default(0),
 });
 
@@ -65,12 +66,16 @@ export const flightDetailSchema = z.object({
     .transform((val) => (val && typeof val === "string" && val.trim() ? val.trim() : "Direct")),
   stops: z.coerce.number().int().catch(0).default(0),
   layoverInfo: z.string().optional().nullable().catch(null),
-  carryOnBaggageKg: z.coerce.number().int().optional().nullable().catch(null),
+  cabinBaggageKg: z.coerce.number().int().optional().nullable().catch(null),
   checkInBaggageKg: z.coerce.number().int().optional().nullable().catch(null),
   cancellationPolicy: z.string().optional().nullable().catch(null),
   flightNotes: z.string().optional().nullable().catch(null),
   type: z.string().catch("Flight").default("Flight"),
   travelTime: z.string().optional().nullable().catch(null),
+  transportCategory: z.string().catch("Inter-City Transfer").default("Inter-City Transfer"),
+  fromCity: z.string().optional().nullable().catch(null),
+  toCity: z.string().optional().nullable().catch(null),
+  isAutoSuggested: z.boolean().catch(false).default(false),
   isStartingTransfer: z.boolean().catch(false).default(false),
   isPackageIncluded: z.boolean().catch(false).default(false),
 });
@@ -112,6 +117,7 @@ export const tripSchema = z.object({
   consultantName: z.string().catch("").default(""),
   consultantPhone: z.string().catch("").default(""),
   coverImage: z.string().optional().nullable().catch(null),
+  ownArrivalArrangement: z.string().optional().nullable().catch(null),
   priceQuoteItems: z.array(priceQuoteItemSchema).catch([]).default([]),
   tripFinancials: tripFinancialsSchema.default({ tcsPercentage: 5, tcsAmount: 0, totalWithTcs: 0, notes: null }),
   itineraryDays: z.array(itineraryDaySchema).catch([]).default([]),

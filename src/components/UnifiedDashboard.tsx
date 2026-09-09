@@ -57,7 +57,7 @@ import { HotelsTab } from "./master-data/HotelsTab";
 import { FlightRoutesTab } from "./master-data/FlightRoutesTab";
 import { AddOnsTab } from "./master-data/AddOnsTab";
 import { RestaurantsTab } from "./master-data/RestaurantsTab";
-import { PolicyTemplatesTab } from "./master-data/PolicyTemplatesTab";
+import { PolicyTab } from "./master-data/PolicyTab";
 import { BannerImagesTab } from "./master-data/BannerImagesTab";
 import { AdminCostCalculationTab } from "./master-data/AdminCostCalculationTab";
 import { GeneralSettingsTab } from "./master-data/GeneralSettingsTab";
@@ -111,7 +111,7 @@ const MASTER_DATA_TABS = [
   { id: "flights", label: "Transportation", icon: Bus },
   { id: "addons", label: "Add-ons & Visa", icon: Ticket },
   { id: "restaurants", label: "Restaurants", icon: UtensilsCrossed },
-  { id: "policies", label: "Policy Templates", icon: FileText },
+  { id: "policies", label: "Policy", icon: FileText },
   { id: "tax", label: "Tax Settings", icon: Percent },
 ];
 
@@ -905,16 +905,16 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
                   <HotelsTab initialData={props.hotels} cities={props.cities} />
                 )}
                 {masterDataTab === "flights" && (
-                  <FlightRoutesTab initialData={props.flightRoutes} />
+                  <FlightRoutesTab initialData={props.flightRoutes} cities={props.cities} />
                 )}
                 {masterDataTab === "addons" && (
-                  <AddOnsTab initialData={props.addOns} />
+                  <AddOnsTab initialData={props.addOns} cities={props.cities} />
                 )}
                 {masterDataTab === "restaurants" && (
                   <RestaurantsTab initialData={props.restaurants} cities={props.cities} />
                 )}
                 {masterDataTab === "policies" && (
-                  <PolicyTemplatesTab initialData={props.policyTemplates} />
+                  <PolicyTab initialData={props.policyTemplates} />
                 )}
                 {masterDataTab === "banners" && (
                   <BannerImagesTab

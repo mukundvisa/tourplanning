@@ -126,28 +126,28 @@ export async function GET(
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
     await page.setContent(htmlContent, { waitUntil: "networkidle0" as any });
 
-    // Export A4 PDF with guaranteed top margins (18mm) and repeating header/footer
+    // Export A4 PDF with guaranteed 0.5in (13mm/40px) margins and repeating header/footer
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       displayHeaderFooter: true,
       headerTemplate: `
-        <div style="font-size: 8px; color: #9CA3AF; width: 100%; padding: 0 13mm; display: flex; justify-content: space-between; font-family: sans-serif; font-weight: 600;">
-          <span style="color: #14213D; font-weight: 700; letter-spacing: 0.05em;">TripPlanner</span>
+        <div style="font-size: 8px; color: #9CA3AF; width: 100%; padding: 0 0.5in; display: flex; justify-content: space-between; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 600;">
+          <span style="color: #14213D; font-weight: 700;">TripPlanner</span>
           <span style="color: #6B7280;">${rawTitle}</span>
         </div>
       `,
       footerTemplate: `
-        <div style="font-size: 7.5px; color: #9CA3AF; width: 100%; padding: 0 13mm; display: flex; justify-content: space-between; font-family: sans-serif;">
+        <div style="font-size: 7.5px; color: #9CA3AF; width: 100%; padding: 0 0.5in; display: flex; justify-content: space-between; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
           <span>Confidential Travel Itinerary Proposal</span>
           <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
         </div>
       `,
       margin: {
-        top: "13mm",
-        bottom: "13mm",
-        left: "13mm",
-        right: "13mm",
+        top: "0.5in",
+        bottom: "0.5in",
+        left: "0.5in",
+        right: "0.5in",
       },
     });
 

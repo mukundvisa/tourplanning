@@ -20,6 +20,8 @@ interface PlaceItem {
   city?: { id: string; name: string; country: string } | null;
   category: string | null;
   description: string | null;
+  requiresSpecialTransport?: boolean;
+  specialTransportOptions?: string[];
   inclusions?: string[];
   exclusions?: string[];
   placeSpecificInclusions?: string[];
@@ -42,6 +44,16 @@ const CATEGORIES = [
   "Museum & Culture",
   "Adventure & Activity",
   "Food & Nightlife",
+];
+
+const PRESET_TRANSPORT_OPTIONS = [
+  "Car",
+  "Auto-rickshaw",
+  "Boat",
+  "Helicopter",
+  "Horse",
+  "Palki",
+  "Walk",
 ];
 
 export function PlacesTab({
@@ -156,6 +168,8 @@ export function PlacesTab({
     cityId: string;
     category: string;
     description: string;
+    requiresSpecialTransport: boolean;
+    specialTransportOptions: string[];
     inclusions: string[];
     exclusions: string[];
   }>({
@@ -163,12 +177,15 @@ export function PlacesTab({
     cityId: "",
     category: "Sightseeing",
     description: "",
+    requiresSpecialTransport: false,
+    specialTransportOptions: ["Car", "Auto-rickshaw"],
     inclusions: [],
     exclusions: [],
   });
 
   const [inclusionInput, setInclusionInput] = useState("");
   const [exclusionInput, setExclusionInput] = useState("");
+  const [customTransportInput, setCustomTransportInput] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -190,11 +207,14 @@ export function PlacesTab({
       cityId: selectedCityId !== "all" ? selectedCityId : cities[0]?.id || "",
       category: "Sightseeing",
       description: "",
+      requiresSpecialTransport: false,
+      specialTransportOptions: ["Car", "Auto-rickshaw"],
       inclusions: [],
       exclusions: [],
     });
     setInclusionInput("");
     setExclusionInput("");
+    setCustomTransportInput("");
     setModalOpen(true);
   };
 
@@ -205,12 +225,49 @@ export function PlacesTab({
       cityId: item.cityId || cities[0]?.id || "",
       category: item.category || "Sightseeing",
       description: item.description || "",
+      requiresSpecialTransport: !!item.requiresSpecialTransport,
+      specialTransportOptions:
+        item.specialTransportOptions && item.specialTransportOptions.length > 0
+          ? item.specialTransportOptions
+          : ["Car", "Auto-rickshaw"],
       inclusions: item.placeSpecificInclusions || item.inclusions || [],
       exclusions: item.placeSpecificExclusions || item.exclusions || [],
     });
     setInclusionInput("");
     setExclusionInput("");
+    setCustomTransportInput("");
     setModalOpen(true);
+  };
+
+  const togglePresetTransport = (option: string) => {
+    setFormData((prev) => {
+      const exists = prev.specialTransportOptions.includes(option);
+      return {
+        ...prev,
+        specialTransportOptions: exists
+          ? prev.specialTransportOptions.filter((o) => o !== option)
+          : [...prev.specialTransportOptions, option],
+      };
+    });
+  };
+
+  const addCustomTransport = () => {
+    const val = customTransportInput.trim();
+    if (!val) return;
+    if (!formData.specialTransportOptions.includes(val)) {
+      setFormData((prev) => ({
+        ...prev,
+        specialTransportOptions: [...prev.specialTransportOptions, val],
+      }));
+    }
+    setCustomTransportInput("");
+  };
+
+  const removeTransportOption = (option: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      specialTransportOptions: prev.specialTransportOptions.filter((o) => o !== option),
+    }));
   };
 
   const addInclusion = () => {
@@ -598,6 +655,17 @@ export function PlacesTab({
                       ) : (
                         <p className="text-[11px] text-zinc-300 italic">No description added</p>
                       )}
+
+                      {place.requiresSpecialTransport && (
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-medium">
+                          <span className="font-bold">🚖 Special Transport:</span>
+                          <span className="truncate">
+                            {place.specialTransportOptions && place.specialTransportOptions.length > 0
+                              ? place.specialTransportOptions.join(", ")
+                              : "Required"}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="pt-2.5 border-t border-zinc-100 space-y-1.5">
@@ -742,6 +810,106 @@ export function PlacesTab({
                   placeholder="Detailed note about the spot, timing recommendations, or significance..."
                   className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none leading-relaxed"
                 />
+              </div>
+
+              {/* Special Transport Requirement */}
+              <div className="space-y-2 pt-2 border-t border-zinc-100">
+                <label className="flex items-start space-x-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.requiresSpecialTransport}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        requiresSpecialTransport: e.target.checked,
+                      })
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F] cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-[#14213D]">
+                      Requires Dedicated / Special Transport
+                    </span>
+                    <p className="text-[11px] text-zinc-500">
+                      Check if visitors need special transport to reach this place (e.g. Boat, Helicopter, Horse, Palki, etc.)
+                    </p>
+                  </div>
+                </label>
+
+                {formData.requiresSpecialTransport && (
+                  <div className="mt-2.5 ml-6.5 p-3 bg-amber-50/50 border border-amber-200 rounded-lg space-y-2.5 animate-in fade-in duration-150">
+                    <label className="block text-xs font-semibold text-amber-950">
+                      Available Transport Options for this Place
+                    </label>
+
+                    {/* Preset Chips */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {PRESET_TRANSPORT_OPTIONS.map((opt) => {
+                        const isSelected = formData.specialTransportOptions.includes(opt);
+                        return (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => togglePresetTransport(opt)}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-amber-600 text-white font-bold shadow-2xs"
+                                : "bg-white border border-amber-200 text-amber-900 hover:bg-amber-100/60"
+                            }`}
+                          >
+                            {isSelected ? `✓ ${opt}` : `+ ${opt}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Add Custom Transport Option */}
+                    <div className="flex gap-1.5 pt-1">
+                      <input
+                        type="text"
+                        value={customTransportInput}
+                        onChange={(e) => setCustomTransportInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addCustomTransport();
+                          }
+                        }}
+                        placeholder="Add custom option (e.g. Ropeway, Electric Cart)..."
+                        className="flex-1 px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={addCustomTransport}
+                        className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        + Add
+                      </button>
+                    </div>
+
+                    {/* Selected Transport Options Tag list */}
+                    {formData.specialTransportOptions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {formData.specialTransportOptions.map((opt) => (
+                          <span
+                            key={opt}
+                            className="inline-flex items-center text-xs px-2.5 py-0.5 rounded-md bg-white text-amber-900 border border-amber-300 font-bold shadow-2xs"
+                          >
+                            <span>{opt}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeTransportOption(opt)}
+                              className="ml-1.5 text-amber-700 hover:text-red-600 font-bold cursor-pointer"
+                              title="Remove option"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Inclusions */}

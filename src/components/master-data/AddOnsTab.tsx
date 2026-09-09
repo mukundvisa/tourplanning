@@ -17,6 +17,8 @@ import {
   Sparkles,
   Layers,
   Filter,
+  MapPin,
+  Check,
 } from "lucide-react";
 import {
   createMasterAddOn,
@@ -27,10 +29,20 @@ import { useRouter } from "next/navigation";
 import { Pagination } from "./Pagination";
 import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
 
+export interface AddOnCity {
+  id: string;
+  name: string;
+  state?: string;
+  country?: string;
+}
+
 export interface AddOnItem {
   id: string;
   name: string;
   type: string;
+  cityId?: string | null;
+  city?: AddOnCity | null;
+  cityIds?: string[];
   visaType: string | null;
   validityLength: string | null;
   validityWindow: string | null;
@@ -40,10 +52,17 @@ export interface AddOnItem {
 
 const ADDON_TYPES = ["All", "Visa", "Transfer", "Activity", "Insurance", "SIM", "Other"];
 
-export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
+export function AddOnsTab({
+  initialData,
+  cities = [],
+}: {
+  initialData: AddOnItem[];
+  cities?: AddOnCity[];
+}) {
   const router = useRouter();
   const [data, setData] = useState<AddOnItem[]>(initialData);
   const [selectedType, setSelectedType] = useState("All");
+  const [selectedCityId, setSelectedCityId] = useState<string>("All");
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const PAGE_SIZE = 6;
@@ -51,9 +70,21 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<AddOnItem | null>(null);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    type: string;
+    cityId: string;
+    cityIds: string[];
+    visaType: string;
+    validityLength: string;
+    validityWindow: string;
+    defaultPrice: string;
+    detailsDescription: string;
+  }>({
     name: "",
     type: "Visa",
+    cityId: "",
+    cityIds: [],
     visaType: "",
     validityLength: "",
     validityWindow: "",
@@ -62,14 +93,26 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
   });
 
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Filter by Type, City, and Search query
   const filteredByType =
     selectedType === "All" ? data : data.filter((a) => a.type === selectedType);
-  const filtered = filteredByType.filter(
+
+  const filteredByCity =
+    selectedCityId === "All"
+      ? filteredByType
+      : filteredByType.filter((a) => {
+          if (a.cityId === selectedCityId) return true;
+          if (a.cityIds && a.cityIds.includes(selectedCityId)) return true;
+          if (a.city?.id === selectedCityId) return true;
+          return false;
+        });
+
+  const filtered = filteredByCity.filter(
     (a) =>
       a.name.toLowerCase().includes(search.toLowerCase()) ||
       (a.visaType && a.visaType.toLowerCase().includes(search.toLowerCase())) ||
+      (a.city?.name && a.city.name.toLowerCase().includes(search.toLowerCase())) ||
       (a.detailsDescription && a.detailsDescription.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -80,6 +123,11 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
     setCurrentPage(1);
   };
 
+  const handleCityFilterChange = (cityId: string) => {
+    setSelectedCityId(cityId);
+    setCurrentPage(1);
+  };
+
   const handleSearchChange = (val: string) => {
     setSearch(val);
     setCurrentPage(1);
@@ -87,9 +135,12 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
 
   const openCreate = () => {
     setEditingItem(null);
+    const defaultCityId = selectedCityId !== "All" ? selectedCityId : (cities[0]?.id || "");
     setFormData({
       name: "",
       type: selectedType !== "All" ? selectedType : "Visa",
+      cityId: defaultCityId,
+      cityIds: defaultCityId ? [defaultCityId] : [],
       visaType: "Tourist E-Visa (Single Entry)",
       validityLength: "30 Days",
       validityWindow: "90 Days from issue",
@@ -101,9 +152,15 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
 
   const openEdit = (item: AddOnItem) => {
     setEditingItem(item);
+    const existingCityIds = item.cityIds && item.cityIds.length > 0
+      ? item.cityIds
+      : (item.cityId ? [item.cityId] : []);
+    
     setFormData({
       name: item.name,
       type: item.type || "Visa",
+      cityId: item.cityId || existingCityIds[0] || "",
+      cityIds: existingCityIds,
       visaType: item.visaType || "",
       validityLength: item.validityLength || "",
       validityWindow: item.validityWindow || "",
@@ -111,6 +168,20 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
       detailsDescription: item.detailsDescription || "",
     });
     setModalOpen(true);
+  };
+
+  const toggleCitySelection = (cId: string) => {
+    setFormData((prev) => {
+      const exists = prev.cityIds.includes(cId);
+      const updated = exists
+        ? prev.cityIds.filter((id) => id !== cId)
+        : [...prev.cityIds, cId];
+      return {
+        ...prev,
+        cityIds: updated,
+        cityId: updated[0] || "",
+      };
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,6 +192,8 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
       const payload = {
         name: formData.name,
         type: formData.type,
+        cityId: formData.cityId || (formData.cityIds[0] || undefined),
+        cityIds: formData.cityIds,
         visaType: formData.visaType || undefined,
         validityLength: formData.validityLength || undefined,
         validityWindow: formData.validityWindow || undefined,
@@ -193,6 +266,19 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
     }
   };
 
+  const getCityNamesForCard = (item: AddOnItem) => {
+    if (!item.cityIds || item.cityIds.length === 0) {
+      if (item.city?.name) return item.city.name;
+      return "All Cities / Multi-City";
+    }
+    const matched = cities
+      .filter((c) => item.cityIds?.includes(c.id))
+      .map((c) => c.name);
+    if (matched.length > 0) return matched.join(", ");
+    if (item.city?.name) return item.city.name;
+    return "All Cities / Multi-City";
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -201,7 +287,7 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
             Add-ons, Visas & Insurance Catalog
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Manage visa packages, international SIM cards, airport transfers, insurance, and extra amenities
+            Manage city-connected visa packages, SIM cards, airport transfers, insurance, and activities
           </p>
         </div>
         <button
@@ -213,20 +299,48 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
         </button>
       </div>
 
-      {/* Filter and Search */}
-      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-        <div className="relative flex-1 w-full">
+      {/* Filter and Search Bar */}
+      <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
+        <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
           <input
             type="text"
-            placeholder="Search add-ons by package name or description..."
+            placeholder="Search add-ons by package name, city, or description..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-lg text-xs placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F]"
           />
         </div>
 
-        <div className="flex flex-wrap gap-1.5 w-full sm:w-auto">
+        {/* City Filter Dropdown */}
+        <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1.5 bg-white border border-zinc-200 rounded-lg px-3 py-1.5 shadow-2xs">
+            <MapPin className="h-3.5 w-3.5 text-[#B8944F]" />
+            <select
+              value={selectedCityId}
+              onChange={(e) => handleCityFilterChange(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-[#14213D] outline-none cursor-pointer"
+            >
+              <option value="All">All Cities ({data.length})</option>
+              {cities.map((city) => {
+                const count = data.filter(
+                  (a) =>
+                    a.cityId === city.id ||
+                    (a.cityIds && a.cityIds.includes(city.id)) ||
+                    a.city?.id === city.id
+                ).length;
+                return (
+                  <option key={city.id} value={city.id}>
+                    {city.name} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+
+        {/* Type Filter Buttons */}
+        <div className="flex flex-wrap gap-1.5">
           {ADDON_TYPES.map((t) => {
             const count = t === "All" ? data.length : data.filter((a) => a.type === t).length;
             return (
@@ -246,6 +360,7 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
         </div>
       </div>
 
+      {/* Add-ons Grid */}
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.length === 0 ? (
@@ -260,12 +375,16 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
               >
                 <div className="space-y-3">
                   <div className="flex justify-between items-start">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                       <div className="p-1.5 rounded-lg bg-zinc-50 border border-zinc-100">
                         {getTypeIcon(item.type)}
                       </div>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#B8944F]/10 text-[#8F6F33] border border-[#B8944F]/20 uppercase tracking-wider">
                         {item.type}
+                      </span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center space-x-1">
+                        <MapPin className="h-2.5 w-2.5" />
+                        <span className="truncate max-w-[110px]">{getCityNamesForCard(item)}</span>
                       </span>
                     </div>
 
@@ -341,9 +460,10 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
         />
       </div>
 
+      {/* Create / Edit Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-xl border border-zinc-200 shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center pb-3 border-b border-zinc-100 mb-4">
               <h3 className="text-base font-bold text-[#14213D] font-fraunces">
                 {editingItem ? "Edit Add-on / Visa" : "Add Master Add-on"}
@@ -369,6 +489,43 @@ export function AddOnsTab({ initialData }: { initialData: AddOnItem[] }) {
                   placeholder="e.g. UAE 30-Day Express Tourist Visa"
                   className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
+              </div>
+
+              {/* City Relationship Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                  Connected City / Cities *
+                </label>
+                <div className="border border-zinc-200 rounded-lg p-2.5 bg-zinc-50/70 space-y-2">
+                  <div className="text-[11px] text-zinc-500 mb-1">
+                    Select the relevant city or cities associated with this service/visa:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1 bg-white rounded border border-zinc-200">
+                    {cities.map((city) => {
+                      const isSelected = formData.cityIds.includes(city.id);
+                      return (
+                        <button
+                          type="button"
+                          key={city.id}
+                          onClick={() => toggleCitySelection(city.id)}
+                          className={`px-2.5 py-1 rounded text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-[#B8944F] text-white shadow-2xs"
+                              : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                          }`}
+                        >
+                          {isSelected && <Check className="h-3 w-3" />}
+                          <span>{city.name}</span>
+                        </button>
+                      );
+                    })}
+                    {cities.length === 0 && (
+                      <span className="text-xs text-zinc-400 py-1 px-2">
+                        No cities found in Master Data. Please add cities in the Cities & States tab.
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

@@ -86,8 +86,16 @@ export async function downloadTripPdf(tripId: string, title?: string): Promise<v
     iframeDoc.write(cleanHtml);
     iframeDoc.close();
 
-    // Wait for iframe resources and fonts to settle
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    // Wait for iframe fonts to settle
+    if (iframeDoc.fonts) {
+      try {
+        await iframeDoc.fonts.ready;
+      } catch (e) {
+        // ignore font ready error
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const images = Array.from(iframeDoc.querySelectorAll("img"));
     await Promise.all(
@@ -112,6 +120,16 @@ export async function downloadTripPdf(tripId: string, title?: string): Promise<v
       logging: false,
       windowWidth: 794,
       onclone: (clonedDoc) => {
+        // Inject styles to guarantee space retention and color compatibility
+        const style = clonedDoc.createElement("style");
+        style.innerHTML = `
+          *, *::before, *::after {
+            letter-spacing: normal !important;
+            word-spacing: normal !important;
+          }
+        `;
+        clonedDoc.head.appendChild(style);
+
         // Sanitize any remaining oklab/oklch in stylesheets or inline styles
         const allElements = clonedDoc.querySelectorAll("*");
         allElements.forEach((el: any) => {
@@ -160,4 +178,3 @@ export async function downloadTripPdf(tripId: string, title?: string): Promise<v
     }
   }
 }
-

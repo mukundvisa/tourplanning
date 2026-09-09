@@ -45,7 +45,7 @@ import {
   Copy,
 } from "lucide-react";
 import { createTrip, updateTrip, getTripsListForSelector, getTripDetails } from "@/actions/trips";
-import { getAllMasterDataForSelectors } from "@/actions/master-data";
+import { getAllMasterDataForSelectors, createMasterFlightRoute } from "@/actions/master-data";
 import { RichTextEditor } from "./RichTextEditor";
 import { downloadTripPdf } from "@/lib/download-pdf";
 
@@ -61,7 +61,7 @@ const STEPS = [
   { number: 2, name: "Day-wise Planning", icon: Table2 },
   { number: 3, name: "Day-by-Day Itinerary", icon: Calendar },
   { number: 4, name: "Stays & Accommodations", icon: Coffee },
-  { number: 5, name: "Flight Details", icon: Plane },
+  { number: 5, name: "Transportation", icon: Bus },
   { number: 6, name: "Optional Add-ons & Visa", icon: PlusCircle },
   { number: 7, name: "Restaurant & Club Suggestions", icon: Utensils },
   { number: 8, name: "Master Policies & Guidelines", icon: FileText },
@@ -88,6 +88,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
     addOns: any[];
     restaurants: any[];
     policyTemplates: any[];
+    globalPolicy?: any;
     bannerImages: any[];
   }>({
     cities: [],
@@ -100,6 +101,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
     addOns: [],
     restaurants: [],
     policyTemplates: [],
+    globalPolicy: null,
     bannerImages: [],
   });
 
@@ -118,6 +120,31 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
             },
           }));
         }
+
+        // Auto-apply single global policy if trip terms are empty or new trip
+        const globalPol = res.data.globalPolicy;
+        if (globalPol) {
+          setFormData((prev: any) => {
+            const hasExistingTerms =
+              prev.tripTerms &&
+              (prev.tripTerms.paymentPolicy ||
+                prev.tripTerms.cancellationPolicy ||
+                prev.tripTerms.visaRules ||
+                prev.tripTerms.generalNotes);
+            if (!hasExistingTerms) {
+              return {
+                ...prev,
+                tripTerms: {
+                  paymentPolicy: globalPol.paymentPolicy || "",
+                  cancellationPolicy: globalPol.cancellationPolicy || "",
+                  visaRules: globalPol.visaRules || "",
+                  generalNotes: globalPol.generalNotes || "",
+                },
+              };
+            }
+            return prev;
+          });
+        }
       }
     }
     loadMasterData();
@@ -132,6 +159,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
         ...initialData,
         destination: initialData.destination || "",
         departureCity: initialData.departureCity || "",
+        ownArrivalArrangement: initialData.ownArrivalArrangement || "",
         startDate: initialData.startDate
           ? new Date(initialData.startDate).toISOString().split("T")[0]
           : "",
@@ -162,6 +190,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
       title: "",
       destination: "",
       departureCity: "",
+      ownArrivalArrangement: "",
       coverImage: null,
       pricingPlanTitle: "Luxury Standard Plan",
       startDate: "",
@@ -202,6 +231,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
         ...initialData,
         destination: initialData.destination || "",
         departureCity: initialData.departureCity || "",
+        ownArrivalArrangement: initialData.ownArrivalArrangement || "",
         startDate: initialData.startDate
           ? new Date(initialData.startDate).toISOString().split("T")[0]
           : "",
@@ -862,11 +892,23 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
       const updatedDays = [...prev.itineraryDays];
       const currentDay = { ...updatedDays[dIdx] };
       let currentPlaces = [...(currentDay.places || [])];
+      let currentTransportMap = { ...(currentDay.placeTransportMap || {}) };
 
       if (currentPlaces.includes(placeName)) {
         currentPlaces = currentPlaces.filter((p) => p !== placeName);
+        delete currentTransportMap[placeName];
       } else {
         currentPlaces.push(placeName);
+        const placeObj = masterData.places.find(
+          (p) => p.name.toLowerCase() === placeName.toLowerCase()
+        );
+        if (placeObj?.requiresSpecialTransport) {
+          const defaultOpt =
+            placeObj.specialTransportOptions && placeObj.specialTransportOptions.length > 0
+              ? placeObj.specialTransportOptions[0]
+              : "Car";
+          currentTransportMap[placeName] = defaultOpt;
+        }
       }
 
       // Match place objects from masterData
@@ -907,6 +949,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
       updatedDays[dIdx] = {
         ...currentDay,
         places: currentPlaces,
+        placeTransportMap: currentTransportMap,
         title: newTitle || currentDay.title,
         description: aggregatedDescription || currentDay.description,
         inclusions:
@@ -951,7 +994,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
     updateDayField(dayIndex, field, updatedTags);
   };
 
-  // Step 5: Flights
+  // Step 5: Flights & Multi-Category Transportation State
   const [editingFlightIndex, setEditingFlightIndex] = useState<number | null>(null);
   const [newFlight, setNewFlight] = useState({
     sector: "",
@@ -965,12 +1008,167 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
     checkInBaggageKg: 20,
     cancellationPolicy: "",
     flightNotes: "",
-    type: "Flight",
-    travelTime: "12:00 PM",
+    type: "Car",
+    travelTime: "10:00 AM",
     flightCodeDefault: "",
     isStartingTransfer: false,
-    isPackageIncluded: false,
+    isPackageIncluded: true,
+    transportCategory: "Inter-City Transfer" as "Inter-City Transfer" | "Local Transfer",
+    fromCity: "",
+    toCity: "",
+    isAutoSuggested: false,
   });
+
+  // Quick Add / Inline Add to Master Data State
+  const [quickAddModalOpen, setQuickAddModalOpen] = useState(false);
+  const [quickAddForm, setQuickAddForm] = useState({
+    transportCategory: "Inter-City Transfer" as "Inter-City Transfer" | "Local Transfer",
+    fromCity: "",
+    toCity: "",
+    city: "",
+    airline: "",
+    type: "Car",
+    travelTime: "10:00 AM",
+    flightCodeDefault: "",
+    flightNotes: "",
+    saveToMasterData: true,
+  });
+  const [savingQuickAdd, setSavingQuickAdd] = useState(false);
+
+  const startQuickAdd = (
+    category: "Inter-City Transfer" | "Local Transfer",
+    fromCity = "",
+    toCity = "",
+    city = ""
+  ) => {
+    setQuickAddForm({
+      transportCategory: category,
+      fromCity,
+      toCity,
+      city: city || fromCity || "",
+      airline: "",
+      type: "Car",
+      travelTime: "10:00 AM",
+      flightCodeDefault: "",
+      flightNotes: "",
+      saveToMasterData: true,
+    });
+    setQuickAddModalOpen(true);
+  };
+
+  const handleQuickAddSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickAddForm.airline.trim()) {
+      alert("Please provide a Carrier or Vehicle Provider Name.");
+      return;
+    }
+
+    setSavingQuickAdd(true);
+    try {
+      const isInterCity = quickAddForm.transportCategory === "Inter-City Transfer";
+      const fromC = isInterCity ? quickAddForm.fromCity : quickAddForm.city;
+      const toC = isInterCity ? quickAddForm.toCity : quickAddForm.city;
+      const sectorName = isInterCity
+        ? `${quickAddForm.fromCity} to ${quickAddForm.toCity}`
+        : `${quickAddForm.city} Local Transfer`;
+
+      if (quickAddForm.saveToMasterData) {
+        const fromCityObj = masterData.cities.find(
+          (c) => c.name.toLowerCase() === fromC.toLowerCase()
+        );
+        const toCityObj = masterData.cities.find(
+          (c) => c.name.toLowerCase() === toC.toLowerCase()
+        );
+
+        const res = await createMasterFlightRoute({
+          sector: sectorName,
+          airline: quickAddForm.airline,
+          transportCategory: quickAddForm.transportCategory,
+          fromCity: fromC,
+          fromCityId: fromCityObj?.id || undefined,
+          toCity: toC,
+          toCityId: toCityObj?.id || undefined,
+          cityId: fromCityObj?.id || undefined,
+          type: quickAddForm.type,
+          travelTime: quickAddForm.travelTime,
+          flightCodeDefault: quickAddForm.flightCodeDefault,
+          flightNotes: quickAddForm.flightNotes,
+          cabinBaggageKg: 7,
+          checkInBaggageKg: 20,
+        });
+
+        if (res.success && res.data) {
+          setMasterData((prev) => ({
+            ...prev,
+            flightRoutes: [res.data, ...prev.flightRoutes],
+          }));
+        }
+      }
+
+      // Add to Trip formData
+      const newLeg = {
+        sector: sectorName,
+        fromCity: fromC,
+        toCity: toC,
+        transportCategory: quickAddForm.transportCategory,
+        airline: quickAddForm.airline,
+        type: quickAddForm.type,
+        travelTime: quickAddForm.travelTime,
+        departureDateTime: "",
+        arrivalDateTime: "",
+        durationText: "Direct",
+        stops: 0,
+        layoverInfo: "",
+        carryOnBaggageKg: 7,
+        checkInBaggageKg: 20,
+        cancellationPolicy: "",
+        flightNotes: quickAddForm.flightNotes,
+        flightCodeDefault: quickAddForm.flightCodeDefault,
+        isStartingTransfer: false,
+        isPackageIncluded: true,
+        isAutoSuggested: false,
+      };
+
+      setFormData((prev: any) => ({
+        ...prev,
+        flightDetails: [...prev.flightDetails, newLeg],
+      }));
+      setQuickAddModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert("Error adding transport option.");
+    } finally {
+      setSavingQuickAdd(false);
+    }
+  };
+
+  const handleSwapFlightWithMaster = (flightIdx: number, masterRouteId: string) => {
+    const route = masterData.flightRoutes.find((r) => r.id === masterRouteId);
+    if (!route) return;
+
+    setFormData((prev: any) => {
+      const list = [...prev.flightDetails];
+      list[flightIdx] = {
+        ...list[flightIdx],
+        sector: route.sector,
+        fromCity: route.fromCity || list[flightIdx].fromCity,
+        toCity: route.toCity || list[flightIdx].toCity,
+        transportCategory: route.transportCategory || list[flightIdx].transportCategory || "Inter-City Transfer",
+        airline: route.airline,
+        type: route.type || list[flightIdx].type || "Car",
+        travelTime: route.travelTime || list[flightIdx].travelTime,
+        stops: route.typicalStops || 0,
+        layoverInfo: route.typicalLayoverInfo || "",
+        carryOnBaggageKg: route.cabinBaggageKg ?? 7,
+        checkInBaggageKg: route.checkInBaggageKg ?? 20,
+        cancellationPolicy: route.cancellationPolicy || "",
+        flightNotes: route.flightNotes || "",
+        flightCodeDefault: route.flightCodeDefault || "",
+        isAutoSuggested: true,
+      };
+      return { ...prev, flightDetails: list };
+    });
+  };
 
   const startEditFlight = (idx: number) => {
     const f = formData.flightDetails[idx];
@@ -986,11 +1184,15 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
       checkInBaggageKg: f.checkInBaggageKg ?? 20,
       cancellationPolicy: f.cancellationPolicy || "",
       flightNotes: f.flightNotes || "",
-      type: f.type || "Flight",
-      travelTime: f.travelTime || "12:00 PM",
+      type: f.type || "Car",
+      travelTime: f.travelTime || "10:00 AM",
       flightCodeDefault: f.flightCodeDefault || "",
       isStartingTransfer: f.isStartingTransfer || false,
-      isPackageIncluded: f.isPackageIncluded || false,
+      isPackageIncluded: f.isPackageIncluded !== false,
+      transportCategory: f.transportCategory || "Inter-City Transfer",
+      fromCity: f.fromCity || "",
+      toCity: f.toCity || "",
+      isAutoSuggested: !!f.isAutoSuggested,
     });
     setEditingFlightIndex(idx);
   };
@@ -1048,11 +1250,15 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
       checkInBaggageKg: 20,
       cancellationPolicy: "",
       flightNotes: "",
-      type: "Flight",
-      travelTime: "12:00 PM",
+      type: "Car",
+      travelTime: "10:00 AM",
       flightCodeDefault: "",
       isStartingTransfer: false,
-      isPackageIncluded: false,
+      isPackageIncluded: true,
+      transportCategory: "Inter-City Transfer",
+      fromCity: "",
+      toCity: "",
+      isAutoSuggested: false,
     });
   };
 
@@ -1065,6 +1271,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
 
   // Step 6: Addons
   const [editingAddOnIndex, setEditingAddOnIndex] = useState<number | null>(null);
+  const [addOnCityFilter, setAddOnCityFilter] = useState<string>("All");
   const [newAddOn, setNewAddOn] = useState({
     name: "",
     visaType: "",
@@ -1541,6 +1748,24 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                   />
                 </div>
               </div>
+
+              {/* Traveller's own arrival arrangement (Part B.3) */}
+              <div className="sm:col-span-2 space-y-1.5 pt-2 border-t border-zinc-100">
+                <label className="block text-xs font-semibold text-zinc-700">
+                  Traveller&apos;s own arrival arrangement (Optional)
+                </label>
+                <input
+                  type="text"
+                  name="ownArrivalArrangement"
+                  value={formData.ownArrivalArrangement || ""}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Vadodara to Ahmedabad — traveller's own arrangement."
+                  className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
+                />
+                <p className="text-[10px] text-zinc-400">
+                  Plain text note for client itinerary (no master data link or cost calculation).
+                </p>
+              </div>
             </div>
           </div>
         );
@@ -1728,6 +1953,61 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                                   ))
                                 )}
                               </div>
+
+                              {/* Special Transport Dropdowns for Places requiring special transport (Part B.5) */}
+                              {day.places && day.places.length > 0 && day.places.some((pName: string) => {
+                                const pObj = masterData.places.find(
+                                  (p) => p.name.toLowerCase() === pName.toLowerCase()
+                                );
+                                return pObj?.requiresSpecialTransport;
+                              }) && (
+                                <div className="space-y-1.5 p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg">
+                                  <div className="text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                                    <span>🚖 Place-Level Transport Needed:</span>
+                                  </div>
+                                  {day.places.map((pName: string) => {
+                                    const pObj = masterData.places.find(
+                                      (p) => p.name.toLowerCase() === pName.toLowerCase()
+                                    );
+                                    if (!pObj?.requiresSpecialTransport) return null;
+                                    const options =
+                                      pObj.specialTransportOptions && pObj.specialTransportOptions.length > 0
+                                        ? pObj.specialTransportOptions
+                                        : ["Car", "Auto-rickshaw", "Boat", "Helicopter", "Horse", "Palki", "Walk"];
+                                    const currentChoice =
+                                      day.placeTransportMap?.[pName] || options[0] || "Car";
+
+                                    return (
+                                      <div
+                                        key={pName}
+                                        className="flex items-center justify-between gap-2 bg-white px-2.5 py-1.5 rounded border border-amber-200 shadow-2xs text-xs"
+                                      >
+                                        <span className="font-bold text-[#14213D] truncate">{pName}</span>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <span className="text-[10px] text-zinc-500 font-medium">Transport:</span>
+                                          <select
+                                            value={currentChoice}
+                                            onChange={(e) => {
+                                              const updated = {
+                                                ...(day.placeTransportMap || {}),
+                                                [pName]: e.target.value,
+                                              };
+                                              updateDayField(dIdx, "placeTransportMap", updated);
+                                            }}
+                                            className="px-2 py-0.5 bg-amber-50/50 border border-amber-300 rounded text-xs font-bold text-amber-900 outline-none cursor-pointer"
+                                          >
+                                            {options.map((opt: string) => (
+                                              <option key={opt} value={opt}>
+                                                {opt}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
 
                               {/* Available Places Selection */}
                               {cityPlaces.length > 0 ? (
@@ -1941,6 +2221,61 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                             </span>
                           ))}
                         </div>
+
+                        {/* Special Transport Dropdowns for Places in Step 3 */}
+                        {day.places && day.places.length > 0 && day.places.some((pName: string) => {
+                          const pObj = masterData.places.find(
+                            (p) => p.name.toLowerCase() === pName.toLowerCase()
+                          );
+                          return pObj?.requiresSpecialTransport;
+                        }) && (
+                          <div className="space-y-1.5 p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg">
+                            <div className="text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                              <span>🚖 Place-Level Transport Needed:</span>
+                            </div>
+                            {day.places.map((pName: string) => {
+                              const pObj = masterData.places.find(
+                                (p) => p.name.toLowerCase() === pName.toLowerCase()
+                              );
+                              if (!pObj?.requiresSpecialTransport) return null;
+                              const options =
+                                pObj.specialTransportOptions && pObj.specialTransportOptions.length > 0
+                                ? pObj.specialTransportOptions
+                                : ["Car", "Auto-rickshaw", "Boat", "Helicopter", "Horse", "Palki", "Walk"];
+                              const currentChoice =
+                                day.placeTransportMap?.[pName] || options[0] || "Car";
+
+                              return (
+                                <div
+                                  key={pName}
+                                  className="flex items-center justify-between gap-2 bg-white px-2.5 py-1.5 rounded border border-amber-200 shadow-2xs text-xs"
+                                >
+                                  <span className="font-bold text-[#14213D] truncate">{pName}</span>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-[10px] text-zinc-500 font-medium">Transport:</span>
+                                    <select
+                                      value={currentChoice}
+                                      onChange={(e) => {
+                                        const updated = {
+                                          ...(day.placeTransportMap || {}),
+                                          [pName]: e.target.value,
+                                        };
+                                        updateDayField(dIdx, "placeTransportMap", updated);
+                                      }}
+                                      className="px-2 py-0.5 bg-amber-50/50 border border-amber-300 rounded text-xs font-bold text-amber-900 outline-none cursor-pointer"
+                                    >
+                                      {options.map((opt: string) => (
+                                        <option key={opt} value={opt}>
+                                          {opt}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
 
                         {/* Quick City Places Picker */}
                         {cityPlaces.length > 0 && (
@@ -2201,381 +2536,1125 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
         );
 
       case 5: {
-        const TRANSPORT_TYPES = ["Flight", "Train", "Bus", "Car", "Sedan", "SUV", "Other"];
+        const TRANSPORT_TYPES = ["Flight", "Train", "Bus", "Car", "Sedan", "SUV", "Helicopter", "Boat", "Auto-rickshaw", "Other"];
         const getTransportIcon = (type: string) => {
           switch (type) {
             case "Flight":
-              return <Plane className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+              return <Plane className="h-4 w-4 text-[#B8944F] shrink-0" />;
             case "Train":
-              return <Train className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+              return <Train className="h-4 w-4 text-[#B8944F] shrink-0" />;
             case "Bus":
-              return <Bus className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+              return <Bus className="h-4 w-4 text-[#B8944F] shrink-0" />;
             case "Car":
             case "Sedan":
             case "SUV":
-              return <Car className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+              return <Car className="h-4 w-4 text-[#B8944F] shrink-0" />;
             default:
-              return <Car className="h-3.5 w-3.5 text-[#B8944F] mr-2" />;
+              return <Car className="h-4 w-4 text-[#B8944F] shrink-0" />;
+          }
+        };
+
+        // 1. Detect Inter-City Route Transitions from consecutive days in Tab 2
+        const interCityTransitions: {
+          fromCity: string;
+          toCity: string;
+          fromDay: number;
+          toDay: number;
+          matchingMasterRoutes: any[];
+        }[] = [];
+
+        for (let i = 0; i < (formData.itineraryDays || []).length - 1; i++) {
+          const d1 = formData.itineraryDays[i];
+          const d2 = formData.itineraryDays[i + 1];
+          const c1 = d1.cityOrStay?.trim();
+          const c2 = d2.cityOrStay?.trim();
+          if (c1 && c2 && c1.toLowerCase() !== c2.toLowerCase()) {
+            const matched = masterData.flightRoutes.filter(
+              (r) =>
+                r.transportCategory === "Inter-City Transfer" &&
+                ((r.fromCity?.toLowerCase() === c1.toLowerCase() && r.toCity?.toLowerCase() === c2.toLowerCase()) ||
+                 (r.fromCity?.toLowerCase() === c2.toLowerCase() && r.toCity?.toLowerCase() === c1.toLowerCase()) ||
+                 (r.sector?.toLowerCase().includes(c1.toLowerCase()) && r.sector?.toLowerCase().includes(c2.toLowerCase())))
+            );
+            interCityTransitions.push({
+              fromCity: c1,
+              toCity: c2,
+              fromDay: d1.dayNumber,
+              toDay: d2.dayNumber,
+              matchingMasterRoutes: matched,
+            });
+          }
+        }
+
+        // 2. Detect Distinct Cities for Local Transfers
+        const distinctCityStays = Array.from(
+          new Set(
+            (formData.itineraryDays || [])
+              .map((d: any) => d.cityOrStay?.trim())
+              .filter(Boolean)
+          )
+        ).map((cityName) => {
+          const matched = masterData.flightRoutes.filter(
+            (r) =>
+              r.transportCategory === "Local Transfer" &&
+              (r.city?.name?.toLowerCase() === (cityName as string).toLowerCase() ||
+               r.fromCity?.toLowerCase() === (cityName as string).toLowerCase() ||
+               r.sector?.toLowerCase().includes((cityName as string).toLowerCase()))
+          );
+          return {
+            city: cityName as string,
+            matchingMasterRoutes: matched,
+          };
+        });
+
+        // 3. Separate Current Flight Details by Category
+        const interCityList = (formData.flightDetails || []).map((f: any, idx: number) => ({ ...f, originalIndex: idx })).filter(
+          (f: any) => (f.transportCategory || "Inter-City Transfer") === "Inter-City Transfer"
+        );
+        const localList = (formData.flightDetails || []).map((f: any, idx: number) => ({ ...f, originalIndex: idx })).filter(
+          (f: any) => f.transportCategory === "Local Transfer"
+        );
+
+        // 4. Auto-populate from Master Data
+        const handleAutoPopulate = () => {
+          const current = [...formData.flightDetails];
+          let added = 0;
+
+          // Add inter-city transfers
+          interCityTransitions.forEach((t) => {
+            const exists = current.some(
+              (f: any) =>
+                (f.transportCategory || "Inter-City Transfer") === "Inter-City Transfer" &&
+                ((f.fromCity?.toLowerCase() === t.fromCity.toLowerCase() && f.toCity?.toLowerCase() === t.toCity.toLowerCase()) ||
+                 (f.sector?.toLowerCase().includes(t.fromCity.toLowerCase()) && f.sector?.toLowerCase().includes(t.toCity.toLowerCase())))
+            );
+            if (!exists && t.matchingMasterRoutes.length > 0) {
+              const best = t.matchingMasterRoutes[0];
+              current.push({
+                sector: best.sector || `${t.fromCity} to ${t.toCity}`,
+                fromCity: t.fromCity,
+                toCity: t.toCity,
+                transportCategory: "Inter-City Transfer",
+                airline: best.airline,
+                type: best.type || "Car",
+                travelTime: best.travelTime || "09:00 AM",
+                departureDateTime: "",
+                arrivalDateTime: "",
+                durationText: "Direct",
+                stops: best.typicalStops || 0,
+                layoverInfo: best.typicalLayoverInfo || "",
+                carryOnBaggageKg: best.cabinBaggageKg ?? 7,
+                checkInBaggageKg: best.checkInBaggageKg ?? 20,
+                cancellationPolicy: best.cancellationPolicy || "",
+                flightNotes: best.flightNotes || "",
+                flightCodeDefault: best.flightCodeDefault || "",
+                isStartingTransfer: false,
+                isPackageIncluded: true,
+                isAutoSuggested: true,
+              });
+              added++;
+            }
+          });
+
+          // Add local transfers
+          distinctCityStays.forEach((s) => {
+            const exists = current.some(
+              (f: any) =>
+                f.transportCategory === "Local Transfer" &&
+                (f.fromCity?.toLowerCase() === s.city.toLowerCase() ||
+                 f.toCity?.toLowerCase() === s.city.toLowerCase() ||
+                 f.sector?.toLowerCase().includes(s.city.toLowerCase()))
+            );
+            if (!exists && s.matchingMasterRoutes.length > 0) {
+              s.matchingMasterRoutes.forEach((r) => {
+                current.push({
+                  sector: r.sector || `${s.city} Local Transfer`,
+                  fromCity: s.city,
+                  toCity: s.city,
+                  transportCategory: "Local Transfer",
+                  airline: r.airline,
+                  type: r.type || "Car",
+                  travelTime: r.travelTime || "Flexible",
+                  departureDateTime: "",
+                  arrivalDateTime: "",
+                  durationText: "Direct",
+                  stops: 0,
+                  layoverInfo: "",
+                  carryOnBaggageKg: r.cabinBaggageKg ?? 7,
+                  checkInBaggageKg: r.checkInBaggageKg ?? 20,
+                  cancellationPolicy: r.cancellationPolicy || "",
+                  flightNotes: r.flightNotes || "",
+                  flightCodeDefault: r.flightCodeDefault || "",
+                  isStartingTransfer: false,
+                  isPackageIncluded: true,
+                  isAutoSuggested: true,
+                });
+                added++;
+              });
+            }
+          });
+
+          if (added > 0) {
+            setFormData((prev: any) => ({ ...prev, flightDetails: current }));
+          } else {
+            alert("All detected inter-city and local routes from Master Data are already active in your plan!");
           }
         };
 
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces flex items-center justify-between">
-              <span>Step 5: Transportation & Transit arrangements</span>
-              <span className="text-xs bg-[#B8944F]/10 text-[#B8944F] font-bold px-2 py-1 rounded">
-                Master Catalog Linked
-              </span>
-            </h2>
+            {/* Header with Auto-Suggest Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
+              <div>
+                <h2 className="text-xl font-bold text-[#14213D] font-fraunces flex items-center gap-2">
+                  <Plane className="h-5 w-5 text-[#B8944F]" />
+                  <span>Step 5: Transportation & Transit Arrangements</span>
+                </h2>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Categorized into Own Arrangement, Inter-City Transfers, and City-level Local Transfers with live Master Data suggestions.
+                </p>
+              </div>
 
-            {/* Arrangement Selector */}
-            <div className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card space-y-4">
-              <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider">
-                Transportation Arrangement Type
-              </label>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, transportationArrangement: "Own" })}
-                  className={`p-4 rounded-lg border text-left transition-all ${
-                    formData.transportationArrangement === "Own"
-                      ? "border-[#B8944F] bg-[#B8944F]/5 text-[#14213D] shadow-sm font-bold"
-                      : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
-                  }`}
+                  onClick={handleAutoPopulate}
+                  className="px-3.5 py-1.5 bg-[#B8944F]/15 hover:bg-[#B8944F]/25 text-[#8F6F33] rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs border border-[#B8944F]/30"
                 >
-                  <div className="text-xs uppercase tracking-wider font-bold mb-1">Own Transportation</div>
-                  <div className="text-[11px] font-normal text-zinc-400">Traveller will arrange their own transit.</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, transportationArrangement: "Planner" })}
-                  className={`p-4 rounded-lg border text-left transition-all ${
-                    formData.transportationArrangement === "Planner"
-                      ? "border-[#B8944F] bg-[#B8944F]/5 text-[#14213D] shadow-sm font-bold"
-                      : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
-                  }`}
-                >
-                  <div className="text-xs uppercase tracking-wider font-bold mb-1">Trip Planner Arrangement</div>
-                  <div className="text-[11px] font-normal text-zinc-400">Arranged by trip planner using catalog options.</div>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>Auto-Populate Transfers</span>
                 </button>
               </div>
             </div>
 
-            {/* Starting Point Transfer Section */}
-            <div className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-[#14213D]">Starting Point Hub Transfer</h3>
-                <p className="text-[11px] text-zinc-500">Arrange travel to reach the starting point of the main tour (e.g. Vadodara → Ahmedabad)</p>
+            {/* ========================================================================= */}
+            {/* SECTION A: TRAVELLER'S OWN ARRANGEMENT */}
+            {/* ========================================================================= */}
+            <div className="bg-white border border-zinc-200/90 rounded-xl p-5 craft-card shadow-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-zinc-100 pb-2.5">
+                <div className="flex items-center space-x-2">
+                  <span className="h-5 w-5 rounded-full bg-zinc-100 text-zinc-700 text-xs font-bold flex items-center justify-center">
+                    A
+                  </span>
+                  <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                    Traveller&apos;s Own Arrival Arrangement
+                  </h3>
+                </div>
+                <span className="text-[11px] text-zinc-400 font-medium">Sourced from Step 1</span>
               </div>
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Transfer Route Details (Optional)
-                </label>
+
+              <div className="space-y-2">
                 <input
                   type="text"
-                  value={formData.startingTransferDetails || ""}
-                  onChange={(e) => setFormData({ ...formData, startingTransferDetails: e.target.value })}
-                  placeholder="e.g. Vadodara to Ahmedabad by Sedan (starts 2 hours prior)"
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none"
+                  name="ownArrivalArrangement"
+                  value={formData.ownArrivalArrangement || ""}
+                  onChange={handleInputChange}
+                  placeholder="e.g. Vadodara to Ahmedabad — traveller's own arrangement."
+                  className="w-full px-3.5 py-2.5 bg-zinc-50/60 hover:bg-white focus:bg-white border border-zinc-200 rounded-lg text-xs font-medium text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none transition-all"
                 />
+                <p className="text-[11px] text-zinc-400">
+                  {formData.ownArrivalArrangement ? (
+                    <span className="text-emerald-700 font-medium">✓ Displayed in final client itinerary under Traveller Arrangements.</span>
+                  ) : (
+                    "Plain text for traveller's independent arrival transit. No master data link or cost calculation."
+                  )}
+                </p>
               </div>
             </div>
 
-            {/* Package Level Route Display */}
-            <div className="bg-white border border-[#B8944F]/20 rounded-lg p-5 craft-card space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-[#14213D]">Package-Level Included Transportation</h3>
-                <p className="text-[11px] text-zinc-500">Specify transit included directly in the main package (e.g. Ahmedabad → Udaipur by Sedan)</p>
-              </div>
-              <div className="sm:col-span-2">
-                <input
-                  type="text"
-                  value={formData.packageTransportationDetails || ""}
-                  onChange={(e) => setFormData({ ...formData, packageTransportationDetails: e.target.value })}
-                  placeholder="e.g. Ahmedabad to Udaipur - AC Sedan included in package"
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none"
-                />
-              </div>
-            </div>
-
-            {formData.transportationArrangement === "Planner" && (
-              <>
-                {/* Detail Transit Route Items */}
-                <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
-                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-                    <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                      {editingFlightIndex !== null ? "Edit Transit Leg" : "Add Transportation / Flight Leg"}
-                    </span>
-
-                    {/* Generalized Route selector */}
-                    {masterData.flightRoutes.length > 0 && (
-                      <select
-                        onChange={(e) => {
-                          const route = masterData.flightRoutes.find((r) => r.id === e.target.value);
-                          if (route) {
-                            setNewFlight((prev) => ({
-                              ...prev,
-                              sector: route.sector,
-                              airline: route.airline,
-                              flightCodeDefault: route.flightCodeDefault || "",
-                              stops: route.typicalStops || 0,
-                              layoverInfo: route.typicalLayoverInfo || "",
-                              carryOnBaggageKg: route.cabinBaggageKg ?? 7,
-                              checkInBaggageKg: route.checkInBaggageKg ?? 20,
-                              cancellationPolicy: route.cancellationPolicy || "",
-                              flightNotes: route.flightNotes || "",
-                              type: route.type || "Flight",
-                              travelTime: route.travelTime || prev.travelTime,
-                            }));
-                          }
-                        }}
-                        value=""
-                        className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
-                      >
-                        <option value="">⚡ Pre-fill from Master Routes Catalog...</option>
-                        {masterData.flightRoutes.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            [{r.type || "Flight"}] {r.sector} &bull; {r.airline} &bull; {r.travelTime || "Anytime"}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+            {/* ========================================================================= */}
+            {/* SECTION B: INTER-CITY TRANSFERS */}
+            {/* ========================================================================= */}
+            <div className="bg-white border border-[#B8944F]/30 rounded-xl p-5 craft-card shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-3">
+                <div className="flex items-center space-x-2">
+                  <span className="h-5 w-5 rounded-full bg-[#B8944F] text-white text-xs font-bold flex items-center justify-center shadow-xs">
+                    B
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                      Inter-City Transfers (Consecutive Day Transitions)
+                    </h3>
+                    <p className="text-[11px] text-zinc-500">
+                      Auto-detected between consecutive days when stay city changes in Day Planning.
+                    </p>
                   </div>
+                </div>
 
-                  {/* Timing Matcher Suggestion */}
-                  {newFlight.sector && (
-                    <div className="bg-white border border-[#B8944F]/20 rounded-lg p-3 text-xs space-y-2">
-                      <div className="font-bold text-[#14213D] flex items-center justify-between">
-                        <span>💡 Timing-Matched Master Suggestions for "{newFlight.sector}":</span>
-                      </div>
-                      {(() => {
-                        const matched = masterData.flightRoutes.filter(
-                          (r) => r.sector.toLowerCase().includes(newFlight.sector.toLowerCase())
-                        );
-                        if (matched.length === 0) {
-                          return <p className="text-[10px] text-zinc-400">No timing suggestions found in Master Catalog.</p>;
-                        }
+                <button
+                  type="button"
+                  onClick={() => startQuickAdd("Inter-City Transfer")}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#14213D] hover:bg-[#2B2E36] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>+ Add Inter-City Leg</span>
+                </button>
+              </div>
+
+              {/* Detected Transitions Prompts / Missing Master Data alerts */}
+              {interCityTransitions.length > 0 && (
+                <div className="space-y-2 bg-[#FAF8F5] p-3.5 rounded-lg border border-[#B8944F]/20">
+                  <span className="text-[11px] font-bold text-[#8F6F33] flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Detected Route Transitions from Day-wise Plan:</span>
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {interCityTransitions.map((t, tIdx) => {
+                      const isAlreadyInTrip = (formData.flightDetails || []).some(
+                        (f: any) =>
+                          (f.transportCategory || "Inter-City Transfer") === "Inter-City Transfer" &&
+                          ((f.fromCity?.toLowerCase() === t.fromCity.toLowerCase() && f.toCity?.toLowerCase() === t.toCity.toLowerCase()) ||
+                           (f.sector?.toLowerCase().includes(t.fromCity.toLowerCase()) && f.sector?.toLowerCase().includes(t.toCity.toLowerCase())))
+                      );
+
+                      if (isAlreadyInTrip) {
                         return (
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            {matched.map((r) => (
-                              <button
-                                key={r.id}
-                                type="button"
-                                onClick={() => {
-                                  setNewFlight((prev) => ({
-                                    ...prev,
-                                    sector: r.sector,
-                                    airline: r.airline,
-                                    flightCodeDefault: r.flightCodeDefault || "",
-                                    stops: r.typicalStops || 0,
-                                    layoverInfo: r.typicalLayoverInfo || "",
-                                    carryOnBaggageKg: r.cabinBaggageKg ?? 7,
-                                    checkInBaggageKg: r.checkInBaggageKg ?? 20,
-                                    cancellationPolicy: r.cancellationPolicy || "",
-                                    flightNotes: r.flightNotes || "",
-                                    type: r.type || "Flight",
-                                    travelTime: r.travelTime || prev.travelTime,
-                                  }));
-                                }}
-                                className="text-[11px] bg-zinc-100 hover:bg-[#B8944F]/10 border border-zinc-200 rounded px-2 py-1 text-left cursor-pointer transition-colors"
-                              >
-                                <span className="font-bold text-[#14213D]">{r.airline}</span>
-                                {r.travelTime && (
-                                  <span className="text-[#B8944F] font-semibold ml-1">({r.travelTime})</span>
-                                )}
-                                <span className="text-zinc-400 text-[10px] ml-1">
-                                  {r.typicalStops === 0 ? "Non-stop" : `${r.typicalStops} stop`}
-                                </span>
-                              </button>
-                            ))}
+                          <div
+                            key={tIdx}
+                            className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-md text-xs"
+                          >
+                            <span className="font-semibold text-emerald-900">
+                              ✓ Day {t.fromDay}&rarr;{t.toDay}: {t.fromCity} &rarr; {t.toCity}
+                            </span>
+                            <span className="text-[10px] text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border border-emerald-200">
+                              Active in Plan
+                            </span>
                           </div>
                         );
-                      })()}
-                    </div>
-                  )}
+                      }
 
-                  {/* Form fields for single flight entry */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      if (t.matchingMasterRoutes.length > 0) {
+                        const mr = t.matchingMasterRoutes[0];
+                        return (
+                          <div
+                            key={tIdx}
+                            className="flex items-center justify-between p-2.5 bg-amber-50/70 border border-amber-200 rounded-md text-xs"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-bold text-[#14213D] block truncate">
+                                ⚡ Day {t.fromDay}&rarr;{t.toDay}: {t.fromCity} &rarr; {t.toCity}
+                              </span>
+                              <span className="text-[10px] text-zinc-500">
+                                Master option: {mr.airline} ({mr.type || "Car"}) • {mr.travelTime || "10:00 AM"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newLeg = {
+                                  sector: mr.sector || `${t.fromCity} to ${t.toCity}`,
+                                  fromCity: t.fromCity,
+                                  toCity: t.toCity,
+                                  transportCategory: "Inter-City Transfer",
+                                  airline: mr.airline,
+                                  type: mr.type || "Car",
+                                  travelTime: mr.travelTime || "09:00 AM",
+                                  departureDateTime: "",
+                                  arrivalDateTime: "",
+                                  durationText: "Direct",
+                                  stops: mr.typicalStops || 0,
+                                  layoverInfo: mr.typicalLayoverInfo || "",
+                                  carryOnBaggageKg: mr.cabinBaggageKg ?? 7,
+                                  checkInBaggageKg: mr.checkInBaggageKg ?? 20,
+                                  cancellationPolicy: mr.cancellationPolicy || "",
+                                  flightNotes: mr.flightNotes || "",
+                                  flightCodeDefault: mr.flightCodeDefault || "",
+                                  isStartingTransfer: false,
+                                  isPackageIncluded: true,
+                                  isAutoSuggested: true,
+                                };
+                                setFormData((prev: any) => ({
+                                  ...prev,
+                                  flightDetails: [...prev.flightDetails, newLeg],
+                                }));
+                              }}
+                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold shrink-0 cursor-pointer shadow-2xs"
+                            >
+                              + Add Route
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={tIdx}
+                          className="flex items-center justify-between p-2.5 bg-red-50/60 border border-red-200 rounded-md text-xs"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-bold text-red-950 block truncate">
+                              ⚠️ No transport found for {t.fromCity} &rarr; {t.toCity}
+                            </span>
+                            <span className="text-[10px] text-red-700">
+                              Missing in master data catalog.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => startQuickAdd("Inter-City Transfer", t.fromCity, t.toCity)}
+                            className="px-2.5 py-1 bg-red-700 hover:bg-red-800 text-white rounded text-[11px] font-bold shrink-0 cursor-pointer shadow-2xs"
+                          >
+                            + Add Option
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Inter-City Items List */}
+              <div className="space-y-3">
+                {interCityList.length === 0 ? (
+                  <div className="py-8 text-center text-zinc-400 text-xs bg-zinc-50/60 border border-dashed rounded-lg">
+                    No inter-city transfers configured. Use auto-suggest above or click &quot;+ Add Inter-City Leg&quot;.
+                  </div>
+                ) : (
+                  interCityList.map((f: any) => (
+                    <div
+                      key={f.originalIndex}
+                      className="p-4 bg-white border border-zinc-200/90 hover:border-[#B8944F]/50 rounded-lg shadow-2xs transition-all space-y-2.5"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <div className="h-8 w-8 rounded-lg bg-[#B8944F]/10 flex items-center justify-center shrink-0">
+                            {getTransportIcon(f.type || "Car")}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-[#14213D] text-sm truncate">
+                                {f.sector || `${f.fromCity || "Origin"} to ${f.toCity || "Destination"}`}
+                              </h4>
+                              {f.isAutoSuggested ? (
+                                <span className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full">
+                                  ✨ Auto-suggested from master data
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full">
+                                  Custom Entry
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-zinc-500 text-xs font-semibold mt-0.5 flex items-center gap-2 flex-wrap">
+                              <span>Carrier: <strong>{f.airline}</strong></span>
+                              <span>•</span>
+                              <span>Mode: <strong>{f.type || "Car"}</strong></span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-[#B8944F]" />
+                                Preferred Time: <strong>{f.travelTime || "10:00 AM"}</strong>
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="flex items-center space-x-2 shrink-0">
+                          {/* Swap Selector with other matching master routes */}
+                          {masterData.flightRoutes.filter((r) => r.transportCategory === "Inter-City Transfer").length > 0 && (
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleSwapFlightWithMaster(f.originalIndex, e.target.value);
+                                }
+                              }}
+                              className="text-[11px] font-semibold text-[#8F6F33] bg-amber-50/60 border border-amber-200 rounded px-2 py-1 outline-none cursor-pointer"
+                              title="Swap with another Master Data route"
+                            >
+                              <option value="">⇄ Swap option...</option>
+                              {masterData.flightRoutes
+                                .filter((r) => r.transportCategory === "Inter-City Transfer")
+                                .map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.sector} &bull; {r.airline} ({r.type || "Car"})
+                                  </option>
+                                ))}
+                            </select>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => startEditFlight(f.originalIndex)}
+                            className="p-1.5 text-zinc-500 hover:text-[#B8944F] rounded-md hover:bg-zinc-50 transition-colors cursor-pointer"
+                            title="Edit Leg"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeFlight(f.originalIndex)}
+                            className="p-1.5 text-zinc-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+                            title="Remove Leg"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {f.flightNotes && (
+                        <p className="text-[11px] text-zinc-500 bg-zinc-50 p-2 rounded border border-zinc-100 italic">
+                          📝 {f.flightNotes}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* SECTION C: LOCAL TRANSFERS */}
+            {/* ========================================================================= */}
+            <div className="bg-white border border-[#6B7A5E]/40 rounded-xl p-5 craft-card shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 pb-3">
+                <div className="flex items-center space-x-2">
+                  <span className="h-5 w-5 rounded-full bg-[#6B7A5E] text-white text-xs font-bold flex items-center justify-center shadow-xs">
+                    C
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                      Local Transfers (City Stay, Station &amp; Hotel Logistics)
+                    </h3>
+                    <p className="text-[11px] text-zinc-500">
+                      Scoped per city stay (e.g. arrival transfer, station-to-hotel car, local day cab).
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => startQuickAdd("Local Transfer")}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-[#6B7A5E] hover:bg-[#58654D] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>+ Add Local Transfer</span>
+                </button>
+              </div>
+
+              {/* City Stay Suggestions */}
+              {distinctCityStays.length > 0 && (
+                <div className="space-y-2 bg-[#FAF8F5] p-3.5 rounded-lg border border-[#6B7A5E]/30">
+                  <span className="text-[11px] font-bold text-[#58654D] flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>City Stays in Day Plan:</span>
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {distinctCityStays.map((s, sIdx) => {
+                      const isAlreadyInTrip = (formData.flightDetails || []).some(
+                        (f: any) =>
+                          f.transportCategory === "Local Transfer" &&
+                          (f.fromCity?.toLowerCase() === s.city.toLowerCase() ||
+                           f.toCity?.toLowerCase() === s.city.toLowerCase() ||
+                           f.sector?.toLowerCase().includes(s.city.toLowerCase()))
+                      );
+
+                      if (isAlreadyInTrip) {
+                        return (
+                          <div
+                            key={sIdx}
+                            className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-md text-xs"
+                          >
+                            <span className="font-semibold text-emerald-900">
+                              ✓ {s.city} Local Transport
+                            </span>
+                            <span className="text-[10px] text-emerald-700 font-bold bg-white px-2 py-0.5 rounded border border-emerald-200">
+                              Active in Plan
+                            </span>
+                          </div>
+                        );
+                      }
+
+                      if (s.matchingMasterRoutes.length > 0) {
+                        const mr = s.matchingMasterRoutes[0];
+                        return (
+                          <div
+                            key={sIdx}
+                            className="flex items-center justify-between p-2.5 bg-emerald-50/40 border border-emerald-200 rounded-md text-xs"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-bold text-[#14213D] block truncate">
+                                📍 {s.city} Local Transit
+                              </span>
+                              <span className="text-[10px] text-zinc-500">
+                                {mr.sector} • {mr.airline} ({mr.type || "Car"})
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newLeg = {
+                                  sector: mr.sector || `${s.city} Local Transfer`,
+                                  fromCity: s.city,
+                                  toCity: s.city,
+                                  transportCategory: "Local Transfer",
+                                  airline: mr.airline,
+                                  type: mr.type || "Car",
+                                  travelTime: mr.travelTime || "Flexible",
+                                  departureDateTime: "",
+                                  arrivalDateTime: "",
+                                  durationText: "Direct",
+                                  stops: 0,
+                                  layoverInfo: "",
+                                  carryOnBaggageKg: mr.cabinBaggageKg ?? 7,
+                                  checkInBaggageKg: mr.checkInBaggageKg ?? 20,
+                                  cancellationPolicy: mr.cancellationPolicy || "",
+                                  flightNotes: mr.flightNotes || "",
+                                  flightCodeDefault: mr.flightCodeDefault || "",
+                                  isStartingTransfer: false,
+                                  isPackageIncluded: true,
+                                  isAutoSuggested: true,
+                                };
+                                setFormData((prev: any) => ({
+                                  ...prev,
+                                  flightDetails: [...prev.flightDetails, newLeg],
+                                }));
+                              }}
+                              className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-bold shrink-0 cursor-pointer shadow-2xs"
+                            >
+                              + Add Local
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={sIdx}
+                          className="flex items-center justify-between p-2.5 bg-red-50/60 border border-red-200 rounded-md text-xs"
+                        >
+                          <div className="min-w-0">
+                            <span className="font-bold text-red-950 block truncate">
+                              ⚠️ No local transport found for {s.city}
+                            </span>
+                            <span className="text-[10px] text-red-700">
+                              Add standard local transfer option.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => startQuickAdd("Local Transfer", s.city, s.city, s.city)}
+                            className="px-2.5 py-1 bg-red-700 hover:bg-red-800 text-white rounded text-[11px] font-bold shrink-0 cursor-pointer shadow-2xs"
+                          >
+                            + Add Option
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Local Items List */}
+              <div className="space-y-3">
+                {localList.length === 0 ? (
+                  <div className="py-8 text-center text-zinc-400 text-xs bg-zinc-50/60 border border-dashed rounded-lg">
+                    No local transfers configured. Use suggestions above or click &quot;+ Add Local Transfer&quot;.
+                  </div>
+                ) : (
+                  localList.map((f: any) => (
+                    <div
+                      key={f.originalIndex}
+                      className="p-4 bg-white border border-zinc-200/90 hover:border-[#6B7A5E]/60 rounded-lg shadow-2xs transition-all space-y-2.5"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2.5 min-w-0">
+                          <div className="h-8 w-8 rounded-lg bg-[#6B7A5E]/10 flex items-center justify-center shrink-0">
+                            {getTransportIcon(f.type || "Car")}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-[#14213D] text-sm truncate">
+                                {f.sector || `${f.fromCity || "City"} Local Transfer`}
+                              </h4>
+                              {f.isAutoSuggested ? (
+                                <span className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full">
+                                  ✨ Auto-suggested from master data
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded-full">
+                                  Custom Entry
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-zinc-500 text-xs font-semibold mt-0.5 flex items-center gap-2 flex-wrap">
+                              <span>Provider: <strong>{f.airline}</strong></span>
+                              <span>•</span>
+                              <span>Mode: <strong>{f.type || "Car"}</strong></span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-[#6B7A5E]" />
+                                Preferred Time: <strong>{f.travelTime || "Flexible"}</strong>
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="flex items-center space-x-2 shrink-0">
+                          {/* Swap Selector */}
+                          {masterData.flightRoutes.filter((r) => r.transportCategory === "Local Transfer").length > 0 && (
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleSwapFlightWithMaster(f.originalIndex, e.target.value);
+                                }
+                              }}
+                              className="text-[11px] font-semibold text-[#58654D] bg-emerald-50/60 border border-emerald-200 rounded px-2 py-1 outline-none cursor-pointer"
+                              title="Swap with another Local Master route"
+                            >
+                              <option value="">⇄ Swap option...</option>
+                              {masterData.flightRoutes
+                                .filter((r) => r.transportCategory === "Local Transfer")
+                                .map((r) => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.sector} &bull; {r.airline} ({r.type || "Car"})
+                                  </option>
+                                ))}
+                            </select>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => startEditFlight(f.originalIndex)}
+                            className="p-1.5 text-zinc-500 hover:text-[#6B7A5E] rounded-md hover:bg-zinc-50 transition-colors cursor-pointer"
+                            title="Edit Leg"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeFlight(f.originalIndex)}
+                            className="p-1.5 text-zinc-400 hover:text-red-600 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+                            title="Remove Leg"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {f.flightNotes && (
+                        <p className="text-[11px] text-zinc-500 bg-zinc-50 p-2 rounded border border-zinc-100 italic">
+                          📝 {f.flightNotes}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* ========================================================================= */}
+            {/* EDIT MODAL / DRAWER FOR SINGLE FLIGHT DETAIL */}
+            {/* ========================================================================= */}
+            {editingFlightIndex !== null && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+                <div className="bg-white rounded-xl shadow-2xl border border-zinc-200 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
+                    <h3 className="text-sm font-bold text-[#14213D] flex items-center gap-2">
+                      <Pencil className="h-4 w-4 text-[#B8944F]" />
+                      <span>Edit Transportation Leg</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setEditingFlightIndex(null)}
+                      className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Transit Type
+                        Transport Category
                       </label>
                       <select
-                        value={newFlight.type || "Flight"}
-                        onChange={(e) => setNewFlight({ ...newFlight, type: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                        value={newFlight.transportCategory}
+                        onChange={(e) =>
+                          setNewFlight({
+                            ...newFlight,
+                            transportCategory: e.target.value as any,
+                          })
+                        }
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                       >
-                        {TRANSPORT_TYPES.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
+                        <option value="Inter-City Transfer">Inter-City Transfer (Between Cities)</option>
+                        <option value="Local Transfer">Local Transfer (Station/Hotel/Sightseeing)</option>
                       </select>
                     </div>
 
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          Vehicle / Transit Type
+                        </label>
+                        <select
+                          value={newFlight.type}
+                          onChange={(e) => setNewFlight({ ...newFlight, type: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                        >
+                          {TRANSPORT_TYPES.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          Preferred Travel Time
+                        </label>
+                        <input
+                          type="text"
+                          value={newFlight.travelTime}
+                          onChange={(e) => setNewFlight({ ...newFlight, travelTime: e.target.value })}
+                          placeholder="e.g. 10:00 AM or Morning slot"
+                          className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none font-medium"
+                        />
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Sector / Route *
+                        Sector / Route Name *
                       </label>
                       <input
                         type="text"
                         value={newFlight.sector}
                         onChange={(e) => setNewFlight({ ...newFlight, sector: e.target.value })}
-                        placeholder="e.g. Ahmedabad (AMD) - Denpasar Bali (DPS)"
+                        placeholder="e.g. Ahmedabad to Udaipur or Udaipur Station Pickup"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Carrier / Airline *
+                        Carrier / Provider Name *
                       </label>
                       <input
                         type="text"
                         value={newFlight.airline}
                         onChange={(e) => setNewFlight({ ...newFlight, airline: e.target.value })}
-                        placeholder="e.g. Singapore Airlines"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
+                        placeholder="e.g. Private AC Sedan or Indigo Airlines"
+                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none font-medium"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Preferred Travel Time *
+                        Transit Notes / Guidelines
                       </label>
-                      <input
-                        type="text"
-                        value={newFlight.travelTime || ""}
-                        onChange={(e) => setNewFlight({ ...newFlight, travelTime: e.target.value })}
-                        placeholder="e.g. 10:30 AM or Morning slot"
+                      <textarea
+                        rows={2}
+                        value={newFlight.flightNotes}
+                        onChange={(e) => setNewFlight({ ...newFlight, flightNotes: e.target.value })}
+                        placeholder="e.g. Tolls and parking included. Luggage space for 2 large suitcases."
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Estimated Departure
-                      </label>
-                      <input
-                        type="text"
-                        value={newFlight.departureDateTime}
-                        onChange={(e) =>
-                          setNewFlight({ ...newFlight, departureDateTime: e.target.value })
-                        }
-                        placeholder="e.g. 12 Oct, 10:45 AM"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Estimated Arrival
-                      </label>
-                      <input
-                        type="text"
-                        value={newFlight.arrivalDateTime}
-                        onChange={(e) =>
-                          setNewFlight({ ...newFlight, arrivalDateTime: e.target.value })
-                        }
-                        placeholder="e.g. 12 Oct, 08:30 PM"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2 md:col-span-3">
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                        Transit Notes / Instructions
-                      </label>
-                      <input
-                        type="text"
-                        value={newFlight.flightNotes || ""}
-                        onChange={(e) =>
-                          setNewFlight({ ...newFlight, flightNotes: e.target.value })
-                        }
-                        placeholder="e.g. Dynamic airfare subject to change upon final confirmation."
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end space-x-2 pt-2">
-                    {editingFlightIndex !== null && (
+                    <div className="flex justify-end space-x-2 pt-3 border-t border-zinc-100">
                       <button
                         type="button"
                         onClick={() => setEditingFlightIndex(null)}
-                        className="px-3.5 py-1.5 border border-zinc-200 rounded-lg text-xs font-semibold"
+                        className="px-4 py-2 border border-zinc-200 text-zinc-600 rounded-lg text-xs font-semibold hover:bg-zinc-50 cursor-pointer"
                       >
                         Cancel
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={addFlight}
-                      className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
-                    >
-                      {editingFlightIndex !== null ? "Update Arrangement" : "+ Add Transit Option to Plan"}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={addFlight}
+                        className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Update Arrangement
+                      </button>
+                    </div>
                   </div>
                 </div>
+              </div>
+            )}
 
-                {/* List */}
-                <div className="space-y-3">
-                  {formData.flightDetails.map((f: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-4 bg-white border border-[#B8944F]/20 rounded-lg craft-card text-xs"
+            {/* ========================================================================= */}
+            {/* QUICK ADD MODAL (WITH OPTION TO SAVE TO MASTER DATA) */}
+            {/* ========================================================================= */}
+            {quickAddModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+                <div className="bg-white rounded-xl shadow-2xl border border-zinc-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
+                    <h3 className="text-sm font-bold text-[#14213D] flex items-center gap-2">
+                      <Plus className="h-4 w-4 text-[#B8944F]" />
+                      <span>Add {quickAddForm.transportCategory}</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setQuickAddModalOpen(false)}
+                      className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
                     >
-                      <div>
-                        <h4 className="font-bold text-[#14213D] text-sm flex items-center">
-                          {getTransportIcon(f.type || "Flight")}
-                          <span>{f.sector} ({f.airline})</span>
-                        </h4>
-                        <p className="text-zinc-500 mt-0.5 font-semibold text-[11px] flex items-center">
-                          <Clock className="h-3 w-3 mr-1 text-[#B8944F]" />
-                          Preferred Travel Time: {f.travelTime || "Anytime"}
-                        </p>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleQuickAddSave} className="p-5 space-y-4 max-h-[85vh] overflow-y-auto">
+                    {quickAddForm.transportCategory === "Inter-City Transfer" ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                            From City *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={quickAddForm.fromCity}
+                            onChange={(e) => setQuickAddForm({ ...quickAddForm, fromCity: e.target.value })}
+                            placeholder="e.g. Ahmedabad"
+                            className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                            To City *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={quickAddForm.toCity}
+                            onChange={(e) => setQuickAddForm({ ...quickAddForm, toCity: e.target.value })}
+                            placeholder="e.g. Udaipur"
+                            className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
+                          />
+                        </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => startEditFlight(idx)}
-                          className="p-1.5 text-zinc-500 hover:text-[#B8944F] cursor-pointer"
+                    ) : (
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          City / Scope *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={quickAddForm.city}
+                          onChange={(e) => setQuickAddForm({ ...quickAddForm, city: e.target.value })}
+                          placeholder="e.g. Udaipur or Bali"
+                          className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Carrier / Vehicle Provider Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={quickAddForm.airline}
+                        onChange={(e) => setQuickAddForm({ ...quickAddForm, airline: e.target.value })}
+                        placeholder="e.g. Private AC Sedan / Station Car"
+                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          Vehicle Type
+                        </label>
+                        <select
+                          value={quickAddForm.type}
+                          onChange={(e) => setQuickAddForm({ ...quickAddForm, type: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                         >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeFlight(idx)}
-                          className="p-1.5 text-zinc-400 hover:text-red-600 cursor-pointer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                          {TRANSPORT_TYPES.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                          Preferred Travel Time
+                        </label>
+                        <input
+                          type="text"
+                          value={quickAddForm.travelTime}
+                          onChange={(e) => setQuickAddForm({ ...quickAddForm, travelTime: e.target.value })}
+                          placeholder="e.g. 10:00 AM"
+                          className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none"
+                        />
                       </div>
                     </div>
-                  ))}
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Notes / Inclusions
+                      </label>
+                      <input
+                        type="text"
+                        value={quickAddForm.flightNotes}
+                        onChange={(e) => setQuickAddForm({ ...quickAddForm, flightNotes: e.target.value })}
+                        placeholder="e.g. Driver allowance and fuel included"
+                        className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+
+                    {/* Option to Save to Master Data Hub */}
+                    <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-lg">
+                      <label className="flex items-center space-x-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={quickAddForm.saveToMasterData}
+                          onChange={(e) =>
+                            setQuickAddForm({
+                              ...quickAddForm,
+                              saveToMasterData: e.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 rounded border-zinc-300 text-[#B8944F] focus:ring-[#B8944F] cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-[#14213D]">
+                          ⚡ Save to Master Data Hub (Auto-suggest for future trips)
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="flex justify-end space-x-2 pt-3 border-t border-zinc-100">
+                      <button
+                        type="button"
+                        onClick={() => setQuickAddModalOpen(false)}
+                        className="px-4 py-2 border border-zinc-200 text-zinc-600 rounded-lg text-xs font-semibold hover:bg-zinc-50 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingQuickAdd}
+                        className="px-4 py-2 bg-[#B8944F] hover:bg-[#8F6F33] text-white rounded-lg text-xs font-bold flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        {savingQuickAdd && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        <span>Add to Trip</span>
+                      </button>
+                    </div>
+                  </form>
                 </div>
-              </>
+              </div>
             )}
           </div>
         );
       }
 
-      case 6:
+      case 6: {
+        // Collect all active cities from the itinerary days & destination
+        const tripCities: string[] = Array.from(
+          new Set(
+            (formData.itineraryDays || [])
+              .map((d: any) => d.cityOrStay?.trim())
+              .filter(Boolean)
+          )
+        );
+        if (tripCities.length === 0 && formData.destination) {
+          tripCities.push(formData.destination.trim());
+        }
+
+        // City-wise filtering for Add-ons & Visa
+        const availableMasterAddOns = masterData.addOns.filter((addon: any) => {
+          if (addOnCityFilter !== "All") {
+            const matchedCity = masterData.cities.find(
+              (c) => c.name.toLowerCase() === addOnCityFilter.toLowerCase()
+            );
+            if (matchedCity) {
+              if (addon.cityId === matchedCity.id) return true;
+              if (addon.cityIds && addon.cityIds.includes(matchedCity.id)) return true;
+            }
+            if (addon.city?.name?.toLowerCase() === addOnCityFilter.toLowerCase()) return true;
+            return false;
+          }
+
+          if (tripCities.length > 0) {
+            const matchesItineraryCity = tripCities.some((cityName) => {
+              const matchedCity = masterData.cities.find(
+                (c) => c.name.toLowerCase() === cityName.toLowerCase()
+              );
+              if (matchedCity) {
+                if (addon.cityId === matchedCity.id) return true;
+                if (addon.cityIds && addon.cityIds.includes(matchedCity.id)) return true;
+              }
+              if (addon.city?.name?.toLowerCase() === cityName.toLowerCase()) return true;
+              return false;
+            });
+            const isUniversal = !addon.cityId && (!addon.cityIds || addon.cityIds.length === 0) && !addon.city;
+            return matchesItineraryCity || isUniversal;
+          }
+
+          return true;
+        });
+
         return (
           <div className="space-y-6">
-            <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 6: Optional Add-ons & Visa
-            </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
+              <div>
+                <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
+                  Step 6: Optional Add-ons & Visa
+                </h2>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  City-connected visa packages, fast-track entry, insurance, and extra amenities.
+                </p>
+              </div>
 
-            {/* Add-on Entry Form with Master AddOn picker */}
+              {/* Dynamic City-wise filter tags for Itinerary */}
+              {tripCities.length > 0 && (
+                <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                  <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mr-1">
+                    City Filter:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAddOnCityFilter("All")}
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                      addOnCityFilter === "All"
+                        ? "bg-[#14213D] text-[#DDA74F] shadow-2xs"
+                        : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                    }`}
+                  >
+                    All Itinerary Cities ({tripCities.length})
+                  </button>
+                  {tripCities.map((cityName) => (
+                    <button
+                      type="button"
+                      key={cityName}
+                      onClick={() => setAddOnCityFilter(cityName)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                        addOnCityFilter === cityName
+                          ? "bg-[#B8944F] text-white shadow-2xs"
+                          : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                      }`}
+                    >
+                      <MapPin className="h-2.5 w-2.5" />
+                      <span>{cityName}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Add-on Entry Form with City-Filtered Master AddOn picker */}
             <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
-                  {editingAddOnIndex !== null ? "Edit Add-on Service" : "Add Service / Visa Package"}
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold text-[#14213D] uppercase tracking-wider">
+                    {editingAddOnIndex !== null ? "Edit Add-on Service" : "Add Service / Visa Package"}
+                  </span>
+                  {addOnCityFilter !== "All" && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      📍 Filtered for {addOnCityFilter}
+                    </span>
+                  )}
+                </div>
 
-                {/* Master Add-on Picker */}
-                {masterData.addOns.length > 0 && (
+                {/* Master Add-on Picker with City-Aware Options */}
+                {availableMasterAddOns.length > 0 ? (
                   <select
                     onChange={(e) => {
                       const addon = masterData.addOns.find((a) => a.name === e.target.value);
@@ -2594,13 +3673,20 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                     value=""
                     className="text-[11px] font-semibold text-[#B8944F] bg-white border border-[#B8944F]/30 rounded px-2.5 py-1 outline-none cursor-pointer"
                   >
-                    <option value="">⚡ Pre-fill from Master Add-ons...</option>
-                    {masterData.addOns.map((a) => (
-                      <option key={a.id} value={a.name}>
-                        {a.name} (₹{a.defaultPrice})
-                      </option>
-                    ))}
+                    <option value="">⚡ Pre-fill from Master Add-ons ({availableMasterAddOns.length} available)...</option>
+                    {availableMasterAddOns.map((a: any) => {
+                      const cityName = a.city?.name ? ` [${a.city.name}]` : "";
+                      return (
+                        <option key={a.id} value={a.name}>
+                          {a.name}{cityName} (₹{a.defaultPrice})
+                        </option>
+                      );
+                    })}
                   </select>
+                ) : (
+                  <span className="text-[11px] text-zinc-400 italic">
+                    No master add-ons configured for this city.
+                  </span>
                 )}
               </div>
 
@@ -2740,6 +3826,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
             </div>
           </div>
         );
+      }
 
       case 7:
         return (
@@ -2919,46 +4006,49 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
       case 8:
         return (
           <div className="space-y-6">
-            <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
-              <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
-                Step 8: Master Policies & Guidelines
-              </h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 pb-3">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
+                    Step 8: Master Policies & Guidelines
+                  </h2>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+                    Global Policy Active
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  The system automatically applies your single global Policy configuration to this itinerary. You can customize details below if needed.
+                </p>
+              </div>
 
-              {/* Master Policy Template Loader */}
-              {masterData.policyTemplates.length > 0 && (
-                <select
-                  onChange={(e) => {
-                    const template = masterData.policyTemplates.find(
-                      (p) => p.name === e.target.value
-                    );
-                    if (template) {
+              {/* Sync / Reset with Global Policy */}
+              {masterData.globalPolicy && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("Reset this itinerary's policies to match the latest Master Global Policy?")) {
                       setFormData((prev: any) => ({
                         ...prev,
                         tripTerms: {
-                          paymentPolicy: template.paymentPolicy,
-                          cancellationPolicy: template.cancellationPolicy,
-                          visaRules: template.visaRules,
-                          generalNotes: template.generalNotes,
+                          paymentPolicy: masterData.globalPolicy.paymentPolicy || "",
+                          cancellationPolicy: masterData.globalPolicy.cancellationPolicy || "",
+                          visaRules: masterData.globalPolicy.visaRules || "",
+                          generalNotes: masterData.globalPolicy.generalNotes || "",
                         },
                       }));
                     }
                   }}
-                  value=""
-                  className="text-[11px] font-semibold text-[#B8944F] bg-[#B8944F]/10 border border-[#B8944F]/30 rounded-lg px-3 py-1.5 outline-none cursor-pointer"
+                  className="px-3 py-1.5 bg-[#B8944F]/10 hover:bg-[#B8944F]/20 text-[#8F6F33] border border-[#B8944F]/30 rounded-lg text-xs font-bold transition-colors flex items-center space-x-1.5 cursor-pointer shrink-0"
                 >
-                  <option value="">⚡ Load from Policy Preset...</option>
-                  {masterData.policyTemplates.map((p) => (
-                    <option key={p.id} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>Sync with Master Policy</span>
+                </button>
               )}
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+            <div className="space-y-5">
+              <div className="bg-white border border-[#B8944F]/20 rounded-xl p-5 craft-card shadow-2xs">
+                <label className="block text-xs font-bold text-[#14213D] uppercase tracking-wider mb-2">
                   1. Payment Policy
                 </label>
                 <RichTextEditor
@@ -2973,8 +4063,8 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
+              <div className="bg-white border border-[#B8944F]/20 rounded-xl p-5 craft-card shadow-2xs">
+                <label className="block text-xs font-bold text-[#14213D] uppercase tracking-wider mb-2">
                   2. Cancellation Policy
                 </label>
                 <RichTextEditor
@@ -2989,9 +4079,9 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                  3. Visa Rules & Entry Requirements
+              <div className="bg-white border border-[#B8944F]/20 rounded-xl p-5 craft-card shadow-2xs">
+                <label className="block text-xs font-bold text-[#14213D] uppercase tracking-wider mb-2">
+                  3. Visa Rules & Passport Validity
                 </label>
                 <RichTextEditor
                   value={formData.tripTerms.visaRules || ""}
@@ -3005,9 +4095,9 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                  4. General Notes & Advisory Guidelines
+              <div className="bg-white border border-[#B8944F]/20 rounded-xl p-5 craft-card shadow-2xs">
+                <label className="block text-xs font-bold text-[#14213D] uppercase tracking-wider mb-2">
+                  4. General Notes & Operational Advisory
                 </label>
                 <RichTextEditor
                   value={formData.tripTerms.generalNotes || ""}

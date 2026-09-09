@@ -475,6 +475,8 @@ export async function createMasterPlace(formData: {
   description?: string;
   inclusions?: string[];
   exclusions?: string[];
+  requiresSpecialTransport?: boolean;
+  specialTransportOptions?: string[];
 }) {
   try {
     const data = await db.masterPlace.create({
@@ -485,6 +487,8 @@ export async function createMasterPlace(formData: {
         description: formData.description?.trim() || null,
         inclusions: formData.inclusions || [],
         exclusions: formData.exclusions || [],
+        requiresSpecialTransport: Boolean(formData.requiresSpecialTransport),
+        specialTransportOptions: formData.specialTransportOptions || [],
       },
     });
     revalidatePath("/master-data");
@@ -503,6 +507,8 @@ export async function updateMasterPlace(
     description?: string;
     inclusions?: string[];
     exclusions?: string[];
+    requiresSpecialTransport?: boolean;
+    specialTransportOptions?: string[];
   }
 ) {
   try {
@@ -515,6 +521,8 @@ export async function updateMasterPlace(
         description: formData.description?.trim() || null,
         inclusions: formData.inclusions || [],
         exclusions: formData.exclusions || [],
+        requiresSpecialTransport: Boolean(formData.requiresSpecialTransport),
+        specialTransportOptions: formData.specialTransportOptions || [],
       },
     });
     revalidatePath("/master-data");
@@ -655,7 +663,8 @@ export async function deleteMasterHotel(id: string) {
 export async function getMasterFlightRoutes() {
   try {
     const data = await db.masterFlightRoute.findMany({
-      orderBy: { sector: "asc" },
+      include: { city: true },
+      orderBy: [{ transportCategory: "asc" }, { sector: "asc" }],
     });
     return { success: true, data };
   } catch (err: any) {
@@ -666,7 +675,7 @@ export async function createMasterFlightRoute(formData: {
   sector: string;
   airline: string;
   flightCodeDefault?: string;
-  typicalStops: number;
+  typicalStops?: number;
   typicalLayoverInfo?: string;
   cabinBaggageKg?: number;
   checkInBaggageKg?: number;
@@ -674,6 +683,12 @@ export async function createMasterFlightRoute(formData: {
   flightNotes?: string;
   type?: string;
   travelTime?: string;
+  transportCategory?: string;
+  fromCity?: string;
+  fromCityId?: string;
+  toCity?: string;
+  toCityId?: string;
+  cityId?: string;
   titleTemplateId?: string;
 }) {
   try {
@@ -690,6 +705,12 @@ export async function createMasterFlightRoute(formData: {
         flightNotes: formData.flightNotes?.trim() || null,
         type: formData.type || "Flight",
         travelTime: formData.travelTime || null,
+        transportCategory: formData.transportCategory || (formData.fromCity && formData.toCity ? "Inter-City Transfer" : "Local Transfer"),
+        fromCity: formData.fromCity?.trim() || null,
+        fromCityId: formData.fromCityId || null,
+        toCity: formData.toCity?.trim() || null,
+        toCityId: formData.toCityId || null,
+        cityId: formData.cityId || null,
         titleTemplateId: formData.titleTemplateId || null,
       },
     });
@@ -704,7 +725,7 @@ export async function updateMasterFlightRoute(id: string, formData: {
   sector: string;
   airline: string;
   flightCodeDefault?: string;
-  typicalStops: number;
+  typicalStops?: number;
   typicalLayoverInfo?: string;
   cabinBaggageKg?: number;
   checkInBaggageKg?: number;
@@ -712,6 +733,12 @@ export async function updateMasterFlightRoute(id: string, formData: {
   flightNotes?: string;
   type?: string;
   travelTime?: string;
+  transportCategory?: string;
+  fromCity?: string;
+  fromCityId?: string;
+  toCity?: string;
+  toCityId?: string;
+  cityId?: string;
   titleTemplateId?: string;
 }) {
   try {
@@ -729,6 +756,12 @@ export async function updateMasterFlightRoute(id: string, formData: {
         flightNotes: formData.flightNotes?.trim() || null,
         type: formData.type || "Flight",
         travelTime: formData.travelTime || null,
+        transportCategory: formData.transportCategory || (formData.fromCity && formData.toCity ? "Inter-City Transfer" : "Local Transfer"),
+        fromCity: formData.fromCity?.trim() || null,
+        fromCityId: formData.fromCityId || null,
+        toCity: formData.toCity?.trim() || null,
+        toCityId: formData.toCityId || null,
+        cityId: formData.cityId || null,
         titleTemplateId: formData.titleTemplateId || null,
       },
     });
@@ -755,6 +788,7 @@ export async function deleteMasterFlightRoute(id: string) {
 export async function getMasterAddOns() {
   try {
     const data = await db.masterAddOn.findMany({
+      include: { city: true },
       orderBy: { name: "asc" },
     });
     return { success: true, data };
@@ -766,6 +800,8 @@ export async function getMasterAddOns() {
 export async function createMasterAddOn(formData: {
   name: string;
   type?: string;
+  cityId?: string;
+  cityIds?: string[];
   visaType?: string;
   validityLength?: string;
   validityWindow?: string;
@@ -774,10 +810,16 @@ export async function createMasterAddOn(formData: {
   titleTemplateId?: string;
 }) {
   try {
+    const cityIds = formData.cityIds && formData.cityIds.length > 0 
+      ? formData.cityIds 
+      : (formData.cityId ? [formData.cityId] : []);
+
     const data = await db.masterAddOn.create({
       data: {
         name: formData.name.trim(),
         type: formData.type || "Visa",
+        cityId: formData.cityId || (cityIds[0] || null),
+        cityIds: cityIds,
         visaType: formData.visaType?.trim() || null,
         validityLength: formData.validityLength?.trim() || null,
         validityWindow: formData.validityWindow?.trim() || null,
@@ -785,6 +827,7 @@ export async function createMasterAddOn(formData: {
         detailsDescription: formData.detailsDescription?.trim() || null,
         titleTemplateId: formData.titleTemplateId || null,
       },
+      include: { city: true },
     });
     revalidatePath("/master-data");
     return { success: true, data };
@@ -796,6 +839,8 @@ export async function createMasterAddOn(formData: {
 export async function updateMasterAddOn(id: string, formData: {
   name: string;
   type?: string;
+  cityId?: string;
+  cityIds?: string[];
   visaType?: string;
   validityLength?: string;
   validityWindow?: string;
@@ -804,11 +849,17 @@ export async function updateMasterAddOn(id: string, formData: {
   titleTemplateId?: string;
 }) {
   try {
+    const cityIds = formData.cityIds && formData.cityIds.length > 0 
+      ? formData.cityIds 
+      : (formData.cityId ? [formData.cityId] : []);
+
     const data = await db.masterAddOn.update({
       where: { id },
       data: {
         name: formData.name.trim(),
         type: formData.type || "Visa",
+        cityId: formData.cityId || (cityIds[0] || null),
+        cityIds: cityIds,
         visaType: formData.visaType?.trim() || null,
         validityLength: formData.validityLength?.trim() || null,
         validityWindow: formData.validityWindow?.trim() || null,
@@ -816,6 +867,7 @@ export async function updateMasterAddOn(id: string, formData: {
         detailsDescription: formData.detailsDescription?.trim() || null,
         titleTemplateId: formData.titleTemplateId || null,
       },
+      include: { city: true },
     });
     revalidatePath("/master-data");
     return { success: true, data };
@@ -921,8 +973,75 @@ export async function deleteMasterRestaurant(id: string) {
 }
 
 // ==========================================
-// 10. POLICY TEMPLATES
+// 10. SYSTEM-WIDE POLICY CONFIGURATION
 // ==========================================
+const DEFAULT_GLOBAL_POLICY = {
+  name: "Default Global System Policy",
+  paymentPolicy: "<p><strong>Booking Deposit:</strong> 30% advance payment required upon reservation confirmation.</p><p><strong>Final Balance:</strong> Remaining 70% required at least 15 days prior to travel departure date.</p>",
+  cancellationPolicy: "<p><strong>30+ Days Prior:</strong> 100% refundable (less standard banking / administrative processing fees).</p><p><strong>29 to 15 Days Prior:</strong> 50% cancellation fee applies.</p><p><strong>Within 14 Days of Travel:</strong> 100% non-refundable.</p>",
+  visaRules: "<p><strong>Passport Validity:</strong> Minimum 6 months passport validity required from scheduled return date.</p><p><strong>Visa Documentation:</strong> Valid tourist visa or approved e-visa required prior to departure.</p>",
+  generalNotes: "<p><strong>Hotel Check-in / Check-out:</strong> Standard check-in is 14:00 hrs and check-out is 11:00 hrs.</p><p><strong>Operational Advisory:</strong> Daily private vehicle duty hours up to 10 hours. Itinerary order is subject to weather/traffic conditions.</p>",
+};
+
+export async function getGlobalPolicy() {
+  try {
+    let policy = await db.masterPolicyTemplate.findFirst({
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (!policy) {
+      policy = await db.masterPolicyTemplate.create({
+        data: DEFAULT_GLOBAL_POLICY,
+      });
+    }
+
+    return { success: true, data: policy };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveGlobalPolicy(formData: {
+  paymentPolicy: string;
+  cancellationPolicy: string;
+  visaRules: string;
+  generalNotes: string;
+}) {
+  try {
+    const existing = await db.masterPolicyTemplate.findFirst({
+      orderBy: { createdAt: "asc" },
+    });
+
+    let policy;
+    if (existing) {
+      policy = await db.masterPolicyTemplate.update({
+        where: { id: existing.id },
+        data: {
+          paymentPolicy: formData.paymentPolicy,
+          cancellationPolicy: formData.cancellationPolicy,
+          visaRules: formData.visaRules,
+          generalNotes: formData.generalNotes,
+        },
+      });
+    } else {
+      policy = await db.masterPolicyTemplate.create({
+        data: {
+          name: DEFAULT_GLOBAL_POLICY.name,
+          paymentPolicy: formData.paymentPolicy,
+          cancellationPolicy: formData.cancellationPolicy,
+          visaRules: formData.visaRules,
+          generalNotes: formData.generalNotes,
+        },
+      });
+    }
+
+    revalidatePath("/master-data");
+    return { success: true, data: policy };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function getMasterPolicyTemplates() {
   try {
     const data = await db.masterPolicyTemplate.findMany({
@@ -1280,6 +1399,7 @@ export async function getAllMasterDataForSelectors() {
       titleTemplates,
       bannerImages,
       placeDefaultsRes,
+      globalPolicyRes,
     ] = await Promise.all([
       db.masterCity.findMany({ orderBy: [{ country: "asc" }, { name: "asc" }] }),
       db.masterConsultant.findMany({ orderBy: { name: "asc" } }),
@@ -1287,13 +1407,14 @@ export async function getAllMasterDataForSelectors() {
       db.masterPricingLabel.findMany({ orderBy: { name: "asc" } }),
       db.masterPlace.findMany({ include: { city: true }, orderBy: { name: "asc" } }),
       db.masterHotel.findMany({ include: { city: true }, orderBy: { name: "asc" } }),
-      db.masterFlightRoute.findMany({ orderBy: { sector: "asc" } }),
-      db.masterAddOn.findMany({ orderBy: { name: "asc" } }),
+      db.masterFlightRoute.findMany({ include: { city: true }, orderBy: [{ transportCategory: "asc" }, { sector: "asc" }] }),
+      db.masterAddOn.findMany({ include: { city: true }, orderBy: { name: "asc" } }),
       db.masterRestaurant.findMany({ orderBy: { name: "asc" } }),
       db.masterPolicyTemplate.findMany({ orderBy: { name: "asc" } }),
       db.masterTitleTemplate.findMany({ orderBy: { title: "asc" } }),
       db.masterBannerImage.findMany({ orderBy: { label: "asc" } }),
       getMasterPlaceDefaults(),
+      getGlobalPolicy(),
     ]);
 
     const defaultInc = placeDefaultsRes.data?.defaultInclusions || [];
@@ -1320,6 +1441,7 @@ export async function getAllMasterDataForSelectors() {
         addOns,
         restaurants,
         policyTemplates,
+        globalPolicy: globalPolicyRes.data || null,
         titleTemplates,
         bannerImages,
         placeDefaults: placeDefaultsRes.data,
