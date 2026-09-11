@@ -101,6 +101,7 @@ export default async function NewTripPage() {
       bannerImages={bannersRes.data || []}
       tripsForCost={tripsCostRes.data || []}
       costRates={costRatesRes.data || []}
+      placeDefaults={placesRes.placeDefaults}
     />
   );
 }

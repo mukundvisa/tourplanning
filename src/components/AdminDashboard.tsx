@@ -298,7 +298,7 @@ export function AdminDashboard({ initialTrips }: AdminDashboardProps) {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-zinc-200/80">
             <div>
               <h2 className="text-2xl font-bold text-[#14213D] font-fraunces">
-                Travel Blueprints & Client Proposals
+                Travel Blueprints
               </h2>
               <p className="text-xs text-zinc-500 mt-0.5">
                 Review complete day-wise trip summaries, manage wholesale costs, and export client proposals.

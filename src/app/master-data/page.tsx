@@ -105,6 +105,7 @@ export default async function MasterDataPage() {
       tripsForCost={tripsCostRes.data || []}
       costRates={costRatesRes.data || []}
       generalSettings={settingsRes.data}
+      placeDefaults={placesRes.placeDefaults}
     />
   );
 }

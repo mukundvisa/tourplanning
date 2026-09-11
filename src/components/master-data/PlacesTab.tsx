@@ -17,6 +17,7 @@ import { DEFAULT_PLACE_CATEGORIES } from "@/lib/master-data-defaults";
 import { useRouter } from "next/navigation";
 import { Pagination } from "./Pagination";
 import { executeDeleteWithUndo } from "@/lib/delete-with-undo";
+import { RichTextEditor } from "../RichTextEditor";
 
 interface PlaceItem {
   id: string;
@@ -64,9 +65,16 @@ const PRESET_TRANSPORT_OPTIONS = [
 export function PlacesTab({
   initialData,
   cities,
+  initialPlaceDefaults,
+  initialCategories,
 }: {
   initialData: PlaceItem[];
   cities: CityOption[];
+  initialPlaceDefaults?: {
+    defaultInclusions?: string[];
+    defaultExclusions?: string[];
+  } | null;
+  initialCategories?: { id: string; name: string; isDefault?: boolean }[];
 }) {
   const router = useRouter();
   const [data, setData] = useState<PlaceItem[]>(initialData);
@@ -77,53 +85,72 @@ export function PlacesTab({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PlaceItem | null>(null);
 
-  const [categories, setCategories] = useState<{ id: string; name: string; isDefault?: boolean }[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string; isDefault?: boolean }[]>(() => 
+    initialCategories && initialCategories.length > 0
+      ? initialCategories
+      : DEFAULT_PLACE_CATEGORIES.map((name, i) => ({ id: `default-${i}`, name, isDefault: true }))
+  );
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [editingCat, setEditingCat] = useState<{ id: string; name: string } | null>(null);
   const [catSaving, setCatSaving] = useState(false);
+  const [expandedPlaceIds, setExpandedPlaceIds] = useState<Record<string, boolean>>({});
 
-  // Central Default Inclusions & Exclusions State
-  const [defaultInclusions, setDefaultInclusions] = useState<string[]>([
-    "Entry Ticket & Monument Access",
-    "Professional Local Tour Guide",
-    "Private Air-Conditioned Vehicle Transfers",
-    "Complimentary Bottled Drinking Water",
-  ]);
-  const [defaultExclusions, setDefaultExclusions] = useState<string[]>([
-    "Personal Souvenirs & Shopping Expenses",
-    "Optional Adventure / Special Activity Upgrades",
-    "Meals, Snacks & Beverages (unless specified)",
-    "Special Camera / Video Recording Permissions",
-  ]);
+  const toggleExpandPlace = (id: string) => {
+    setExpandedPlaceIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Central Default Inclusions & Exclusions State initialized directly from DB server props
+  const [defaultInclusions, setDefaultInclusions] = useState<string[]>(
+    () => initialPlaceDefaults?.defaultInclusions || []
+  );
+  const [defaultExclusions, setDefaultExclusions] = useState<string[]>(
+    () => initialPlaceDefaults?.defaultExclusions || []
+  );
   const [newDefaultIncInput, setNewDefaultIncInput] = useState("");
   const [newDefaultExcInput, setNewDefaultExcInput] = useState("");
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [defaultsSavedNotice, setDefaultsSavedNotice] = useState(false);
 
-  // Load defaults and categories from server
+  // Sync when initialPlaceDefaults prop updates
+  useEffect(() => {
+    if (initialPlaceDefaults) {
+      if (initialPlaceDefaults.defaultInclusions) {
+        setDefaultInclusions(initialPlaceDefaults.defaultInclusions);
+      }
+      if (initialPlaceDefaults.defaultExclusions) {
+        setDefaultExclusions(initialPlaceDefaults.defaultExclusions);
+      }
+    }
+  }, [initialPlaceDefaults]);
+
+  // Load categories and fallback defaults only if not provided by server
   useEffect(() => {
     async function loadData() {
-      const [defaultsRes, catRes] = await Promise.all([
-        getMasterPlaceDefaults(),
-        getMasterPlaceCategories(),
-      ]);
+      const promises: Promise<any>[] = [getMasterPlaceCategories()];
+      if (!initialPlaceDefaults) {
+        promises.push(getMasterPlaceDefaults());
+      }
 
-      if (defaultsRes.success && defaultsRes.data) {
-        if (defaultsRes.data.defaultInclusions && defaultsRes.data.defaultInclusions.length > 0) {
+      const results = await Promise.all(promises);
+      const catRes = results[0];
+      const defaultsRes = results[1];
+
+      if (catRes?.success && catRes.data && catRes.data.length > 0) {
+        setCategories(catRes.data);
+      }
+
+      if (defaultsRes?.success && defaultsRes.data) {
+        if (defaultsRes.data.defaultInclusions) {
           setDefaultInclusions(defaultsRes.data.defaultInclusions);
         }
-        if (defaultsRes.data.defaultExclusions && defaultsRes.data.defaultExclusions.length > 0) {
+        if (defaultsRes.data.defaultExclusions) {
           setDefaultExclusions(defaultsRes.data.defaultExclusions);
         }
       }
-
-      if (catRes.success && catRes.data) {
-        setCategories(catRes.data);
-      }
     }
     loadData();
-  }, []);
+  }, [initialPlaceDefaults]);
 
   const handleSaveDefaults = async () => {
     setSavingDefaults(true);
@@ -186,6 +213,7 @@ export function PlacesTab({
     name: string;
     cityId: string;
     category: string;
+    categories: string[];
     description: string;
     requiresSpecialTransport: boolean;
     specialTransportOptions: string[];
@@ -195,12 +223,31 @@ export function PlacesTab({
     name: "",
     cityId: "",
     category: "Sightseeing",
+    categories: ["Sightseeing"],
     description: "",
     requiresSpecialTransport: false,
     specialTransportOptions: ["Car", "Auto-rickshaw"],
     inclusions: [],
     exclusions: [],
   });
+
+  const toggleCategory = (catName: string) => {
+    setFormData((prev) => {
+      const exists = prev.categories.includes(catName);
+      let updated: string[];
+      if (exists) {
+        updated = prev.categories.filter((c) => c !== catName);
+        if (updated.length === 0) updated = ["Sightseeing"];
+      } else {
+        updated = [...prev.categories, catName];
+      }
+      return {
+        ...prev,
+        categories: updated,
+        category: updated.join(", "),
+      };
+    });
+  };
 
   const [inclusionInput, setInclusionInput] = useState("");
   const [exclusionInput, setExclusionInput] = useState("");
@@ -225,6 +272,7 @@ export function PlacesTab({
       name: "",
       cityId: selectedCityId !== "all" ? selectedCityId : cities[0]?.id || "",
       category: "Sightseeing",
+      categories: ["Sightseeing"],
       description: "",
       requiresSpecialTransport: false,
       specialTransportOptions: ["Car", "Auto-rickshaw"],
@@ -239,10 +287,15 @@ export function PlacesTab({
 
   const openEdit = (item: PlaceItem) => {
     setEditingItem(item);
+    const parsedCats = item.category
+      ? item.category.split(",").map((c) => c.trim()).filter(Boolean)
+      : ["Sightseeing"];
+
     setFormData({
       name: item.name,
       cityId: item.cityId || cities[0]?.id || "",
       category: item.category || "Sightseeing",
+      categories: parsedCats.length > 0 ? parsedCats : ["Sightseeing"],
       description: item.description || "",
       requiresSpecialTransport: !!item.requiresSpecialTransport,
       specialTransportOptions:
@@ -327,8 +380,13 @@ export function PlacesTab({
 
     setSaving(true);
     try {
+      const payload = {
+        ...formData,
+        category: formData.categories.join(", ") || formData.category || "Sightseeing",
+      };
+
       if (editingItem) {
-        const res = await updateMasterPlace(editingItem.id, formData);
+        const res = await updateMasterPlace(editingItem.id, payload);
         if (res.success && res.data) {
           const updated = {
             ...res.data,
@@ -345,7 +403,7 @@ export function PlacesTab({
           router.refresh();
         }
       } else {
-        const res = await createMasterPlace(formData);
+        const res = await createMasterPlace(payload);
         if (res.success && res.data) {
           const created = {
             ...res.data,
@@ -648,9 +706,20 @@ export function PlacesTab({
                               <span>{cityName}</span>
                             </span>
                             {place.category && (
-                              <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
-                                {place.category}
-                              </span>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {place.category
+                                  .split(",")
+                                  .map((c) => c.trim())
+                                  .filter(Boolean)
+                                  .map((catName, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200/50"
+                                    >
+                                      {catName}
+                                    </span>
+                                  ))}
+                              </div>
                             )}
                           </div>
                           <h3 className="text-sm font-bold text-[#14213D] truncate">{place.name}</h3>
@@ -675,9 +744,10 @@ export function PlacesTab({
                       </div>
 
                       {place.description ? (
-                        <p className="text-xs text-zinc-500 line-clamp-2 leading-relaxed">
-                          {place.description}
-                        </p>
+                        <div
+                          className="text-xs text-zinc-600 line-clamp-3 leading-relaxed prose prose-xs max-w-none [&>p]:mb-1 [&>ul]:list-disc [&>ul]:pl-4 [&>ol]:list-decimal [&>ol]:pl-4"
+                          dangerouslySetInnerHTML={{ __html: place.description }}
+                        />
                       ) : (
                         <p className="text-[11px] text-zinc-300 italic">No description added</p>
                       )}
@@ -806,11 +876,11 @@ export function PlacesTab({
                 />
               </div>
 
-              {/* Category */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
+              {/* Multi-Select Category Picker */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <label className="block text-xs font-semibold text-zinc-700">
-                    Category
+                    Categories
                   </label>
                   <button
                     type="button"
@@ -820,30 +890,41 @@ export function PlacesTab({
                     + Manage Categories
                   </button>
                 </div>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none cursor-pointer font-medium"
-                >
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.name}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-wrap gap-1.5 p-2.5 bg-zinc-50 border border-zinc-200 rounded-lg max-h-36 overflow-y-auto">
+                  {categories.map((cat) => {
+                    const isSelected = formData.categories.includes(cat.name);
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => toggleCategory(cat.name)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer select-none ${
+                          isSelected
+                            ? "bg-[#B8944F] text-white font-semibold shadow-xs border border-[#B8944F]"
+                            : "bg-white text-zinc-600 hover:bg-zinc-100/90 border border-zinc-200 hover:border-zinc-300"
+                        }`}
+                      >
+                        {isSelected ? (
+                          <Check className="h-3 w-3 stroke-[2.5]" />
+                        ) : (
+                          <Plus className="h-3 w-3 text-zinc-400" />
+                        )}
+                        <span>{cat.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Description */}
+              {/* Description (Visual Rich Text Editor) */}
               <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Description / Historical Significance
+                <label className="block text-xs font-semibold text-zinc-700 mb-1.5 flex items-center justify-between">
+                  <span>Description / Historical Significance</span>
                 </label>
-                <textarea
-                  rows={3}
+                <RichTextEditor
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(val) => setFormData({ ...formData, description: val })}
                   placeholder="Detailed note about the spot, timing recommendations, or significance..."
-                  className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-xs focus:ring-1 focus:ring-[#B8944F] outline-none leading-relaxed"
                 />
               </div>
 
@@ -865,9 +946,6 @@ export function PlacesTab({
                     <span className="text-xs font-bold text-[#14213D] leading-tight">
                       Requires Dedicated / Special Transport
                     </span>
-                    <p className="text-[11px] text-zinc-500 leading-normal mt-0.5">
-                      Check if visitors need special transport to reach this place (e.g. Boat, Helicopter, Horse, Palki, etc.)
-                    </p>
                   </div>
                 </label>
 

@@ -50,7 +50,6 @@ export function HotelsTab({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<HotelItem | null>(null);
   const [viewGalleryHotel, setViewGalleryHotel] = useState<HotelItem | null>(null);
-  const [activeGalleryCategory, setActiveGalleryCategory] = useState<string>("all");
 
   // Form State
   const [formData, setFormData] = useState({
@@ -362,24 +361,18 @@ export function HotelsTab({
                           </span>
                           <button
                             type="button"
-                            onClick={() => {
-                              setViewGalleryHotel(hotel);
-                              setActiveGalleryCategory("all");
-                            }}
+                            onClick={() => setViewGalleryHotel(hotel)}
                             className="inline-flex items-center space-x-1 text-[10px] font-bold text-[#B8944F] hover:text-[#8F6F33] cursor-pointer"
                           >
                             <Eye className="h-3 w-3" />
-                            <span>View Categorized Photos</span>
+                            <span>View Hotel Photos</span>
                           </button>
                         </div>
                         <div className="flex space-x-2 overflow-x-auto py-1">
                           {hotel.photos.slice(0, 4).map((p, idx) => (
                             <div
                               key={idx}
-                              onClick={() => {
-                                setViewGalleryHotel(hotel);
-                                setActiveGalleryCategory("all");
-                              }}
+                              onClick={() => setViewGalleryHotel(hotel)}
                               className="h-16 w-24 rounded-lg overflow-hidden shrink-0 border border-zinc-200 cursor-pointer hover:opacity-90 transition-opacity"
                             >
                               <img src={p} alt="Photo" className="h-full w-full object-cover" />
@@ -387,10 +380,7 @@ export function HotelsTab({
                           ))}
                           {hotel.photos.length > 4 && (
                             <div
-                              onClick={() => {
-                                setViewGalleryHotel(hotel);
-                                setActiveGalleryCategory("all");
-                              }}
+                              onClick={() => setViewGalleryHotel(hotel)}
                               className="h-16 w-16 rounded-lg bg-zinc-100 flex items-center justify-center text-xs font-bold text-zinc-500 shrink-0 cursor-pointer hover:bg-zinc-200"
                             >
                               +{hotel.photos.length - 4}
@@ -436,16 +426,13 @@ export function HotelsTab({
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100 mb-4">
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#B8944F]/10 text-[#B8944F]">
-                    Authentic Photos
-                  </span>
                   <h3 className="text-base font-bold text-[#14213D] font-fraunces">
                     {viewGalleryHotel.name}
                   </h3>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#B8944F]/10 text-[#B8944F]">
+                    Hotel Photos
+                  </span>
                 </div>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Categorized web and hotel property photos ({viewGalleryHotel.photos.length} total)
-                </p>
               </div>
               <button
                 onClick={() => setViewGalleryHotel(null)}
@@ -453,30 +440,6 @@ export function HotelsTab({
               >
                 <X className="h-5 w-5" />
               </button>
-            </div>
-
-            {/* Category Filter Tabs */}
-            <div className="flex flex-wrap gap-1.5 pb-4 border-b border-zinc-100 mb-4">
-              {[
-                { id: "all", label: `All Photos (${viewGalleryHotel.photos.length})` },
-                { id: "exterior", label: "🏛️ Exterior & Facade" },
-                { id: "lobby", label: "🛋️ Lobby & Reception" },
-                { id: "rooms", label: "🛏️ Rooms & Suites" },
-                { id: "bath", label: "🚿 Bathrooms" },
-                { id: "facilities", label: "🏊 Amenities & Pool" },
-              ].map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveGalleryCategory(cat.id)}
-                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                    activeGalleryCategory === cat.id
-                      ? "bg-[#14213D] text-[#DDA74F] shadow-xs"
-                      : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
             </div>
 
             {/* Photos Grid */}
@@ -603,7 +566,7 @@ export function HotelsTab({
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Guest Score (e.g. 4.8)
+                    Guest Score
                   </label>
                   <input
                     type="number"
@@ -619,7 +582,7 @@ export function HotelsTab({
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Guest Score Label (e.g. Exceptional)
+                    Guest Score Label
                   </label>
                   <input
                     type="text"
@@ -636,7 +599,7 @@ export function HotelsTab({
               {/* Scoped Room Types */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Scoped Room Types (Options available to select in Step 4)
+                  Scoped Room Types
                 </label>
                 <div className="flex gap-1 mb-2">
                   <input
@@ -701,7 +664,7 @@ export function HotelsTab({
               {/* Scoped Meal Plans */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  Scoped Meal Plans (Options available in Step 4)
+                  Scoped Meal Plans
                 </label>
                 <div className="flex gap-1 mb-2">
                   <input

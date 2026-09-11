@@ -233,9 +233,6 @@ export function AdminCostCalculationTab({
             <span className="text-xs font-bold text-[#6B7A5E] uppercase tracking-wider block">
               Internal Admin Only — Confidential Financial Margins
             </span>
-            <p className="text-xs text-zinc-600">
-              The cost breakdowns, wholesale rates, net profits, and margins computed here are strictly segregated and <strong>never exported to client PDF proposals</strong>.
-            </p>
           </div>
         </div>
         <button
@@ -253,9 +250,6 @@ export function AdminCostCalculationTab({
           <h2 className="text-xl font-bold text-[#14213D] font-fraunces">
             Trip Profitability & Cost Engine
           </h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Select a trip itinerary to view and adjust line-item wholesale costs, net margins, and profitability.
-          </p>
         </div>
       </div>
 

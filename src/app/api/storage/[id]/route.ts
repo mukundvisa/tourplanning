@@ -10,14 +10,12 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // 1. Try querying StorageFile table
+    // 1. Query StorageFile table
     try {
-      const rows: any = await db.$queryRawUnsafe(
-        `SELECT "filename", "mimeType", "dataBase64" FROM "StorageFile" WHERE id = $1 LIMIT 1;`,
-        id
-      );
-      if (rows && rows.length > 0) {
-        const file = rows[0];
+      const file = await db.storageFile.findUnique({
+        where: { id },
+      });
+      if (file) {
         const buffer = Buffer.from(file.dataBase64, "base64");
         return new NextResponse(buffer, {
           status: 200,
@@ -28,8 +26,8 @@ export async function GET(
           },
         });
       }
-    } catch (e) {
-      console.warn("StorageFile query failed:", e);
+    } catch (e: any) {
+      console.warn("StorageFile query failed:", e.message);
     }
 
     return new NextResponse("File Not Found", { status: 404 });

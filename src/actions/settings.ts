@@ -15,22 +15,22 @@ export async function getSiteLogoSettings(): Promise<{ success: boolean; data: S
 
     // 1. Query GeneralSettings table from database
     try {
-      const rows: any = await db.$queryRawUnsafe(
-        `SELECT "companyLogo", "watermarkOpacity" FROM "GeneralSettings" WHERE id = 'default' LIMIT 1;`
-      );
-      if (rows && rows.length > 0) {
-        if (rows[0].companyLogo !== undefined && rows[0].companyLogo !== null) {
-          logoUrl = rows[0].companyLogo;
+      const record = await db.generalSettings.findFirst({
+        where: { id: "default" },
+      });
+      if (record) {
+        if (record.companyLogo !== undefined && record.companyLogo !== null) {
+          logoUrl = record.companyLogo;
         }
-        if (rows[0].watermarkOpacity !== null && rows[0].watermarkOpacity !== undefined) {
-          const parsed = Number(rows[0].watermarkOpacity);
+        if (record.watermarkOpacity !== null && record.watermarkOpacity !== undefined) {
+          const parsed = Number(record.watermarkOpacity);
           if (!isNaN(parsed) && parsed > 0) {
             watermarkOpacity = parsed;
           }
         }
       }
-    } catch (e) {
-      console.warn("Could not query GeneralSettings table directly:", e);
+    } catch (e: any) {
+      console.warn("Could not query GeneralSettings directly:", e.message);
     }
 
     return {
@@ -41,7 +41,7 @@ export async function getSiteLogoSettings(): Promise<{ success: boolean; data: S
       },
     };
   } catch (err: any) {
-    console.error("Error in getSiteLogoSettings:", err);
+    console.error("Error in getSiteLogoSettings:", err.message);
     return {
       success: true,
       data: {
@@ -73,29 +73,23 @@ export async function updateSiteLogoSettings(data: {
   try {
     const opacity = data.watermarkOpacity !== undefined ? Number(data.watermarkOpacity) : 0.06;
 
-    // 1. Persist exclusively to GeneralSettings table in PostgreSQL
+    // 1. Persist to GeneralSettings using native Prisma upsert
     try {
-      await db.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "GeneralSettings" (
-          "id" TEXT PRIMARY KEY,
-          "companyName" TEXT DEFAULT 'TripPlanner',
-          "companyLogo" TEXT,
-          "watermarkOpacity" DOUBLE PRECISION DEFAULT 0.06,
-          "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      await db.$executeRawUnsafe(
-        `
-        INSERT INTO "GeneralSettings" ("id", "companyLogo", "watermarkOpacity", "updatedAt")
-        VALUES ('default', $1, $2, CURRENT_TIMESTAMP)
-        ON CONFLICT ("id") DO UPDATE SET "companyLogo" = $1, "watermarkOpacity" = $2, "updatedAt" = CURRENT_TIMESTAMP;
-      `,
-        data.logoUrl,
-        opacity
-      );
-    } catch (e) {
-      console.error("Could not upsert into GeneralSettings table:", e);
+      await db.generalSettings.upsert({
+        where: { id: "default" },
+        update: {
+          companyLogo: data.logoUrl,
+          watermarkOpacity: opacity,
+        },
+        create: {
+          id: "default",
+          companyName: "TripPlanner",
+          companyLogo: data.logoUrl,
+          watermarkOpacity: opacity,
+        },
+      });
+    } catch (e: any) {
+      console.error("Could not upsert into GeneralSettings:", e.message);
       throw new Error("Failed to save settings to database");
     }
 

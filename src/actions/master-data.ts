@@ -8,6 +8,7 @@ import {
   DEFAULT_ADDON_CATEGORIES,
   DEFAULT_RESTAURANT_CATEGORIES,
 } from "@/lib/master-data-defaults";
+import { sanitizeRichText } from "@/lib/sanitize-html";
 
 // ==========================================
 // OVERVIEW STATS & ANALYTICS
@@ -353,34 +354,29 @@ export async function deleteMasterPricingLabel(id: string) {
 // ==========================================
 export async function getMasterPlaceDefaults() {
   try {
-    const records = await db.$queryRaw<any[]>`
-      SELECT id, "defaultInclusions", "defaultExclusions", "createdAt", "updatedAt"
-      FROM "MasterPlaceDefault"
-      LIMIT 1
-    `;
-    if (records && records.length > 0) {
+    const record = await db.masterPlaceDefault.findFirst();
+    if (record) {
       return {
         success: true,
         data: {
-          id: records[0].id,
-          defaultInclusions: Array.isArray(records[0].defaultInclusions) ? records[0].defaultInclusions : [],
-          defaultExclusions: Array.isArray(records[0].defaultExclusions) ? records[0].defaultExclusions : [],
+          id: record.id,
+          defaultInclusions: Array.isArray(record.defaultInclusions) ? record.defaultInclusions : [],
+          defaultExclusions: Array.isArray(record.defaultExclusions) ? record.defaultExclusions : [],
         },
       };
     }
 
     const fallbackDefaults = {
       defaultInclusions: [
-        "Entry Ticket & Monument Access",
-        "Professional Local Tour Guide",
-        "Private Air-Conditioned Vehicle Transfers",
-        "Complimentary Bottled Drinking Water",
+        "Local sightseeing",
+        "Local transportation as per itinerary",
+        "Driver charges",
+        "Parking and toll charges",
       ],
       defaultExclusions: [
-        "Personal Souvenirs & Shopping Expenses",
-        "Optional Adventure / Special Activity Upgrades",
-        "Meals, Snacks & Beverages (unless specified)",
-        "Special Camera / Video Recording Permissions",
+        "Personal expenses",
+        "Food and drinks unless mentioned",
+        "Any additional sightseeing",
       ],
     };
 
@@ -392,22 +388,21 @@ export async function getMasterPlaceDefaults() {
       },
     };
   } catch (err: any) {
-    console.error("Error in getMasterPlaceDefaults:", err);
+    console.error("Error in getMasterPlaceDefaults:", err.message);
     return {
       success: true,
       data: {
         id: "default",
         defaultInclusions: [
-          "Entry Ticket & Monument Access",
-          "Professional Local Tour Guide",
-          "Private Air-Conditioned Vehicle Transfers",
-          "Complimentary Bottled Drinking Water",
+          "Local sightseeing",
+          "Local transportation as per itinerary",
+          "Driver charges",
+          "Parking and toll charges",
         ],
         defaultExclusions: [
-          "Personal Souvenirs & Shopping Expenses",
-          "Optional Adventure / Special Activity Upgrades",
-          "Meals, Snacks & Beverages (unless specified)",
-          "Special Camera / Video Recording Permissions",
+          "Personal expenses",
+          "Food and drinks unless mentioned",
+          "Any additional sightseeing",
         ],
       },
     };
@@ -419,28 +414,28 @@ export async function updateMasterPlaceDefaults(formData: {
   defaultExclusions: string[];
 }) {
   try {
-    const existing = await db.$queryRaw<any[]>`
-      SELECT id FROM "MasterPlaceDefault" LIMIT 1
-    `;
-    if (existing && existing.length > 0) {
-      await db.$executeRaw`
-        UPDATE "MasterPlaceDefault"
-        SET "defaultInclusions" = ${formData.defaultInclusions},
-            "defaultExclusions" = ${formData.defaultExclusions},
-            "updatedAt" = NOW()
-        WHERE id = ${existing[0].id}
-      `;
+    const existing = await db.masterPlaceDefault.findFirst();
+    if (existing) {
+      await db.masterPlaceDefault.update({
+        where: { id: existing.id },
+        data: {
+          defaultInclusions: formData.defaultInclusions || [],
+          defaultExclusions: formData.defaultExclusions || [],
+        },
+      });
     } else {
-      await db.$executeRaw`
-        INSERT INTO "MasterPlaceDefault" (id, "defaultInclusions", "defaultExclusions", "createdAt", "updatedAt")
-        VALUES (gen_random_uuid(), ${formData.defaultInclusions}, ${formData.defaultExclusions}, NOW(), NOW())
-      `;
+      await db.masterPlaceDefault.create({
+        data: {
+          defaultInclusions: formData.defaultInclusions || [],
+          defaultExclusions: formData.defaultExclusions || [],
+        },
+      });
     }
     revalidatePath("/master-data");
     revalidatePath("/");
     return { success: true };
   } catch (err: any) {
-    console.error("Error updating place defaults:", err);
+    console.error("Error updating place defaults:", err.message);
     return { success: false, error: err.message || "Failed to update place defaults" };
   }
 }
@@ -490,7 +485,7 @@ export async function createMasterPlace(formData: {
         name: formData.name.trim(),
         cityId: formData.cityId,
         category: formData.category?.trim() || "Sightseeing",
-        description: formData.description?.trim() || null,
+        description: formData.description ? sanitizeRichText(formData.description.trim()) : null,
         inclusions: formData.inclusions || [],
         exclusions: formData.exclusions || [],
         requiresSpecialTransport: Boolean(formData.requiresSpecialTransport),
@@ -524,7 +519,7 @@ export async function updateMasterPlace(
         name: formData.name.trim(),
         cityId: formData.cityId,
         category: formData.category?.trim() || "Sightseeing",
-        description: formData.description?.trim() || null,
+        description: formData.description ? sanitizeRichText(formData.description.trim()) : null,
         inclusions: formData.inclusions || [],
         exclusions: formData.exclusions || [],
         requiresSpecialTransport: Boolean(formData.requiresSpecialTransport),
@@ -683,8 +678,8 @@ export async function createMasterFlightRoute(formData: {
   flightCodeDefault?: string;
   typicalStops?: number;
   typicalLayoverInfo?: string;
-  cabinBaggageKg?: number;
-  checkInBaggageKg?: number;
+  cabinBaggageKg?: number | null;
+  checkInBaggageKg?: number | null;
   cancellationPolicy?: string;
   flightNotes?: string;
   type?: string;
@@ -698,6 +693,7 @@ export async function createMasterFlightRoute(formData: {
   titleTemplateId?: string;
 }) {
   try {
+    const isLocal = formData.transportCategory === "Local Transfer";
     const data = await db.masterFlightRoute.create({
       data: {
         sector: formData.sector.trim(),
@@ -705,8 +701,8 @@ export async function createMasterFlightRoute(formData: {
         flightCodeDefault: formData.flightCodeDefault?.trim() || null,
         typicalStops: Number(formData.typicalStops || 0),
         typicalLayoverInfo: formData.typicalLayoverInfo?.trim() || null,
-        cabinBaggageKg: formData.cabinBaggageKg ? Number(formData.cabinBaggageKg) : 7,
-        checkInBaggageKg: formData.checkInBaggageKg ? Number(formData.checkInBaggageKg) : 20,
+        cabinBaggageKg: formData.cabinBaggageKg != null && !isNaN(Number(formData.cabinBaggageKg)) ? Number(formData.cabinBaggageKg) : null,
+        checkInBaggageKg: formData.checkInBaggageKg != null && !isNaN(Number(formData.checkInBaggageKg)) ? Number(formData.checkInBaggageKg) : null,
         cancellationPolicy: formData.cancellationPolicy?.trim() || null,
         flightNotes: formData.flightNotes?.trim() || null,
         type: formData.type || "Flight",
@@ -714,10 +710,13 @@ export async function createMasterFlightRoute(formData: {
         transportCategory: formData.transportCategory || (formData.fromCity && formData.toCity ? "Inter-City Transfer" : "Local Transfer"),
         fromCity: formData.fromCity?.trim() || null,
         fromCityId: formData.fromCityId || null,
-        toCity: formData.toCity?.trim() || null,
-        toCityId: formData.toCityId || null,
+        toCity: isLocal ? null : (formData.toCity?.trim() || null),
+        toCityId: isLocal ? null : (formData.toCityId || null),
         cityId: formData.cityId || null,
         titleTemplateId: formData.titleTemplateId || null,
+      },
+      include: {
+        city: true,
       },
     });
     revalidatePath("/master-data");
@@ -733,8 +732,8 @@ export async function updateMasterFlightRoute(id: string, formData: {
   flightCodeDefault?: string;
   typicalStops?: number;
   typicalLayoverInfo?: string;
-  cabinBaggageKg?: number;
-  checkInBaggageKg?: number;
+  cabinBaggageKg?: number | null;
+  checkInBaggageKg?: number | null;
   cancellationPolicy?: string;
   flightNotes?: string;
   type?: string;
@@ -748,6 +747,7 @@ export async function updateMasterFlightRoute(id: string, formData: {
   titleTemplateId?: string;
 }) {
   try {
+    const isLocal = formData.transportCategory === "Local Transfer";
     const data = await db.masterFlightRoute.update({
       where: { id },
       data: {
@@ -756,8 +756,8 @@ export async function updateMasterFlightRoute(id: string, formData: {
         flightCodeDefault: formData.flightCodeDefault?.trim() || null,
         typicalStops: Number(formData.typicalStops || 0),
         typicalLayoverInfo: formData.typicalLayoverInfo?.trim() || null,
-        cabinBaggageKg: formData.cabinBaggageKg ? Number(formData.cabinBaggageKg) : 7,
-        checkInBaggageKg: formData.checkInBaggageKg ? Number(formData.checkInBaggageKg) : 20,
+        cabinBaggageKg: formData.cabinBaggageKg != null && !isNaN(Number(formData.cabinBaggageKg)) ? Number(formData.cabinBaggageKg) : null,
+        checkInBaggageKg: formData.checkInBaggageKg != null && !isNaN(Number(formData.checkInBaggageKg)) ? Number(formData.checkInBaggageKg) : null,
         cancellationPolicy: formData.cancellationPolicy?.trim() || null,
         flightNotes: formData.flightNotes?.trim() || null,
         type: formData.type || "Flight",
@@ -765,10 +765,13 @@ export async function updateMasterFlightRoute(id: string, formData: {
         transportCategory: formData.transportCategory || (formData.fromCity && formData.toCity ? "Inter-City Transfer" : "Local Transfer"),
         fromCity: formData.fromCity?.trim() || null,
         fromCityId: formData.fromCityId || null,
-        toCity: formData.toCity?.trim() || null,
-        toCityId: formData.toCityId || null,
+        toCity: isLocal ? null : (formData.toCity?.trim() || null),
+        toCityId: isLocal ? null : (formData.toCityId || null),
         cityId: formData.cityId || null,
         titleTemplateId: formData.titleTemplateId || null,
+      },
+      include: {
+        city: true,
       },
     });
     revalidatePath("/master-data");

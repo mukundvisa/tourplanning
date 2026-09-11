@@ -145,17 +145,34 @@ export function FlightRoutesTab({
     loadVehicleTypes();
   }, []);
 
-  const activeVehicleType = vehicleTypes.find((vt) => vt.name.toLowerCase() === formData.type.toLowerCase()) || {
-    id: "default",
-    name: formData.type,
-    applicableFields: ["travelTime", "flightNotes", "cabinBaggageKg", "checkInBaggageKg", "typicalStops"],
-  };
+  const isFieldApplicable = (fieldKey: string, typeName?: string) => {
+    const t = typeName || formData.type;
+    const matched =
+      vehicleTypes.find((vt) => vt.name.toLowerCase() === (t || "").toLowerCase()) ||
+      DEFAULT_VEHICLE_TYPES.find((vt) => vt.name.toLowerCase() === (t || "").toLowerCase());
 
-  const isFieldApplicable = (fieldKey: string) => {
-    if (!activeVehicleType.applicableFields || activeVehicleType.applicableFields.length === 0) {
-      return true;
+    if (matched && Array.isArray(matched.applicableFields) && matched.applicableFields.length > 0) {
+      return matched.applicableFields.includes(fieldKey);
     }
-    return activeVehicleType.applicableFields.includes(fieldKey);
+
+    const lower = (t || "").toLowerCase();
+    if (lower === "flight") return true;
+    if (lower === "train") {
+      return ["flightCodeDefault", "travelTime", "typicalStops", "cabinBaggageKg", "cancellationPolicy", "flightNotes"].includes(fieldKey);
+    }
+    if (["bus", "luxury coach"].includes(lower)) {
+      return ["travelTime", "typicalStops", "cancellationPolicy", "flightNotes"].includes(fieldKey);
+    }
+    if (["car", "sedan", "suv", "tempo traveller", "auto rickshaw"].includes(lower)) {
+      return ["travelTime", "flightNotes"].includes(fieldKey);
+    }
+    if (["ferry / boat", "boat", "ferry"].includes(lower)) {
+      return ["travelTime", "cancellationPolicy", "flightNotes"].includes(fieldKey);
+    }
+    if (lower === "helicopter") {
+      return ["travelTime", "cabinBaggageKg", "cancellationPolicy", "flightNotes"].includes(fieldKey);
+    }
+    return false;
   };
 
   const filtered = data.filter((f) => {
@@ -180,21 +197,22 @@ export function FlightRoutesTab({
 
   const openCreate = () => {
     setEditingItem(null);
-    const defaultType = vehicleTypes[0]?.name || "Car";
+    const defaultType = vehicleTypes[0]?.name || "Flight";
+    const hasBaggage = isFieldApplicable("cabinBaggageKg", defaultType);
     setFormData({
       transportCategory: "Inter-City Transfer",
       fromCity: cities[0]?.name || "",
       toCity: cities[1]?.name || "",
       cityName: cities[0]?.name || "",
       sector: cities[0] && cities[1] ? `${cities[0].name} to ${cities[1].name}` : "",
-      airline: "Dedicated AC Vehicle",
+      airline: defaultType === "Flight" ? "IndiGo" : defaultType === "Bus" ? "Volvo AC Sleeper" : "Dedicated AC Vehicle",
       flightCodeDefault: "",
       typicalStops: 0,
       typicalLayoverInfo: "Non-stop direct transfer",
-      cabinBaggageKg: "7",
-      checkInBaggageKg: "20",
+      cabinBaggageKg: hasBaggage ? "7" : "",
+      checkInBaggageKg: hasBaggage ? "20" : "",
       cancellationPolicy: "Partially refundable up to 48 hours prior to departure.",
-      flightNotes: "Private chauffeur transfer with toll & parking included.",
+      flightNotes: defaultType === "Flight" ? "Standard commercial flight." : "Private chauffeur transfer with fuel & parking included.",
       type: defaultType,
       travelTime: "08:00 AM",
     });
@@ -204,21 +222,22 @@ export function FlightRoutesTab({
   const openEdit = (item: FlightRouteItem) => {
     setEditingItem(item);
     const category = (item.transportCategory || (item.fromCity && item.toCity ? "Inter-City Transfer" : "Local Transfer")) as "Inter-City Transfer" | "Local Transfer";
+    const localCityName = item.city?.name || (item.cityId ? cities.find((c) => c.id === item.cityId)?.name : "") || item.fromCity || "";
     setFormData({
       transportCategory: category,
       fromCity: item.fromCity || "",
       toCity: item.toCity || "",
-      cityName: item.city?.name || item.fromCity || "",
+      cityName: localCityName,
       sector: item.sector,
       airline: item.airline,
       flightCodeDefault: item.flightCodeDefault || "",
       typicalStops: item.typicalStops || 0,
       typicalLayoverInfo: item.typicalLayoverInfo || "",
-      cabinBaggageKg: item.cabinBaggageKg?.toString() || "7",
-      checkInBaggageKg: item.checkInBaggageKg?.toString() || "20",
+      cabinBaggageKg: item.cabinBaggageKg != null ? item.cabinBaggageKg.toString() : "",
+      checkInBaggageKg: item.checkInBaggageKg != null ? item.checkInBaggageKg.toString() : "",
       cancellationPolicy: item.cancellationPolicy || "",
       flightNotes: item.flightNotes || "",
-      type: item.type || "Car",
+      type: item.type || "Flight",
       travelTime: item.travelTime || "08:00 AM",
     });
     setModalOpen(true);
@@ -251,26 +270,27 @@ export function FlightRoutesTab({
       return;
     }
 
-    const matchedCity = cities.find((c) => c.name.toLowerCase() === formData.cityName.toLowerCase());
-    const matchedFromCity = cities.find((c) => c.name.toLowerCase() === formData.fromCity.toLowerCase());
-    const matchedToCity = cities.find((c) => c.name.toLowerCase() === formData.toCity.toLowerCase());
+    const isLocal = formData.transportCategory === "Local Transfer";
+    const matchedCity = cities.find((c) => c.name.toLowerCase() === (formData.cityName || "").toLowerCase());
+    const matchedFromCity = cities.find((c) => c.name.toLowerCase() === (formData.fromCity || "").toLowerCase());
+    const matchedToCity = cities.find((c) => c.name.toLowerCase() === (formData.toCity || "").toLowerCase());
 
     setSaving(true);
     try {
       const payload = {
         transportCategory: formData.transportCategory,
-        fromCity: formData.transportCategory === "Inter-City Transfer" ? formData.fromCity : undefined,
-        fromCityId: formData.transportCategory === "Inter-City Transfer" ? matchedFromCity?.id : undefined,
-        toCity: formData.transportCategory === "Inter-City Transfer" ? formData.toCity : undefined,
-        toCityId: formData.transportCategory === "Inter-City Transfer" ? matchedToCity?.id : undefined,
-        cityId: formData.transportCategory === "Local Transfer" ? matchedCity?.id : undefined,
+        fromCity: isLocal ? (formData.cityName || undefined) : (formData.fromCity || undefined),
+        fromCityId: isLocal ? (matchedCity?.id || undefined) : (matchedFromCity?.id || undefined),
+        toCity: isLocal ? undefined : (formData.toCity || undefined),
+        toCityId: isLocal ? undefined : (matchedToCity?.id || undefined),
+        cityId: isLocal ? (matchedCity?.id || undefined) : undefined,
         sector: computedSector,
         airline: formData.airline.trim(),
         flightCodeDefault: isFieldApplicable("flightCodeDefault") ? (formData.flightCodeDefault.trim() || undefined) : undefined,
         typicalStops: isFieldApplicable("typicalStops") ? Number(formData.typicalStops || 0) : 0,
         typicalLayoverInfo: isFieldApplicable("typicalLayoverInfo") ? (formData.typicalLayoverInfo.trim() || undefined) : undefined,
-        cabinBaggageKg: isFieldApplicable("cabinBaggageKg") ? (parseInt(formData.cabinBaggageKg) || 7) : undefined,
-        checkInBaggageKg: isFieldApplicable("checkInBaggageKg") ? (parseInt(formData.checkInBaggageKg) || 20) : undefined,
+        cabinBaggageKg: isFieldApplicable("cabinBaggageKg") && formData.cabinBaggageKg !== "" && !isNaN(Number(formData.cabinBaggageKg)) ? Number(formData.cabinBaggageKg) : null,
+        checkInBaggageKg: isFieldApplicable("checkInBaggageKg") && formData.checkInBaggageKg !== "" && !isNaN(Number(formData.checkInBaggageKg)) ? Number(formData.checkInBaggageKg) : null,
         cancellationPolicy: isFieldApplicable("cancellationPolicy") ? (formData.cancellationPolicy.trim() || undefined) : undefined,
         flightNotes: isFieldApplicable("flightNotes") ? (formData.flightNotes.trim() || undefined) : undefined,
         type: formData.type,
@@ -508,7 +528,15 @@ export function FlightRoutesTab({
                         <span>{route.toCity}</span>
                       </span>
                     ) : (
-                      <span>{route.sector}</span>
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        {(route.city?.name || route.fromCity) && (
+                          <span className="inline-flex items-center gap-1 bg-[#6B7A5E]/10 text-[#6B7A5E] px-1.5 py-0.5 rounded text-[11px] font-bold">
+                            <MapPin className="h-2.5 w-2.5" />
+                            {route.city?.name || route.fromCity}
+                          </span>
+                        )}
+                        <span>{route.sector}</span>
+                      </span>
                     )}
                   </h3>
 
@@ -523,19 +551,34 @@ export function FlightRoutesTab({
 
                   <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-500 py-2 border-t border-zinc-100">
                     <div className="flex items-center space-x-1.5">
-                      <Clock className="h-3 w-3 text-zinc-400" />
+                      <Clock className="h-3 w-3 text-zinc-400 shrink-0" />
                       <span>{route.travelTime || "Anytime"}</span>
                     </div>
-                    {(route.cabinBaggageKg != null || route.checkInBaggageKg != null) ? (
+                    {isFieldApplicable("cabinBaggageKg", route.type) && (route.cabinBaggageKg != null || route.checkInBaggageKg != null) ? (
                       <div className="flex items-center space-x-1.5">
-                        <Luggage className="h-3 w-3 text-zinc-400" />
+                        <Luggage className="h-3 w-3 text-zinc-400 shrink-0" />
                         <span>
                           Cabin: {route.cabinBaggageKg ?? 7}kg | Checkin: {route.checkInBaggageKg ?? 20}kg
                         </span>
                       </div>
+                    ) : route.type?.toLowerCase() === "bus" || route.type?.toLowerCase() === "luxury coach" ? (
+                      <div className="flex items-center space-x-1.5">
+                        <Bus className="h-3 w-3 text-zinc-400 shrink-0" />
+                        <span>Bus / Coach Transit</span>
+                      </div>
+                    ) : route.type?.toLowerCase() === "train" ? (
+                      <div className="flex items-center space-x-1.5">
+                        <Train className="h-3 w-3 text-zinc-400 shrink-0" />
+                        <span>Railway Service</span>
+                      </div>
+                    ) : route.type?.toLowerCase() === "ferry / boat" || route.type?.toLowerCase() === "boat" ? (
+                      <div className="flex items-center space-x-1.5">
+                        <Navigation className="h-3 w-3 text-zinc-400 shrink-0" />
+                        <span>Waterway Transit</span>
+                      </div>
                     ) : (
                       <div className="flex items-center space-x-1.5">
-                        <Car className="h-3 w-3 text-zinc-400" />
+                        <Car className="h-3 w-3 text-zinc-400 shrink-0" />
                         <span>Private Chauffeur Service</span>
                       </div>
                     )}
@@ -604,7 +647,20 @@ export function FlightRoutesTab({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, transportCategory: "Inter-City Transfer" })}
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        transportCategory: "Inter-City Transfer",
+                        fromCity: prev.fromCity || prev.cityName || cities[0]?.name || "",
+                        toCity: prev.toCity || cities[1]?.name || "",
+                        sector:
+                          prev.fromCity && prev.toCity
+                            ? `${prev.fromCity} to ${prev.toCity}`
+                            : (prev.cityName || cities[0]?.name) && cities[1]?.name
+                            ? `${prev.cityName || cities[0]?.name} to ${cities[1]?.name}`
+                            : prev.sector,
+                      }));
+                    }}
                     className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
                       formData.transportCategory === "Inter-City Transfer"
                         ? "border-[#B8944F] bg-[#B8944F]/10 text-[#14213D] font-bold"
@@ -622,7 +678,15 @@ export function FlightRoutesTab({
 
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, transportCategory: "Local Transfer" })}
+                    onClick={() => {
+                      const defaultCity = formData.cityName || formData.fromCity || cities[0]?.name || "";
+                      setFormData((prev) => ({
+                        ...prev,
+                        transportCategory: "Local Transfer",
+                        cityName: defaultCity,
+                        sector: defaultCity && (!prev.sector || prev.sector.includes("to")) ? `${defaultCity} Station / Hotel Transfer` : prev.sector,
+                      }));
+                    }}
                     className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
                       formData.transportCategory === "Local Transfer"
                         ? "border-[#6B7A5E] bg-[#6B7A5E]/10 text-[#14213D] font-bold"
@@ -755,16 +819,34 @@ export function FlightRoutesTab({
               </div>
 
               {/* Carrier & Route Code (Conditional) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className={`grid ${isFieldApplicable("flightCodeDefault") ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"} gap-3`}>
                 <div className="space-y-1">
                   <label className="block text-xs font-semibold text-zinc-700">
-                    Carrier / Provider Name *
+                    {formData.type?.toLowerCase() === "flight"
+                      ? "Airline Name *"
+                      : formData.type?.toLowerCase() === "train"
+                      ? "Train / Railway Service *"
+                      : formData.type?.toLowerCase() === "bus" || formData.type?.toLowerCase() === "luxury coach"
+                      ? "Bus Operator / Service Name *"
+                      : formData.type?.toLowerCase() === "ferry / boat" || formData.type?.toLowerCase() === "boat"
+                      ? "Ferry / Boat Operator *"
+                      : "Carrier / Vehicle Provider Name *"}
                   </label>
                   <input
                     type="text"
                     value={formData.airline}
                     onChange={(e) => setFormData({ ...formData, airline: e.target.value })}
-                    placeholder="e.g. Dedicated AC Sedan / IndiGo"
+                    placeholder={
+                      formData.type?.toLowerCase() === "flight"
+                        ? "e.g. IndiGo / Air India"
+                        : formData.type?.toLowerCase() === "train"
+                        ? "e.g. Vande Bharat Express / Rajdhani"
+                        : formData.type?.toLowerCase() === "bus" || formData.type?.toLowerCase() === "luxury coach"
+                        ? "e.g. Zingbus / GSRTC Volvo AC"
+                        : formData.type?.toLowerCase() === "ferry / boat" || formData.type?.toLowerCase() === "boat"
+                        ? "e.g. Speed Ferry / Cruise Service"
+                        : "e.g. Dedicated AC Sedan / Private Chauffeur"
+                    }
                     className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                     required
                   />
@@ -773,13 +855,17 @@ export function FlightRoutesTab({
                 {isFieldApplicable("flightCodeDefault") && (
                   <div className="space-y-1">
                     <label className="block text-xs font-semibold text-zinc-700">
-                      Route / Flight / Train Code
+                      {formData.type?.toLowerCase() === "train"
+                        ? "Train Number / Code"
+                        : formData.type?.toLowerCase() === "flight"
+                        ? "Default Flight Code"
+                        : "Transit / Route Code"}
                     </label>
                     <input
                       type="text"
                       value={formData.flightCodeDefault}
                       onChange={(e) => setFormData({ ...formData, flightCodeDefault: e.target.value })}
-                      placeholder="e.g. 6E-2041 or 12952"
+                      placeholder={formData.type?.toLowerCase() === "train" ? "e.g. 12952" : "e.g. 6E-2041"}
                       className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none font-mono"
                     />
                   </div>
@@ -804,7 +890,15 @@ export function FlightRoutesTab({
 
               {/* Baggage Allowances & Stops (Dynamic based on selected Vehicle Type) */}
               {(isFieldApplicable("cabinBaggageKg") || isFieldApplicable("checkInBaggageKg") || isFieldApplicable("typicalStops")) && (
-                <div className="grid grid-cols-3 gap-3 p-3 bg-zinc-50 border border-zinc-200/80 rounded-xl">
+                <div
+                  className={`grid ${
+                    (isFieldApplicable("cabinBaggageKg") || isFieldApplicable("checkInBaggageKg")) && isFieldApplicable("typicalStops")
+                      ? "grid-cols-1 sm:grid-cols-3"
+                      : isFieldApplicable("cabinBaggageKg") && isFieldApplicable("checkInBaggageKg")
+                      ? "grid-cols-1 sm:grid-cols-2"
+                      : "grid-cols-1"
+                  } gap-3 p-3 bg-zinc-50 border border-zinc-200/80 rounded-xl`}
+                >
                   {isFieldApplicable("cabinBaggageKg") && (
                     <div className="space-y-1">
                       <label className="block text-xs font-semibold text-zinc-700">
@@ -814,6 +908,7 @@ export function FlightRoutesTab({
                         type="number"
                         value={formData.cabinBaggageKg}
                         onChange={(e) => setFormData({ ...formData, cabinBaggageKg: e.target.value })}
+                        placeholder="e.g. 7"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
@@ -827,6 +922,7 @@ export function FlightRoutesTab({
                         type="number"
                         value={formData.checkInBaggageKg}
                         onChange={(e) => setFormData({ ...formData, checkInBaggageKg: e.target.value })}
+                        placeholder="e.g. 20"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>
@@ -840,6 +936,7 @@ export function FlightRoutesTab({
                         type="number"
                         value={formData.typicalStops}
                         onChange={(e) => setFormData({ ...formData, typicalStops: Number(e.target.value) })}
+                        placeholder="0"
                         className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-xs outline-none"
                       />
                     </div>

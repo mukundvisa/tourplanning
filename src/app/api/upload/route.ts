@@ -22,20 +22,17 @@ export async function POST(request: NextRequest) {
 
     // 1. Store directly into PostgreSQL StorageFile table
     try {
-      await db.$executeRawUnsafe(
-        `
-        INSERT INTO "StorageFile" ("id", "filename", "mimeType", "dataBase64", "fileSize", "createdAt")
-        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-        ON CONFLICT ("id") DO NOTHING;
-      `,
-        id,
-        cleanName,
-        mimeType,
-        base64Data,
-        buffer.length
-      );
-    } catch (dbErr) {
-      console.warn("Could not insert into StorageFile table via raw SQL:", dbErr);
+      await db.storageFile.create({
+        data: {
+          id,
+          filename: cleanName,
+          mimeType,
+          dataBase64: base64Data,
+          fileSize: buffer.length,
+        },
+      });
+    } catch (dbErr: any) {
+      console.warn("Could not insert into StorageFile:", dbErr.message);
     }
 
     // 2. Return the direct DB storage URL as primary, and base64 Data URI

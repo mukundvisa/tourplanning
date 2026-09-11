@@ -60,7 +60,7 @@ interface TripFormWizardProps {
 }
 
 const STEPS = [
-  { number: 1, name: "Core Trip & Consultant", icon: MapPin },
+  { number: 1, name: "Core Trip", icon: MapPin },
   { number: 2, name: "Day-wise Planning", icon: Table2 },
   { number: 3, name: "Day-by-Day Itinerary", icon: Calendar },
   { number: 4, name: "Stays & Accommodations", icon: Coffee },
@@ -410,26 +410,30 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
   const [autoMatchedConsultant, setAutoMatchedConsultant] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!formData.departureCity || masterData.consultants.length === 0) {
+    if (!formData.departureCity) {
       setAutoMatchedConsultant(null);
       return;
     }
 
     const cleanInputCity = formData.departureCity.split("(")[0].trim().toLowerCase();
-    if (!cleanInputCity) return;
+    if (!cleanInputCity) {
+      setAutoMatchedConsultant(null);
+      return;
+    }
 
     const matched = masterData.consultants.find((c: any) => {
-      const consultantCity = (c.hubCity || "").toLowerCase();
-      return consultantCity.includes(cleanInputCity) || cleanInputCity.includes(consultantCity);
+      const consultantCity = (c.departureCity || c.hubCity || c.assigned_departure_city || "").trim().toLowerCase();
+      if (!consultantCity) return false;
+      return (
+        consultantCity === cleanInputCity ||
+        consultantCity.includes(cleanInputCity) ||
+        cleanInputCity.includes(consultantCity)
+      );
     });
 
     if (matched) {
-      setAutoMatchedConsultant(`${matched.name} (${matched.hubCity})`);
-      setFormData((prev: any) => ({
-        ...prev,
-        consultantName: matched.name,
-        consultantPhone: matched.phone || prev.consultantPhone,
-      }));
+      const displayCity = matched.departureCity || matched.hubCity || "";
+      setAutoMatchedConsultant(`${matched.name}${displayCity ? ` (${displayCity})` : ""}`);
     } else {
       setAutoMatchedConsultant(null);
     }
@@ -496,6 +500,15 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
         };
       });
     } else if (name === "departureCity") {
+      const cleanVal = (value || "").split("(")[0].trim().toLowerCase();
+      const matchedC = cleanVal && masterData.consultants.length > 0
+        ? masterData.consultants.find((c: any) => {
+            const dep = (c.departureCity || c.hubCity || c.assigned_departure_city || "").trim().toLowerCase();
+            if (!dep) return false;
+            return dep === cleanVal || dep.includes(cleanVal) || cleanVal.includes(dep);
+          })
+        : null;
+
       setFormData((prev: any) => {
         const newTitle = !isTitleCustomized
           ? generateAutoTitle(value, prev.destination, prev.itineraryDays)
@@ -504,8 +517,17 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
           ...prev,
           departureCity: value,
           title: newTitle || prev.title,
+          consultantName: matchedC ? matchedC.name : "",
+          consultantPhone: matchedC ? (matchedC.phone || "") : "",
         };
       });
+
+      if (matchedC) {
+        const displayCity = matchedC.departureCity || matchedC.hubCity || "";
+        setAutoMatchedConsultant(`${matchedC.name}${displayCity ? ` (${displayCity})` : ""}`);
+      } else {
+        setAutoMatchedConsultant(null);
+      }
     } else {
       setFormData((prev: any) => ({ ...prev, [name]: value }));
     }
@@ -1560,7 +1582,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
         return (
           <div className="space-y-6">
             <h2 className="text-xl font-bold border-b border-zinc-200 pb-2 text-[#14213D] font-fraunces">
-              Step 1: Core Trip & Consultant Details
+              Step 1: Core Trip Details
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1595,9 +1617,6 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                   placeholder="e.g. Ahmedabad to Junagadh Adventure"
                   className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
-                <p className="text-[10px] text-zinc-400">
-                  Format: [Origin City] to [Destination City] [Trip Type] (Editable).
-                </p>
               </div>
 
               {/* Main Tour Planner Image with Banner Picker */}
@@ -1663,11 +1682,11 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                 </div>
               </div>
 
-              {/* Destination Country/City (Single-Select from Master Data Hub) */}
+              {/* Destination City (Single-Select from Master Data Hub) */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <label className="block text-xs font-semibold text-zinc-700">
-                    Destination Country/City *
+                    Destination City *
                   </label>
                 </div>
                 <select
@@ -1702,16 +1721,13 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-zinc-400">
-                  Select the primary destination city from Master Data Hub &rarr; Cities.
-                </p>
               </div>
 
               {/* Departure City (India Hubs Only - Single City Only) */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <label className="block text-xs font-semibold text-zinc-700">
-                    Departure City (India Hubs Only) *
+                    Departure City*
                   </label>
                 </div>
                 <select
@@ -1722,23 +1738,29 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                     const newTitle = !isTitleCustomized
                       ? generateAutoTitle(chosen, formData.destination, formData.itineraryDays)
                       : formData.title;
+
+                    const cleanChosen = chosen ? chosen.split("(")[0].trim().toLowerCase() : "";
+                    const matchedC = cleanChosen && masterData.consultants.length > 0
+                      ? masterData.consultants.find((c: any) => {
+                          const dep = (c.departureCity || c.hubCity || c.assigned_departure_city || "").trim().toLowerCase();
+                          if (!dep) return false;
+                          return dep === cleanChosen || dep.includes(cleanChosen) || cleanChosen.includes(dep);
+                        })
+                      : null;
+
                     setFormData((prev: any) => ({
                       ...prev,
                       departureCity: chosen,
                       title: newTitle || prev.title,
+                      consultantName: matchedC ? matchedC.name : "",
+                      consultantPhone: matchedC ? (matchedC.phone || "") : "",
                     }));
-                    if (chosen && masterData.consultants.length > 0) {
-                      const matchedC = masterData.consultants.find((c: any) => {
-                        const dep = (c.hubCity || c.departureCity || "").toLowerCase();
-                        return dep.includes(chosen.toLowerCase()) || chosen.toLowerCase().includes(dep);
-                      });
-                      if (matchedC) {
-                        setFormData((prev: any) => ({
-                          ...prev,
-                          consultantName: matchedC.name,
-                          consultantPhone: matchedC.phone || prev.consultantPhone,
-                        }));
-                      }
+
+                    if (matchedC) {
+                      const displayCity = matchedC.departureCity || matchedC.hubCity || "";
+                      setAutoMatchedConsultant(`${matchedC.name}${displayCity ? ` (${displayCity})` : ""}`);
+                    } else {
+                      setAutoMatchedConsultant(null);
                     }
                   }}
                   className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs font-medium text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none cursor-pointer"
@@ -1758,9 +1780,6 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-zinc-400">
-                  Displays single return departure hub managed in Master Data Hub &rarr; Cities. Auto-assigns mapped consultant.
-                </p>
               </div>
 
               {/* Start Date & End Date */}
@@ -1793,7 +1812,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
               {/* Auto-calculated Duration Days and Nights (Read-only / No manual entry) */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                  Duration Days (Auto-Calculated)
+                  Duration Days
                 </label>
                 <div className="px-4 py-2.5 bg-zinc-100/80 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] font-mono">
                   {formData.durationDays} Days
@@ -1802,7 +1821,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
-                  Duration Nights (Auto-Calculated)
+                  Duration Nights
                 </label>
                 <div className="px-4 py-2.5 bg-zinc-100/80 border border-zinc-200 rounded-lg text-xs font-bold text-[#14213D] font-mono">
                   {formData.durationNights} Nights
@@ -1864,9 +1883,6 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
                   placeholder="e.g. Vadodara to Ahmedabad — traveller's own arrangement."
                   className="w-full px-4 py-2.5 bg-white border border-zinc-200 rounded-lg text-xs text-[#14213D] focus:ring-1 focus:ring-[#B8944F] focus:border-[#B8944F] outline-none"
                 />
-                <p className="text-[10px] text-zinc-400">
-                  Plain text note for client itinerary (no master data link or cost calculation).
-                </p>
               </div>
             </div>
           </div>
@@ -4108,7 +4124,7 @@ export function TripFormWizard({ initialData, tripId, onClose, onSaved }: TripFo
 
                 let buttonClasses = "text-zinc-500 hover:bg-zinc-50 cursor-pointer";
                 if (isActive) {
-                  buttonClasses = "bg-[#B8944F]/15 text-[#B8944F] font-bold border-l-3 border-[#B8944F] cursor-pointer";
+                  buttonClasses = "bg-[#B8944F]/15 text-[#B8944F] font-bold cursor-pointer";
                 } else if (isStep1IncompleteVal) {
                   buttonClasses = "text-red-500 hover:bg-red-50/50 cursor-pointer";
                 } else if (isCompleted) {

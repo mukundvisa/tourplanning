@@ -15,15 +15,15 @@ async function resolveImageToDataUri(src: string | null | undefined): Promise<st
   if (src.startsWith("/api/storage/")) {
     const fileId = src.replace("/api/storage/", "").trim();
     try {
-      const rows: any = await db.$queryRawUnsafe(
-        `SELECT "mimeType", "dataBase64" FROM "StorageFile" WHERE id = $1 LIMIT 1;`,
-        fileId
-      );
-      if (rows && rows.length > 0) {
-        return `data:${rows[0].mimeType || "image/jpeg"};base64,${rows[0].dataBase64}`;
+      const file = await db.storageFile.findUnique({
+        where: { id: fileId },
+        select: { mimeType: true, dataBase64: true },
+      });
+      if (file) {
+        return `data:${file.mimeType || "image/jpeg"};base64,${file.dataBase64}`;
       }
-    } catch (e) {
-      console.warn("Could not load image from StorageFile table:", e);
+    } catch (e: any) {
+      console.warn("Could not load image from StorageFile:", e.message);
     }
   }
 

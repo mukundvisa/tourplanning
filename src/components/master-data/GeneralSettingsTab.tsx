@@ -216,9 +216,6 @@ export function GeneralSettingsTab({ initialSettings }: GeneralSettingsTabProps)
                 onChange={(e) => setWatermarkOpacity(parseFloat(e.target.value))}
                 className="w-full accent-[#B8944F] cursor-pointer"
               />
-              <p className="text-[11px] text-zinc-500 leading-tight">
-                Controls how lightly the watermark appears behind text on PDF proposals.
-              </p>
             </div>
 
             <div className="pt-3 border-t border-zinc-100 flex justify-end">
@@ -248,9 +245,6 @@ export function GeneralSettingsTab({ initialSettings }: GeneralSettingsTabProps)
               <span className="text-xs font-bold text-[#14213D] flex items-center gap-1.5 uppercase tracking-wide">
                 <Eye className="h-3.5 w-3.5 text-[#B8944F]" />
                 <span>PDF Watermark Live Preview</span>
-              </span>
-              <span className="text-[10px] font-bold text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded">
-                A4 Preview
               </span>
             </div>
 
@@ -294,10 +288,6 @@ export function GeneralSettingsTab({ initialSettings }: GeneralSettingsTabProps)
                 <span className="font-semibold text-[#14213D]">TripPlanner</span>
               </div>
             </div>
-
-            <p className="text-[11px] text-zinc-400 italic text-center">
-              The same logo uploaded on the left is automatically rendered as the watermark in newly generated PDFs.
-            </p>
           </div>
         </div>
       </form>

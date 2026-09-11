@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect } from "react";
 import { Bold, Italic, Underline, List, ListOrdered, RemoveFormatting } from "lucide-react";
+import { sanitizeRichText } from "@/lib/sanitize-html";
 
 interface RichTextEditorProps {
   value: string;
@@ -21,6 +22,9 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
   }, [value]);
 
   const execCmd = (command: string, arg: string = "") => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
     document.execCommand(command, false, arg);
     if (editorRef.current) {
       onChange(editorRef.current.innerHTML);
@@ -33,8 +37,25 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
     }
   };
 
+  // Intercept paste to sanitize foreign fonts, letter-spacing, and inline styles copied from websites
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    const html = e.clipboardData.getData("text/html");
+
+    if (html) {
+      const cleaned = sanitizeRichText(html);
+      document.execCommand("insertHTML", false, cleaned);
+    } else if (text) {
+      document.execCommand("insertText", false, text);
+    }
+    if (editorRef.current) {
+      onChange(editorRef.current.innerHTML);
+    }
+  };
+
   return (
-    <div className="w-full border border-zinc-200 rounded-xl overflow-hidden bg-white shadow-sm focus-within:ring-2 focus-within:ring-[#0DA590]/50 focus-within:border-[#0DA590]">
+    <div className="w-full border border-zinc-200 rounded-xl overflow-hidden bg-white shadow-sm focus-within:ring-2 focus-within:ring-[#B8944F]/30 focus-within:border-[#B8944F] transition-all">
       {/* Editor Toolbar */}
       <div className="bg-zinc-50 border-b border-zinc-200 px-3 py-1.5 flex items-center space-x-1.5 flex-wrap z-10 relative">
         <button
@@ -94,8 +115,9 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         ref={editorRef}
         contentEditable
         onInput={handleInput}
-        className="px-4 py-3 min-h-[120px] max-h-[300px] overflow-y-auto text-sm text-[#1E3B39] focus:outline-none prose max-w-none"
-        {...{ placeholder }}
+        onPaste={handlePaste}
+        data-placeholder={placeholder}
+        className="rich-text-editor-area px-4 py-3 min-h-[120px] max-h-[300px] overflow-y-auto focus:outline-none"
         style={{ outline: "none" }}
       />
     </div>

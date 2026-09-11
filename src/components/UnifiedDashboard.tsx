@@ -100,6 +100,7 @@ interface UnifiedDashboardProps {
   tripsForCost: any[];
   costRates: any[];
   generalSettings?: any;
+  placeDefaults?: any;
 }
 
 const MASTER_DATA_TABS = [
@@ -356,11 +357,11 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
   const getHeaderInfo = () => {
     switch (activeView) {
       case "analytics":
-        return { breadcrumb: "Analytics Overview", title: "Performance Metrics & Velocity" };
+        return { breadcrumb: "Analytics Overview", title: "Performance Metrics" };
       case "console":
-        return { breadcrumb: "Trip Itineraries Console", title: "Travel Blueprints & Client Proposals" };
+        return { breadcrumb: "Trip Itineraries Console", title: "Travel Blueprints" };
       case "ai-generator":
-        return { breadcrumb: "AI Trip Generator", title: "Intelligent Trip Blueprint Synthesis" };
+        return { breadcrumb: "AI Trip Generator", title: "Intelligent Trip Blueprint" };
       case "create":
         return { breadcrumb: "Create Trip Blueprint", title: "New Itinerary Proposal Builder" };
       case "edit":
@@ -611,11 +612,8 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-zinc-200/80">
                 <div>
                   <h2 className="text-2xl font-bold text-[#14213D] font-fraunces">
-                    Travel Blueprints & Client Proposals
+                    Travel Blueprints
                   </h2>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    Review day-wise trip summaries, manage wholesale costs, and export client proposals.
-                  </p>
                 </div>
 
                 <div className="flex items-center space-x-3">
@@ -895,7 +893,11 @@ function UnifiedDashboardContent(props: UnifiedDashboardProps) {
               <div className="p-4 sm:p-8 max-w-7xl w-full mx-auto">
                 {masterDataTab === "cities" && <CitiesTab initialData={props.cities} />}
                 {masterDataTab === "places" && (
-                  <PlacesTab initialData={props.places} cities={props.cities} />
+                  <PlacesTab
+                    initialData={props.places}
+                    cities={props.cities}
+                    initialPlaceDefaults={props.placeDefaults}
+                  />
                 )}
                 {masterDataTab === "consultants" && (
                   <ConsultantsTab initialData={props.consultants} cities={props.cities} />

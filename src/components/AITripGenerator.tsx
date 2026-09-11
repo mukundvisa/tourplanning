@@ -393,13 +393,7 @@ Plan Tier: ${blueprint.pricingPlanTitle}`;
               <h2 className="text-lg font-bold text-[#14213D] font-fraunces">
                 AI Trip Blueprint Engine
               </h2>
-              <span className="px-2 py-0.5 bg-[#B8944F]/15 text-[#B8944F] text-[10px] font-bold rounded-full uppercase tracking-wider">
-                Dual-Mode Ingestion
-              </span>
             </div>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              Accurate parsing & auto-research with real Master Data Hub matching across all 9 blueprint tabs.
-            </p>
           </div>
         </div>
 
@@ -1019,14 +1013,6 @@ Plan Tier: ${blueprint.pricingPlanTitle}`;
               <span>Mode 2: Auto-Research</span>
             </button>
           </div>
-
-          <span className="text-[11px] text-zinc-400 hidden sm:inline">
-            {selectedMode === "mode1"
-              ? "Paste complete consultant notes & quotes"
-              : selectedMode === "mode2"
-              ? "Minimal destination + pax search"
-              : "Smartly selects Mode 1 or Mode 2"}
-          </span>
         </div>
 
         {/* Text Input Area */}
@@ -1064,10 +1050,6 @@ Plan Tier: ${blueprint.pricingPlanTitle}`;
             )}
           </button>
         </div>
-
-        <p className="text-[10px] text-zinc-400 text-center">
-          Press Enter to generate or Shift+Enter for new line. Ingestion auto-syncs with Master Data Hub and maps all 9 tabs.
-        </p>
       </div>
     </div>
   );
