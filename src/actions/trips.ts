@@ -114,7 +114,10 @@ export async function createTrip(payload: TripSchemaType) {
         addOns: {
           create: data.addOns.map((addon) => ({
             name: addon.name,
-            detailsJson: addon.detailsJson,
+            detailsJson: {
+              ...(typeof addon.detailsJson === "object" && addon.detailsJson !== null ? addon.detailsJson : {}),
+              dayNumber: addon.dayNumber || (addon.detailsJson as any)?.dayNumber || 1,
+            },
             price: addon.price,
             priceType: addon.priceType,
           })),
@@ -127,7 +130,7 @@ export async function createTrip(payload: TripSchemaType) {
             rating: rest.rating,
             reviewCount: rest.reviewCount,
             isVeg: rest.isVeg,
-            category: rest.category,
+            category: rest.dayNumber ? `${rest.category || "Restaurant"}###DAY_${rest.dayNumber}` : (rest.category || "Restaurant"),
           })),
         },
         tripTerms: {
@@ -274,7 +277,10 @@ export async function updateTrip(tripId: string, payload: TripSchemaType) {
           addOns: {
             create: data.addOns.map((addon) => ({
               name: addon.name,
-              detailsJson: addon.detailsJson,
+              detailsJson: {
+                ...(typeof addon.detailsJson === "object" && addon.detailsJson !== null ? addon.detailsJson : {}),
+                dayNumber: addon.dayNumber || (addon.detailsJson as any)?.dayNumber || 1,
+              },
               price: addon.price,
               priceType: addon.priceType,
             })),
@@ -287,7 +293,7 @@ export async function updateTrip(tripId: string, payload: TripSchemaType) {
               rating: rest.rating,
               reviewCount: rest.reviewCount,
               isVeg: rest.isVeg,
-              category: rest.category,
+              category: rest.dayNumber ? `${rest.category || "Restaurant"}###DAY_${rest.dayNumber}` : (rest.category || "Restaurant"),
             })),
           },
           tripTerms: {
@@ -341,7 +347,7 @@ export async function deleteTrip(tripId: string) {
 }
 
 /**
- * Fetch a complete trip with all relations for Day-wise Trip Summary & previews.
+ * Fetch a full Trip by ID for editing or display.
  */
 export async function getTripDetails(tripId: string) {
   try {
@@ -372,7 +378,41 @@ export async function getTripDetails(tripId: string) {
       return { success: false, error: "Trip not found" };
     }
 
-    return { success: true, data: JSON.parse(JSON.stringify(trip)) };
+    const rawTrip: any = JSON.parse(JSON.stringify(trip));
+
+    // Normalize dayNumber on addOns and restaurantSuggestions
+    if (Array.isArray(rawTrip.addOns)) {
+      rawTrip.addOns = rawTrip.addOns.map((a: any) => {
+        let dNum = a.dayNumber;
+        if (!dNum && a.detailsJson) {
+          const dj = typeof a.detailsJson === "string" ? JSON.parse(a.detailsJson) : a.detailsJson;
+          if (dj?.dayNumber) dNum = Number(dj.dayNumber);
+        }
+        return {
+          ...a,
+          dayNumber: dNum || 1,
+        };
+      });
+    }
+
+    if (Array.isArray(rawTrip.restaurantSuggestions)) {
+      rawTrip.restaurantSuggestions = rawTrip.restaurantSuggestions.map((r: any) => {
+        let dNum = r.dayNumber;
+        let cat = r.category || "Restaurant";
+        if (cat.includes("###DAY_")) {
+          const parts = cat.split("###DAY_");
+          cat = parts[0] || "Restaurant";
+          dNum = parseInt(parts[1]) || 1;
+        }
+        return {
+          ...r,
+          category: cat,
+          dayNumber: dNum || 1,
+        };
+      });
+    }
+
+    return { success: true, data: rawTrip };
   } catch (error: any) {
     console.error("Error in getTripDetails Action:", error);
     return { success: false, error: error.message || "Failed to load trip details" };

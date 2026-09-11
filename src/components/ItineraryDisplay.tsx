@@ -331,11 +331,20 @@ export function ItineraryDisplay({ trip }: ItineraryDisplayProps) {
                 </div>
 
                 {/* Day Description */}
-                <div className="text-sm leading-relaxed text-zinc-650 space-y-4 font-medium">
-                  {currentDay.description.split("\n\n").map((para: string, pIdx: number) => (
-                    <p key={pIdx}>{para}</p>
-                  ))}
-                </div>
+                {currentDay.description && (
+                  <div className="text-sm leading-relaxed text-zinc-650 space-y-4 font-medium">
+                    {currentDay.description.includes("<") ? (
+                      <div
+                        className="prose prose-sm max-w-none text-zinc-650 font-normal leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-2"
+                        dangerouslySetInnerHTML={{ __html: currentDay.description }}
+                      />
+                    ) : (
+                      currentDay.description.split("\n\n").map((para: string, pIdx: number) => (
+                        <p key={pIdx}>{para}</p>
+                      ))
+                    )}
+                  </div>
+                )}
 
                 {/* Inclusions & Exclusions */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-zinc-100">
@@ -419,6 +428,97 @@ export function ItineraryDisplay({ trip }: ItineraryDisplayProps) {
                     )}
                   </div>
                 )}
+                {/* Day-Wise Restaurants & Add-ons (Rendered only if selected for this day) */}
+                {(() => {
+                  const dayNum = currentDay.dayNumber || (activeDay + 1);
+                  const dayRestaurants = (trip.restaurantSuggestions || []).filter((r: any) => {
+                    let dNum = r.dayNumber;
+                    if (!dNum && r.category && r.category.includes("###DAY_")) {
+                      dNum = parseInt(r.category.split("###DAY_")[1]);
+                    }
+                    return Number(dNum || 1) === Number(dayNum);
+                  });
+                  const dayAddOns = (trip.addOns || []).filter((a: any) => {
+                    let dNum = a.dayNumber;
+                    if (!dNum && a.detailsJson) {
+                      const dj = typeof a.detailsJson === "string" ? JSON.parse(a.detailsJson) : a.detailsJson;
+                      if (dj?.dayNumber) dNum = Number(dj.dayNumber);
+                    }
+                    return Number(dNum || 1) === Number(dayNum);
+                  });
+
+                  if (dayRestaurants.length === 0 && dayAddOns.length === 0) return null;
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-zinc-100">
+                      {dayRestaurants.length > 0 && (
+                        <div className="bg-amber-50/60 border border-amber-200/80 p-4.5 rounded-2xl space-y-3">
+                          <h5 className="text-xs font-bold text-amber-900 flex items-center gap-1.5 uppercase tracking-wider">
+                            <Utensils className="h-4 w-4 text-[#B8944F]" />
+                            Curated Dining for Day {dayNum}
+                          </h5>
+                          <div className="space-y-2">
+                            {dayRestaurants.map((r: any, rIdx: number) => {
+                              const cleanCat = (r.category || "Restaurant").split("###DAY_")[0];
+                              return (
+                                <div key={rIdx} className="bg-white p-3 rounded-xl border border-amber-200/60 text-xs flex items-center justify-between">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-[#14213D]">{r.name}</span>
+                                      {r.isVeg && (
+                                        <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">
+                                          Pure Veg
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                                      {cleanCat} • {r.cuisineType}
+                                    </p>
+                                  </div>
+                                  {r.rating && (
+                                    <span className="text-xs font-bold text-[#B8944F] shrink-0">
+                                      ★ {r.rating}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {dayAddOns.length > 0 && (
+                        <div className="bg-blue-50/50 border border-blue-200/80 p-4.5 rounded-2xl space-y-3">
+                          <h5 className="text-xs font-bold text-blue-900 flex items-center gap-1.5 uppercase tracking-wider">
+                            <span className="text-sm">➕</span>
+                            Add-ons &amp; Experiences for Day {dayNum}
+                          </h5>
+                          <div className="space-y-2">
+                            {dayAddOns.map((a: any, aIdx: number) => {
+                              let desc: any = {};
+                              if (a.detailsJson) {
+                                desc = typeof a.detailsJson === "string" ? JSON.parse(a.detailsJson) : a.detailsJson;
+                              }
+                              return (
+                                <div key={aIdx} className="bg-white p-3 rounded-xl border border-blue-200/60 text-xs flex items-center justify-between">
+                                  <div>
+                                    <span className="font-bold text-[#14213D]">{a.name}</span>
+                                    {desc?.visaType && (
+                                      <p className="text-[11px] text-zinc-500 mt-0.5">{desc.visaType}</p>
+                                    )}
+                                  </div>
+                                  <span className="text-xs font-mono font-bold text-emerald-800 shrink-0">
+                                    ₹{Number(a.price || 0).toLocaleString("en-IN")} {a.priceType || "per person"}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
@@ -601,88 +701,56 @@ export function ItineraryDisplay({ trip }: ItineraryDisplayProps) {
         )}
 
         {/* 10. TERMS AND CONDITIONS */}
-        {trip.termsAndConditions && (
-          <section className="space-y-6 border-t border-zinc-250 pt-12">
-            <div>
-              <h2 className="text-2xl font-black text-[#1E3B39]">Trip Policies & Guidelines</h2>
-              <p className="text-xs text-zinc-500 mt-1">Payment timelines, cancel penalty structures, and general notes.</p>
-            </div>
+        {(() => {
+          const terms = trip.termsAndConditions || trip.tripTerms;
+          if (!terms) return null;
 
-            <div className="space-y-4">
-              {/* Payment policy */}
-              <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-                <button
-                  onClick={() => setExpandedTerms(prev => ({ ...prev, payment: !prev.payment }))}
-                  className="w-full px-6 py-4 flex justify-between items-center hover:bg-zinc-50/50 text-left font-bold text-sm text-[#1E3B39]"
-                >
-                  <span>1. Payment Policy & Booking Schedule</span>
-                  {expandedTerms.payment ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
-                </button>
-                {expandedTerms.payment && (
-                  <div className="px-6 pb-5 pt-2 text-xs text-zinc-500 leading-relaxed space-y-2 border-t border-zinc-100 font-medium">
-                    {trip.termsAndConditions.paymentPolicy.split("\n\n").map((p: string, i: number) => (
-                      <p key={i}>{p}</p>
-                    ))}
-                  </div>
-                )}
+          const activeTermsList: { id: "payment" | "cancellation" | "visa" | "general"; title: string; content: string }[] = [];
+          if (terms.paymentPolicy && terms.paymentPolicy.trim()) {
+            activeTermsList.push({ id: "payment", title: "Payment Policy & Booking Schedule", content: terms.paymentPolicy });
+          }
+          if (terms.cancellationPolicy && terms.cancellationPolicy.trim()) {
+            activeTermsList.push({ id: "cancellation", title: "Cancellation Policy & Penalty Schedules", content: terms.cancellationPolicy });
+          }
+          if (terms.visaRules && terms.visaRules.trim()) {
+            activeTermsList.push({ id: "visa", title: "Visa Guidelines & Country Entry Rules", content: terms.visaRules });
+          }
+          if (terms.generalNotes && terms.generalNotes.trim()) {
+            activeTermsList.push({ id: "general", title: "General Advisory Notes & Ground Rules", content: terms.generalNotes });
+          }
+
+          if (activeTermsList.length === 0) return null;
+
+          return (
+            <section className="space-y-6 border-t border-zinc-250 pt-12">
+              <div>
+                <h2 className="text-2xl font-black text-[#1E3B39]">Trip Policies & Guidelines</h2>
+                <p className="text-xs text-zinc-500 mt-1">Payment timelines, cancel penalty structures, and general notes.</p>
               </div>
 
-              {/* Cancellation policy */}
-              <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-                <button
-                  onClick={() => setExpandedTerms(prev => ({ ...prev, cancellation: !prev.cancellation }))}
-                  className="w-full px-6 py-4 flex justify-between items-center hover:bg-zinc-50/50 text-left font-bold text-sm text-[#1E3B39]"
-                >
-                  <span>2. Cancellation Policy & Penalty Schedules</span>
-                  {expandedTerms.cancellation ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
-                </button>
-                {expandedTerms.cancellation && (
-                  <div className="px-6 pb-5 pt-2 text-xs text-zinc-500 leading-relaxed space-y-2 border-t border-zinc-100 font-medium">
-                    {trip.termsAndConditions.cancellationPolicy.split("\n\n").map((p: string, i: number) => (
-                      <p key={i}>{p}</p>
-                    ))}
+              <div className="space-y-4">
+                {activeTermsList.map((term, index) => (
+                  <div key={term.id} className="border border-zinc-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                    <button
+                      onClick={() => setExpandedTerms(prev => ({ ...prev, [term.id]: !prev[term.id] }))}
+                      className="w-full px-6 py-4 flex justify-between items-center hover:bg-zinc-50/50 text-left font-bold text-sm text-[#1E3B39]"
+                    >
+                      <span>{index + 1}. {term.title}</span>
+                      {expandedTerms[term.id] ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
+                    </button>
+                    {expandedTerms[term.id] && (
+                      <div className="px-6 pb-5 pt-2 text-xs text-zinc-500 leading-relaxed space-y-2 border-t border-zinc-100 font-medium">
+                        {term.content.split("\n\n").map((p: string, i: number) => (
+                          <div key={i} dangerouslySetInnerHTML={{ __html: p }} />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-
-              {/* Visa Rules */}
-              <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-                <button
-                  onClick={() => setExpandedTerms(prev => ({ ...prev, visa: !prev.visa }))}
-                  className="w-full px-6 py-4 flex justify-between items-center hover:bg-zinc-50/50 text-left font-bold text-sm text-[#1E3B39]"
-                >
-                  <span>3. Visa Guidelines & Country Entry Rules</span>
-                  {expandedTerms.visa ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
-                </button>
-                {expandedTerms.visa && (
-                  <div className="px-6 pb-5 pt-2 text-xs text-zinc-500 leading-relaxed space-y-2 border-t border-zinc-100 font-medium">
-                    {trip.termsAndConditions.visaRules.split("\n\n").map((p: string, i: number) => (
-                      <p key={i}>{p}</p>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* General notes */}
-              <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-                <button
-                  onClick={() => setExpandedTerms(prev => ({ ...prev, general: !prev.general }))}
-                  className="w-full px-6 py-4 flex justify-between items-center hover:bg-zinc-50/50 text-left font-bold text-sm text-[#1E3B39]"
-                >
-                  <span>4. General Advisory Notes & Ground Rules</span>
-                  {expandedTerms.general ? <ChevronUp className="h-4 w-4 text-zinc-500" /> : <ChevronDown className="h-4 w-4 text-zinc-500" />}
-                </button>
-                {expandedTerms.general && (
-                  <div className="px-6 pb-5 pt-2 text-xs text-zinc-500 leading-relaxed space-y-2 border-t border-zinc-100 font-medium">
-                    {trip.termsAndConditions.generalNotes.split("\n\n").map((p: string, i: number) => (
-                      <p key={i}>{p}</p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
+            </section>
+          );
+        })()}
 
       </div>
     </div>

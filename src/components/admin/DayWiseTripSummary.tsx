@@ -637,7 +637,7 @@ export function DayWiseTripSummary({
                         Sightseeing Program & Itinerary
                       </h4>
                       <p className="text-xs text-zinc-700 leading-relaxed whitespace-pre-line bg-zinc-50/50 p-3.5 rounded-lg border border-zinc-150">
-                        {day.description || "No specific itinerary notes provided for this day."}
+                        {day.description.replace(/<[^>]*>/g, '') || "No specific itinerary notes provided for this day."}
                       </p>
                     </div>
 
@@ -954,72 +954,75 @@ export function DayWiseTripSummary({
         </div>
 
         {/* Master Policies & Terms Glance */}
-        {trip.tripTerms && (
-          <div className="bg-white border border-zinc-200/90 rounded-xl p-5 shadow-2xs craft-card space-y-4">
-            <h3 className="text-sm font-bold text-[#14213D] font-fraunces flex items-center space-x-2 border-b border-zinc-150 pb-2">
-              <ShieldCheck className="h-4 w-4 text-[#B8944F]" />
-              <span>Itinerary Policies, Visas & Terms Summary</span>
-            </h3>
+        {(() => {
+          const activeSummaryPolicies: { id: string; title: string; icon: string; html: string }[] = [];
+          if (trip.tripTerms?.paymentPolicy && trip.tripTerms.paymentPolicy.trim()) {
+            activeSummaryPolicies.push({
+              id: "payment",
+              title: "Payment Terms",
+              icon: "💳",
+              html: trip.tripTerms.paymentPolicy,
+            });
+          }
+          if (trip.tripTerms?.cancellationPolicy && trip.tripTerms.cancellationPolicy.trim()) {
+            activeSummaryPolicies.push({
+              id: "cancellation",
+              title: "Cancellation Policy",
+              icon: "🔄",
+              html: trip.tripTerms.cancellationPolicy,
+            });
+          }
+          if (trip.tripTerms?.visaRules && trip.tripTerms.visaRules.trim()) {
+            activeSummaryPolicies.push({
+              id: "visa",
+              title: "Visa & Passport Guidelines",
+              icon: "🛂",
+              html: trip.tripTerms.visaRules,
+            });
+          }
+          if (trip.tripTerms?.generalNotes && trip.tripTerms.generalNotes.trim()) {
+            activeSummaryPolicies.push({
+              id: "general",
+              title: "General Notes & Advisory",
+              icon: "ℹ️",
+              html: trip.tripTerms.generalNotes,
+            });
+          }
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5">
-                <span className="font-bold text-[#14213D] block text-xs">
-                  💳 Payment Terms
-                </span>
-                <div
-                  className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      trip.tripTerms.paymentPolicy ||
-                      "<p>Standard booking deposit terms apply.</p>",
-                  }}
-                />
-              </div>
+          if (activeSummaryPolicies.length === 0) return null;
 
-              <div className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5">
-                <span className="font-bold text-[#14213D] block text-xs">
-                  🔄 Cancellation Policy
-                </span>
-                <div
-                  className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      trip.tripTerms.cancellationPolicy ||
-                      "<p>Strict operator cancellation policy applies.</p>",
-                  }}
-                />
-              </div>
+          return (
+            <div className="bg-white border border-zinc-200/90 rounded-xl p-5 shadow-2xs craft-card space-y-4">
+              <h3 className="text-sm font-bold text-[#14213D] font-fraunces flex items-center space-x-2 border-b border-zinc-150 pb-2">
+                <ShieldCheck className="h-4 w-4 text-[#B8944F]" />
+                <span>Itinerary Policies, Visas & Terms Summary</span>
+              </h3>
 
-              <div className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5">
-                <span className="font-bold text-[#14213D] block text-xs">
-                  🛂 Visa & Passport Guidelines
-                </span>
-                <div
-                  className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      trip.tripTerms.visaRules ||
-                      "<p>Minimum 6 months passport validity required.</p>",
-                  }}
-                />
-              </div>
-
-              <div className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5">
-                <span className="font-bold text-[#14213D] block text-xs">
-                  ℹ️ General Notes & Advisory
-                </span>
-                <div
-                  className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
-                  dangerouslySetInnerHTML={{
-                    __html:
-                      trip.tripTerms.generalNotes ||
-                      "<p>Standard hotel check-in/out and international travel advisories apply.</p>",
-                  }}
-                />
+              <div
+                className={`grid grid-cols-1 ${
+                  activeSummaryPolicies.length > 1 ? "md:grid-cols-2" : ""
+                } gap-4 text-xs`}
+              >
+                {activeSummaryPolicies.map((pol) => (
+                  <div
+                    key={pol.id}
+                    className="p-4 bg-zinc-50 rounded-lg border border-zinc-150 space-y-1.5"
+                  >
+                    <span className="font-bold text-[#14213D] block text-xs">
+                      {pol.icon} {pol.title}
+                    </span>
+                    <div
+                      className="text-zinc-700 text-xs prose max-w-none prose-sm leading-relaxed"
+                      dangerouslySetInnerHTML={{
+                        __html: pol.html,
+                      }}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </main>
     </div>
   );

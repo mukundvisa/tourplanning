@@ -81,6 +81,7 @@ export const flightDetailSchema = z.object({
 });
 
 export const addOnSchema = z.object({
+  dayNumber: z.coerce.number().int().optional().nullable().catch(null),
   name: z.string().catch("").default(""),
   detailsJson: z.any().catch({}).default({}),
   price: z.coerce.number().catch(0).default(0),
@@ -88,6 +89,7 @@ export const addOnSchema = z.object({
 });
 
 export const restaurantSuggestionSchema = z.object({
+  dayNumber: z.coerce.number().int().optional().nullable().catch(null),
   location: z.string().catch("").default(""),
   cuisineType: z.string().catch("").default(""),
   name: z.string().catch("").default(""),

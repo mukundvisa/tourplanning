@@ -405,7 +405,7 @@ export function RestaurantsTab({
 
                 <div className="col-span-2">
                   <label className="block text-xs font-bold text-zinc-700 uppercase tracking-wider mb-2">
-                    Category Types (Select all that apply) *
+                    Category Types *
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {categories.map((cat) => {
@@ -466,7 +466,7 @@ export function RestaurantsTab({
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Star Rating (e.g. 4.7)
+                    Star Rating
                   </label>
                   <input
                     type="number"
@@ -481,7 +481,7 @@ export function RestaurantsTab({
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                    Reviews Count (e.g. 850)
+                    Reviews Count
                   </label>
                   <input
                     type="number"

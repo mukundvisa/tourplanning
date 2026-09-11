@@ -186,27 +186,32 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       ? Number(logoSettingsRes.data.watermarkOpacity)
       : 0.05;
 
-  const trip = await db.trip.findUnique({
-    where: { id: tripId },
-    include: {
-      priceQuoteItems: {
-        orderBy: { sortOrder: "asc" },
+  const [trip, allMasterRoutes] = await Promise.all([
+    db.trip.findUnique({
+      where: { id: tripId },
+      include: {
+        priceQuoteItems: {
+          orderBy: { sortOrder: "asc" },
+        },
+        tripFinancials: true,
+        itineraryDays: {
+          orderBy: { sortOrder: "asc" },
+        },
+        accommodations: {
+          orderBy: { checkInDate: "asc" },
+        },
+        flightDetails: {
+          orderBy: { departureDateTime: "asc" },
+        },
+        addOns: true,
+        restaurantSuggestions: true,
+        tripTerms: true,
       },
-      tripFinancials: true,
-      itineraryDays: {
-        orderBy: { sortOrder: "asc" },
-      },
-      accommodations: {
-        orderBy: { checkInDate: "asc" },
-      },
-      flightDetails: {
-        orderBy: { departureDateTime: "asc" },
-      },
-      addOns: true,
-      restaurantSuggestions: true,
-      tripTerms: true,
-    },
-  });
+    }),
+    db.masterFlightRoute.findMany({
+      include: { city: true },
+    }),
+  ]);
 
   if (!trip) return null;
 
@@ -250,6 +255,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
   const destCity = trip.destination || "Destination";
   const flightSectors = trip.flightDetails.map((f: any) => f.sector?.toLowerCase() || "");
 
+  // ==========================================
+  // SECTION 2: VISUAL JOURNEY & ROUTE MAP
+  // ==========================================
   interface VisualStop {
     id: string;
     stopType: "source" | "day" | "destination";
@@ -286,9 +294,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     const placesArr = Array.isArray(d.places) ? d.places : [];
     const currentCity = d.cityOrStay || destCity;
     const descText = d.description
-      ? d.description.length > 70
-        ? d.description.slice(0, 70).trim() + "..."
-        : d.description
+      ? d.description.replace(/<[^>]*>/g, "").length > 70
+        ? d.description.replace(/<[^>]*>/g, "").slice(0, 70).trim() + "..."
+        : d.description.replace(/<[^>]*>/g, "")
       : `Sightseeing & activities in ${currentCity}`;
 
     const isFlight = flightSectors.some((s) => s.includes(currentCity.toLowerCase()));
@@ -419,7 +427,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
 
     transitMarkers.push(`
       <div style="position: absolute; left: ${Math.round(midX)}px; top: ${Math.round(midY)}px; transform: translate(-50%, -50%); z-index: 10;">
-        <div style="height: 20px; width: 20px; background-color: #FFFFFF; border-radius: 9999px; border: 1px solid rgba(184, 148, 79, 0.4); display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <div style="height: 20px; width: 20px; background-color: rgba(255,255,255,0.9); border-radius: 9999px; border: 1px solid rgba(184, 148, 79, 0.4); display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
           ${vehicleIconSvg}
         </div>
       </div>
@@ -493,17 +501,18 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     })
     .join("");
 
+  // Highlights table rows
   const glanceRows = trip.itineraryDays
     .map(
       (d: any) => `
     <tr style="border-bottom: 1px solid rgba(184, 148, 79, 0.12);" class="break-avoid">
-      <td style="padding: 8px 6px; font-weight: 700; color: #B8944F; font-size: 10.5px; width: 18%; vertical-align: top;">
+      <td style="padding: 7px 6px; font-weight: 700; color: #B8944F; font-size: 10px; width: 18%; vertical-align: top;">
         DAY ${d.dayNumber < 10 ? "0" + d.dayNumber : d.dayNumber}
       </td>
-      <td style="padding: 8px 6px; color: #14213D; font-weight: 600; font-size: 10.5px; width: 32%; vertical-align: top;">
+      <td style="padding: 7px 6px; color: #14213D; font-weight: 600; font-size: 10px; width: 32%; vertical-align: top;">
         ${d.cityOrStay || trip.destination}
       </td>
-      <td style="padding: 8px 6px; color: #2B2E36; font-size: 10.5px; width: 50%; vertical-align: top; line-height: 1.35;">
+      <td style="padding: 7px 6px; color: #2B2E36; font-size: 10px; width: 50%; vertical-align: top; line-height: 1.35;">
         ${d.title}
       </td>
     </tr>
@@ -511,6 +520,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     )
     .join("");
 
+  // ==========================================
+  // SECTION 3: TRIP PRICE / QUOTATION
+  // ==========================================
   const priceQuoteSubtotal = trip.priceQuoteItems.reduce(
     (acc: number, item: any) => acc + item.amount,
     0
@@ -518,7 +530,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
   const priceLines = trip.priceQuoteItems
     .map(
       (item: any) => `
-    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(184, 148, 79, 0.15); padding: 6px 0; font-size: 11px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(184, 148, 79, 0.18); padding: 5.5px 0; font-size: 10.5px;">
       <span style="color: #4A4E58; font-weight: 500;">${item.label}</span>
       <span style="font-weight: 700; color: #14213D; font-family: 'Inter', monospace;">₹ ${item.amount.toLocaleString("en-IN")}</span>
     </div>
@@ -526,12 +538,100 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     )
     .join("");
 
+  // ==========================================
+  // SECTION 4: DAY-BY-DAY COMPLETE ITINERARY
+  // ==========================================
   const detailedDaysHtml = trip.itineraryDays
     .map((day: any) => {
+      const dayNum = day.dayNumber;
+      const dayCity = (day.cityOrStay || trip.destination || "").toLowerCase();
+
+      // Formatted date string for this day
+      let dayDateStr = "";
+      if (trip.startDate) {
+        const d = new Date(trip.startDate);
+        d.setDate(d.getDate() + (dayNum - 1));
+        if (!isNaN(d.getTime())) {
+          dayDateStr = d.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          });
+        }
+      }
+
+      // Matched Accommodation for this day
+      const dayAccommodation = resolvedAccommodations.find((acc: any) => {
+        return (
+          acc.dayNumber === dayNum ||
+          (acc.hotelName && day.hotelName && acc.hotelName === day.hotelName) ||
+          (acc.location && dayCity && acc.location.toLowerCase() === dayCity)
+        );
+      });
+
+      // Day-specific restaurants
+      const dayRestaurants = (trip.restaurantSuggestions || []).filter((r: any) => {
+        let dNum = r.dayNumber;
+        if (!dNum && r.category && r.category.includes("###DAY_")) {
+          dNum = parseInt(r.category.split("###DAY_")[1]);
+        }
+        if (dNum !== undefined && dNum !== null) {
+          return Number(dNum) === Number(dayNum);
+        }
+        if (dayCity && (r.location || "").toLowerCase() === dayCity) {
+          const matchingDays = trip.itineraryDays.filter((d: any) => (d.cityOrStay || "").toLowerCase() === dayCity);
+          if (matchingDays.length === 1) return true;
+        }
+        return false;
+      });
+
+      // Day-specific add-ons
+      const dayAddOns = (trip.addOns || []).filter((a: any) => {
+        let dNum = a.dayNumber;
+        if (!dNum && a.detailsJson) {
+          let dj = a.detailsJson;
+          if (typeof dj === "string") {
+            try { dj = JSON.parse(dj); } catch (e) {}
+          }
+          if (dj?.dayNumber) dNum = Number(dj.dayNumber);
+        }
+        return Number(dNum) === Number(dayNum);
+      });
+
+      // Day-specific Transportation
+      // 1. Inter-City Transfer
+      let interCityTransfer: any = null;
+      const interId = day.interCityTransferId || day.placeTransportMap?.inter_city_transfer_id;
+      if (interId) {
+        interCityTransfer = allMasterRoutes.find((r) => r.id === interId);
+      }
+      if (!interCityTransfer) {
+        interCityTransfer = trip.flightDetails.find(
+          (f: any) =>
+            f.dayNumber === dayNum &&
+            (f.transportCategory || "").toLowerCase().includes("inter-city")
+        );
+      }
+
+      // 2. Local Transfers
+      let localTransfers: any[] = [];
+      const localIds: string[] = day.localTransportIds || day.placeTransportMap?.local_transport_ids || [];
+      if (localIds.length > 0) {
+        localTransfers = allMasterRoutes.filter((r) => localIds.includes(r.id));
+      }
+      if (localTransfers.length === 0) {
+        localTransfers = trip.flightDetails.filter(
+          (f: any) =>
+            f.dayNumber === dayNum &&
+            (f.transportCategory || "").toLowerCase().includes("local")
+        );
+      }
+
+      // Inclusions / Exclusions
       const inclusionsList = (day.inclusions || [])
         .map(
           (inc: string) => `
-        <li style="display: flex; align-items: flex-start; font-size: 10.5px; color: #2B2E36; margin-bottom: 4px; line-height: 1.45;">
+        <li style="display: flex; align-items: flex-start; font-size: 10px; color: #2B2E36; margin-bottom: 3.5px; line-height: 1.45;">
           <span style="color: #6B7A5E; margin-right: 6px; font-weight: 800; line-height: 1;">✦</span>
           <span>${inc}</span>
         </li>
@@ -542,7 +642,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const exclusionsList = (day.exclusions || [])
         .map(
           (exc: string) => `
-        <li style="display: flex; align-items: flex-start; font-size: 10.5px; color: #4A4E58; margin-bottom: 4px; line-height: 1.45;">
+        <li style="display: flex; align-items: flex-start; font-size: 10px; color: #4A4E58; margin-bottom: 3.5px; line-height: 1.45;">
           <span style="color: #A6572E; margin-right: 6px; font-weight: 800; line-height: 1;">✕</span>
           <span>${exc}</span>
         </li>
@@ -553,7 +653,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const lovedTips = (day.customerLovedTips || [])
         .map(
           (tip: string) => `
-        <li style="display: flex; align-items: flex-start; font-size: 10px; color: #14213D; margin-bottom: 3px; line-height: 1.4;">
+        <li style="display: flex; align-items: flex-start; font-size: 9.5px; color: #14213D; margin-bottom: 3px; line-height: 1.4;">
           <span style="color: #B8944F; margin-right: 6px; font-weight: 700;">★</span>
           <span>${tip}</span>
         </li>
@@ -564,7 +664,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
       const watchOutTips = (day.customerWatchOutTips || [])
         .map(
           (tip: string) => `
-        <li style="display: flex; align-items: flex-start; font-size: 10px; color: #A6572E; margin-bottom: 3px; line-height: 1.4;">
+        <li style="display: flex; align-items: flex-start; font-size: 9.5px; color: #A6572E; margin-bottom: 3px; line-height: 1.4;">
           <span style="color: #A6572E; margin-right: 6px; font-weight: 700;">!</span>
           <span>${tip}</span>
         </li>
@@ -572,35 +672,198 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         )
         .join("");
 
+      // Day-wise Accommodation HTML Card
+      const dayStayHtml = dayAccommodation ? (() => {
+        const starRow = Array.from({ length: dayAccommodation.starRating || 4 })
+          .map(
+            () =>
+              `<svg style="height: 10px; width: 10px; fill: #B8944F; color: #B8944F; display: inline;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`
+          )
+          .join("");
+
+        const photos = dayAccommodation.resolvedPhotos || [];
+        const photoSlots = [
+          photos[0] || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80",
+          photos[1] || "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=600&q=80",
+          photos[2] || "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=600&q=80",
+        ];
+
+        const photoGrid = photoSlots
+          .map(
+            (pUrl: string, idx: number) => `
+          <div style="height: 70px; width: 100%; background-color: transparent; border-radius: 6px; overflow: hidden; border: 1px solid rgba(184, 148, 79, 0.2);">
+            <img src="${pUrl}" alt="Hotel photo ${idx + 1}" style="height: 100%; width: 100%; object-fit: cover;" />
+          </div>
+        `
+          )
+          .join("");
+
+        return `
+          <div style="background-color: transparent; border: 1px solid rgba(184, 148, 79, 0.25); border-radius: 10px; padding: 10px 12px; margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+              <div>
+                <p style="font-size: 8.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 2px 0;">
+                  🏨 CONFIRMED STAY &bull; ${dayAccommodation.location || day.cityOrStay}
+                </p>
+                <h4 class="font-serif-luxury" style="font-size: 13px; font-weight: 700; color: #14213D; margin: 0; line-height: 1.2;">
+                  ${dayAccommodation.hotelName}
+                </h4>
+                <div style="display: flex; align-items: center; gap: 6px; margin-top: 3px;">
+                  <div style="display: flex; gap: 1px;">${starRow}</div>
+                  <span style="font-size: 9px; color: #4A4E58; font-weight: 600;">
+                    ${dayAccommodation.roomType || "Luxury Deluxe Room"} &bull; ${dayAccommodation.mealPlan || "Buffet Breakfast (CP)"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hotel 3-Photo Gallery -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 6px;">
+              ${photoGrid}
+            </div>
+          </div>
+        `;
+      })() : "";
+
+      // Day-wise Dining HTML
+      const dayRestaurantsHtml = dayRestaurants.length > 0 ? `
+        <div style="background-color: transparent; border: 1px solid rgba(184, 148, 79, 0.25); padding: 10px 12px; border-radius: 10px;">
+          <p style="font-size: 8.5px; color: #8F6F33; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 6px 0; display: flex; align-items: center; gap: 4px;">
+            <span>🍴</span> CURATED DINING SPOT${dayRestaurants.length > 1 ? "S" : ""}
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            ${dayRestaurants.map((r: any) => {
+              const cleanCat = (r.category || "Restaurant").split("###DAY_")[0];
+              return `
+                <div style="font-size: 9.5px; color: #14213D; line-height: 1.35; display: flex; align-items: center; justify-content: space-between; gap: 6px; border-bottom: 1px dashed rgba(184, 148, 79, 0.12); padding-bottom: 3px;">
+                  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                    <span style="font-weight: 700; color: #14213D;">${r.name}</span>
+                    <span style="font-size: 8.5px; color: #717680;">(${r.cuisineType})</span>
+                    ${r.isVeg ? `<span style="font-size: 7.5px; color: #4A5641; border: 1px solid rgba(107, 122, 94, 0.4); padding: 1px 4px; border-radius: 3px; font-weight: 700;">Pure Veg</span>` : ""}
+                  </div>
+                  ${r.rating ? `<span style="font-size: 8.5px; font-weight: 700; color: #B8944F;">★ ${r.rating}</span>` : ""}
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      ` : "";
+
+      // Day-wise Add-ons HTML
+      const dayAddOnsHtml = dayAddOns.length > 0 ? `
+        <div style="background-color: transparent; border: 1px solid rgba(20, 33, 61, 0.22); padding: 10px 12px; border-radius: 10px;">
+          <p style="font-size: 8.5px; color: #14213D; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 6px 0; display: flex; align-items: center; gap: 4px;">
+            <span>➕</span> DAY ADD-ON${dayAddOns.length > 1 ? "S" : ""} &amp; EXPERIENCES
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            ${dayAddOns.map((a: any) => {
+              let desc: any = {};
+              if (a.detailsJson) {
+                desc = typeof a.detailsJson === "string" ? JSON.parse(a.detailsJson) : a.detailsJson;
+              }
+              return `
+                <div style="font-size: 9.5px; color: #14213D; line-height: 1.35; display: flex; align-items: center; justify-content: space-between; gap: 6px; border-bottom: 1px dashed rgba(20, 33, 61, 0.12); padding-bottom: 3px;">
+                  <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                    <span style="font-weight: 700; color: #14213D;">${a.name}</span>
+                    ${desc?.visaType ? `<span style="font-size: 8px; color: #717680;">(${desc.visaType})</span>` : ""}
+                  </div>
+                  <span style="font-size: 9px; font-weight: 700; color: #4A5641; font-family: 'Inter', monospace;">₹ ${Number(a.price || 0).toLocaleString("en-IN")} ${a.priceType || "per person"}</span>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      ` : "";
+
+      // Day-wise Transportation HTML (Inter-City first, then Local)
+      const hasTransportation = Boolean(interCityTransfer || localTransfers.length > 0);
+      const dayTransportationHtml = hasTransportation ? `
+        <div style="background-color: transparent; border: 1px solid rgba(184, 148, 79, 0.25); border-radius: 10px; padding: 10px 12px; margin-top: 10px;">
+          <p style="font-size: 8.5px; color: #14213D; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 6px 0; display: flex; align-items: center; gap: 4px;">
+            <span>🚗</span> DAY TRANSPORTATION &amp; TRANSFERS
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            ${
+              interCityTransfer
+                ? `
+              <div style="border-left: 2.5px solid #B8944F; padding-left: 8px; font-size: 9.5px; line-height: 1.35;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                  <span style="font-weight: 800; color: #B8944F; text-transform: uppercase; font-size: 8px; letter-spacing: 0.05em;">INTER-CITY TRANSFER</span>
+                  <span style="font-size: 8.5px; color: #717680; font-weight: 600;">Time: ${interCityTransfer.travelTime || "09:00 AM"}</span>
+                </div>
+                <div style="font-weight: 700; color: #14213D; margin-top: 1px;">
+                  ${interCityTransfer.fromCity || day.cityOrStay} &rarr; ${interCityTransfer.toCity || day.cityOrStay} &bull; ${interCityTransfer.type || "Vehicle"} &bull; ${interCityTransfer.airline || "Dedicated Cab"}
+                </div>
+                ${interCityTransfer.flightNotes ? `<div style="font-size: 8.5px; color: #717680; font-style: italic; margin-top: 1px;">${interCityTransfer.flightNotes}</div>` : ""}
+              </div>
+            `
+                : ""
+            }
+
+            ${
+              localTransfers.length > 0
+                ? `
+              <div style="border-left: 2.5px solid #6B7A5E; padding-left: 8px; font-size: 9.5px; line-height: 1.35; ${interCityTransfer ? "margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(184, 148, 79, 0.15);" : ""}">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                  <span style="font-weight: 800; color: #4A5641; text-transform: uppercase; font-size: 8px; letter-spacing: 0.05em;">LOCAL TRANSIT (${day.cityOrStay || trip.destination})</span>
+                  <span style="font-size: 8px; color: #717680;">${localTransfers.length} service(s)</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 2px;">
+                  ${localTransfers.map((lt: any) => `
+                    <div style="color: #2B2E36; font-size: 9px; display: flex; align-items: center; gap: 4px;">
+                      <span style="color: #6B7A5E;">&bull;</span>
+                      <span style="font-weight: 600; color: #14213D;">${lt.sector || `${day.cityOrStay} Local Transport`}</span>
+                      <span style="color: #717680;">(${lt.type || "Vehicle"} - ${lt.airline || "Operator"})</span>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            `
+                : ""
+            }
+          </div>
+        </div>
+      ` : "";
+
+      const dayExtrasHtml = (dayRestaurantsHtml || dayAddOnsHtml) ? `
+        <div style="display: grid; grid-template-columns: ${dayRestaurantsHtml && dayAddOnsHtml ? "1fr 1fr" : "1fr"}; gap: 10px; margin-top: 10px;">
+          ${dayRestaurantsHtml}
+          ${dayAddOnsHtml}
+        </div>
+      ` : "";
+
       return `
-      <div class="pdf-section break-avoid day-card" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
+      <div class="pdf-section break-avoid day-card" style="background-color: transparent; border: 1px solid rgba(184, 148, 79, 0.28); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px;">
         <!-- Day Section Header -->
-        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.15); padding-bottom: 8px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 6px; margin-bottom: 10px;">
           <div style="display: flex; align-items: center; gap: 6px;">
             <span style="font-weight: 800; color: #14213D; letter-spacing: 0.1em;">TRIPPLANNER</span>
             <span style="color: #B8944F;">|</span>
             <span style="font-weight: 600; color: #4A4E58;">${trip.title}</span>
           </div>
-          <span style="font-weight: 700; color: #B8944F; letter-spacing: 0.08em;">DAILY ITINERARY &bull; DAY ${day.dayNumber < 10 ? "0" + day.dayNumber : day.dayNumber}</span>
+          <span style="font-weight: 700; color: #B8944F; letter-spacing: 0.08em;">
+            DAY ${day.dayNumber < 10 ? "0" + day.dayNumber : day.dayNumber} ${dayDateStr ? `&bull; ${dayDateStr}` : ""}
+          </span>
         </div>
 
         <!-- Day Title & Region -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 12px; margin-bottom: 12px;">
-          <div style="display: flex; align-items: flex-start; gap: 12px;">
-            <div style="height: 36px; width: 36px; background-color: #14213D; border: 1px solid #B8944F; color: #F3ECDD; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 4px rgba(20, 33, 61, 0.2);">
-              <span style="font-size: 7px; font-weight: 700; letter-spacing: 0.05em; color: #B8944F; line-height: 1;">DAY</span>
-              <span style="font-size: 14px; font-weight: 800; line-height: 1; margin-top: 1px;">${day.dayNumber < 10 ? "0" + day.dayNumber : day.dayNumber}</span>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 10px; margin-bottom: 10px;">
+          <div style="display: flex; align-items: flex-start; gap: 10px;">
+            <div style="height: 34px; width: 34px; background-color: #14213D; border: 1px solid #B8944F; color: #F3ECDD; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0;">
+              <span style="font-size: 6.5px; font-weight: 700; letter-spacing: 0.05em; color: #B8944F; line-height: 1;">DAY</span>
+              <span style="font-size: 13px; font-weight: 800; line-height: 1; margin-top: 1px;">${day.dayNumber < 10 ? "0" + day.dayNumber : day.dayNumber}</span>
             </div>
             <div>
-              <h3 class="font-serif-luxury" style="font-size: 15px; font-weight: 700; color: #14213D; margin: 0; line-height: 1.25;">${day.title}</h3>
-              <p style="font-size: 10px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px;">
-                STAY / REGION &bull; <span style="color: #14213D;">${day.cityOrStay || trip.destination}</span>
+              <h3 class="font-serif-luxury" style="font-size: 14.5px; font-weight: 700; color: #14213D; margin: 0; line-height: 1.25;">${day.title}</h3>
+              <p style="font-size: 9.5px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px;">
+                LOCATION &bull; <span style="color: #14213D;">${day.cityOrStay || trip.destination}</span>
               </p>
             </div>
           </div>
           ${
             day.durationHours
-              ? `<span style="font-size: 9px; font-weight: 700; background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.3); color: #14213D; padding: 4px 10px; border-radius: 20px; flex-shrink: 0; letter-spacing: 0.03em;">${
+              ? `<span style="font-size: 8.5px; font-weight: 700; border: 1px solid rgba(184, 148, 79, 0.3); color: #14213D; padding: 3px 8px; border-radius: 12px; flex-shrink: 0; letter-spacing: 0.03em;">${
                   String(day.durationHours).toLowerCase().includes("hour") || String(day.durationHours).toLowerCase().includes("day")
                     ? day.durationHours
                     : `Duration: ${day.durationHours}h`
@@ -610,41 +873,50 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         </div>
 
         <!-- Description -->
-        <div style="font-size: 11px; line-height: 1.6; color: #2B2E36; font-weight: 400; margin-bottom: 14px; white-space: pre-line;">
-          ${day.description || "Scheduled sightseeing and curated local activities as per the travel itinerary program."}
+        <div style="font-size: 10.5px; line-height: 1.55; color: #2B2E36; font-weight: 400; margin-bottom: 12px; white-space: pre-line;">
+          ${(day.description || "Scheduled sightseeing and curated local activities as per the travel itinerary program.").replace(/<[^>]*>/g, "")}
         </div>
 
-        <!-- Inclusions & Exclusions Two-Column Cards -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 10px; border-top: 1px solid rgba(184, 148, 79, 0.12);">
-          <div style="background-color: rgba(107, 122, 94, 0.08); border: 1px solid rgba(107, 122, 94, 0.25); padding: 10px 12px; border-radius: 10px;">
-            <p style="font-size: 9px; color: #4A5641; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
-              <span>✓</span> INCLUDED
+        <!-- Inclusions & Exclusions -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 8px; border-top: 1px solid rgba(184, 148, 79, 0.12);">
+          <div style="border: 1px solid rgba(107, 122, 94, 0.25); padding: 8px 10px; border-radius: 8px;">
+            <p style="font-size: 8.5px; color: #4A5641; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
+              <span>✓</span> PLACES &amp; SIGHTS INCLUDED
             </p>
             <ul style="list-style: none; margin: 0; padding: 0;">
-              ${inclusionsList || '<li style="color: #717680; font-style: italic; font-size: 10.5px;">Standard itinerary inclusions apply</li>'}
+              ${inclusionsList || '<li style="color: #717680; font-style: italic; font-size: 9.5px;">Standard itinerary inclusions apply</li>'}
             </ul>
           </div>
-          <div style="background-color: rgba(166, 87, 46, 0.06); border: 1px solid rgba(166, 87, 46, 0.2); padding: 10px 12px; border-radius: 10px;">
-            <p style="font-size: 9px; color: #8C441E; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+          <div style="border: 1px solid rgba(166, 87, 46, 0.2); padding: 8px 10px; border-radius: 8px;">
+            <p style="font-size: 8.5px; color: #8C441E; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
               <span>✕</span> NOT INCLUDED
             </p>
             <ul style="list-style: none; margin: 0; padding: 0;">
-              ${exclusionsList || '<li style="color: #717680; font-style: italic; font-size: 10.5px;">Personal expenses & optional activities</li>'}
+              ${exclusionsList || '<li style="color: #717680; font-style: italic; font-size: 9.5px;">Personal expenses & optional activities</li>'}
             </ul>
           </div>
         </div>
+
+        <!-- Day Stay / Accommodation Card -->
+        ${dayStayHtml}
+
+        <!-- Day Dining & Add-ons -->
+        ${dayExtrasHtml}
+
+        <!-- Day Transportation Schedule -->
+        ${dayTransportationHtml}
 
         <!-- Traveler Love & Advisory Tips -->
         ${
           lovedTips || watchOutTips
             ? `
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 10px; margin-top: 10px; border-top: 1px dashed rgba(184, 148, 79, 0.15);">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 8px; margin-top: 8px; border-top: 1px dashed rgba(184, 148, 79, 0.18);">
             ${
               lovedTips
                 ? `
-              <div style="background-color: rgba(184, 148, 79, 0.08); border: 1px solid rgba(184, 148, 79, 0.3); padding: 10px 12px; border-radius: 10px;">
-                <h5 style="font-size: 9px; font-weight: 800; color: #B8944F; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; gap: 4px;">
-                  <span>✦</span> LOVE THIS
+              <div style="border: 1px solid rgba(184, 148, 79, 0.3); padding: 8px 10px; border-radius: 8px;">
+                <h5 style="font-size: 8.5px; font-weight: 800; color: #B8944F; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; gap: 4px;">
+                  <span>✦</span> TRAVEL EXPERT TIPS
                 </h5>
                 <ul style="list-style: none; margin: 0; padding: 0;">${lovedTips}</ul>
               </div>
@@ -654,9 +926,9 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
             ${
               watchOutTips
                 ? `
-              <div style="background-color: rgba(166, 87, 46, 0.08); border: 1px solid rgba(166, 87, 46, 0.28); padding: 10px 12px; border-radius: 10px;">
-                <h5 style="font-size: 9px; font-weight: 800; color: #A6572E; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; gap: 4px;">
-                  <span>!</span> WATCH OUT
+              <div style="border: 1px solid rgba(166, 87, 46, 0.28); padding: 8px 10px; border-radius: 8px;">
+                <h5 style="font-size: 8.5px; font-weight: 800; color: #A6572E; margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.06em; display: flex; align-items: center; gap: 4px;">
+                  <span>!</span> OPERATIONAL ADVISORY
                 </h5>
                 <ul style="list-style: none; margin: 0; padding: 0;">${watchOutTips}</ul>
               </div>
@@ -672,178 +944,6 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
     })
     .join("");
 
-  const accommodationsHtml = resolvedAccommodations
-    .map((acc: any) => {
-      const starRow = Array.from({ length: acc.starRating || 4 })
-        .map(
-          () =>
-            `<svg style="height: 12px; width: 12px; fill: #B8944F; color: #B8944F; display: inline;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`
-        )
-        .join("");
-
-      const facilitiesTags = (acc.facilities || [])
-        .map(
-          (fac: string) => `
-        <span style="font-size: 8.5px; padding: 3px 8px; background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.25); color: #2B2E36; border-radius: 6px; font-weight: 600;">${fac}</span>
-      `
-        )
-        .join("");
-
-      // Balanced 3-thumbnail photo gallery
-      const photos = acc.resolvedPhotos || [];
-      const photoSlots = [
-        photos[0] || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80",
-        photos[1] || "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=600&q=80",
-        photos[2] || "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=600&q=80",
-      ];
-
-      const photoGrid = photoSlots
-        .map(
-          (pUrl: string, idx: number) => `
-        <div style="height: 85px; width: 100%; background-color: #F3ECDD; border-radius: 8px; overflow: hidden; border: 1px solid rgba(184, 148, 79, 0.2); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <img src="${pUrl}" alt="Hotel photo ${idx + 1}" style="height: 100%; width: 100%; object-fit: cover;" />
-        </div>
-      `
-        )
-        .join("");
-
-      return `
-      <div class="pdf-section break-avoid hotel-card" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 12px; margin-bottom: 12px;">
-          <div>
-            <span style="font-size: 8.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em;">${acc.location} STAY</span>
-            <h3 class="font-serif-luxury" style="font-size: 15px; font-weight: 700; color: #14213D; margin: 3px 0 4px 0; line-height: 1.25;">${acc.hotelName}</h3>
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-              <div style="display: flex; gap: 2px;">${starRow}</div>
-              ${
-                acc.ratingScore
-                  ? `<span style="font-size: 8.5px; background-color: rgba(184, 148, 79, 0.12); border: 1px solid rgba(184, 148, 79, 0.3); color: #B8944F; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">${acc.ratingScore}★ (${acc.ratingLabel || "Guest rating"})</span>`
-                  : ""
-              }
-            </div>
-          </div>
-          <div style="text-align: right; font-size: 10.5px;">
-            <span style="font-size: 8px; color: #717680; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 2px;">STAY SCHEDULE</span>
-            <span style="font-weight: 700; color: #14213D; font-family: 'Inter', sans-serif;">${new Date(acc.checkInDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} &ndash; ${new Date(acc.checkOutDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-          </div>
-        </div>
-
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 10.5px;">
-            <div>
-              <p style="font-size: 8px; color: #717680; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 3px 0;">ROOM CATEGORY &amp; MEAL PLAN</p>
-              <p style="font-weight: 700; color: #14213D; margin: 0;">${acc.roomType || "Standard Luxury Room"} (${acc.mealPlan || "CP"})</p>
-            </div>
-            ${
-              facilitiesTags
-                ? `
-              <div>
-                <p style="font-size: 8px; color: #717680; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px 0;">AMENITIES &amp; HIGHLIGHTS</p>
-                <div style="display: flex; flex-wrap: wrap; gap: 4px;">${facilitiesTags}</div>
-              </div>
-            `
-                : ""
-            }
-          </div>
-
-          <!-- 3 Equal-Width Hotel Photo Gallery -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; padding-top: 10px; border-top: 1px solid rgba(184, 148, 79, 0.12);">
-            ${photoGrid}
-          </div>
-        </div>
-      </div>
-    `;
-    })
-    .join("");
-
-  const flightsRows = trip.flightDetails
-    .map((f: any) => {
-      const typeLabel = f.type ? f.type.toUpperCase() : "TRANSIT";
-      const startingBadge = f.isStartingTransfer
-        ? `<span style="background-color: rgba(20, 33, 61, 0.08); color: #14213D; border: 1px solid rgba(20, 33, 61, 0.2); font-size: 8px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Starting Transfer</span>`
-        : "";
-      const packageBadge = f.isPackageIncluded
-        ? `<span style="background-color: rgba(107, 122, 94, 0.12); color: #4A5641; border: 1px solid rgba(107, 122, 94, 0.3); font-size: 8px; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Package Included</span>`
-        : "";
-
-      const depTime = f.departureDateTime
-        ? formatDateTime(f.departureDateTime)
-        : `Preferred: ${f.travelTime || "Anytime"}`;
-      const arrTime = f.arrivalDateTime ? formatDateTime(f.arrivalDateTime) : "As scheduled";
-
-      let durationOrStops = f.stops === 0 ? "Direct" : `${f.stops} Stop(s)`;
-      if (f.type !== "Flight") {
-        durationOrStops = f.durationText || "Direct";
-      }
-
-      return `
-        <tr style="border-bottom: 1px solid rgba(184, 148, 79, 0.12); font-size: 10.5px;" class="break-avoid">
-          <td style="padding: 10px 8px; font-weight: 700; color: #14213D; vertical-align: top;">
-            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
-              <span style="background-color: rgba(184, 148, 79, 0.15); color: #B8944F; font-size: 8px; font-weight: 800; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.05em;">${typeLabel}</span>
-              <span>${f.sector}</span>
-              ${startingBadge}
-              ${packageBadge}
-            </div>
-            ${f.flightNotes ? `<div style="font-size: 9.5px; color: #717680; margin-top: 3px; font-style: italic;">${f.flightNotes}</div>` : ""}
-          </td>
-          <td style="padding: 10px 8px; vertical-align: top; font-weight: 600; color: #14213D;">
-            ${f.airline}
-            ${f.flightCodeDefault ? `<div style="font-size: 9px; color: #717680; font-family: 'Inter', monospace; margin-top: 2px;">${f.flightCodeDefault}</div>` : ""}
-          </td>
-          <td style="padding: 10px 8px; vertical-align: top; font-family: 'Inter', monospace; font-size: 10px; color: #2B2E36;">${depTime}</td>
-          <td style="padding: 10px 8px; vertical-align: top; font-family: 'Inter', monospace; font-size: 10px; color: #2B2E36;">${arrTime}</td>
-          <td style="padding: 10px 8px; vertical-align: top;">
-            <p style="font-weight: 700; font-size: 10.5px; margin: 0; color: #14213D;">${durationOrStops}</p>
-            ${f.layoverInfo ? `<p style="font-size: 9px; color: #717680; margin: 2px 0 0 0;">${f.layoverInfo}</p>` : ""}
-          </td>
-          <td style="padding: 10px 8px; text-align: right; vertical-align: top; font-family: 'Inter', monospace; font-size: 10px; color: #2B2E36;">
-            ${f.type === "Flight" ? `${f.carryOnBaggageKg || 7} kg / ${f.checkInBaggageKg || 20} kg` : "N/A"}
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
-
-  const addonsRows = trip.addOns
-    .map((addon: any) => {
-      let desc: any = {};
-      try {
-        desc = typeof addon.detailsJson === "string" ? JSON.parse(addon.detailsJson) : addon.detailsJson;
-      } catch (e) {}
-      return `
-      <tr style="border-bottom: 1px solid rgba(184, 148, 79, 0.12); font-size: 10.5px;" class="break-avoid">
-        <td style="padding: 10px 8px; font-weight: 700; color: #14213D; vertical-align: top;">${addon.name}</td>
-        <td style="padding: 10px 8px; color: #4A4E58; vertical-align: top;">
-          ${desc?.visaType ? `<p style="margin: 0 0 2px 0;"><span style="font-weight: 700; color: #14213D;">Visa Type:</span> ${desc.visaType}</p>` : ""}
-          ${desc?.length ? `<p style="margin: 0 0 2px 0;"><span style="font-weight: 700; color: #14213D;">Validity:</span> ${desc.length}</p>` : ""}
-          ${desc?.details ? `<p style="font-style: italic; color: #717680; margin: 2px 0 0 0;">${desc.details}</p>` : ""}
-        </td>
-        <td style="padding: 10px 8px; text-align: right; font-weight: 700; color: #14213D; font-family: 'Inter', monospace; vertical-align: top;">
-          ₹ ${addon.price.toLocaleString("en-IN")} ${addon.priceType}
-        </td>
-      </tr>
-    `;
-    })
-    .join("");
-
-  const diningCards = trip.restaurantSuggestions
-    .map(
-      (rest: any) => `
-    <div class="break-avoid dining-card" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.2); padding: 14px 16px; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.03);">
-      <h4 class="font-serif-luxury" style="font-weight: 700; color: #14213D; font-size: 12px; margin: 0;">${rest.name}</h4>
-      <p style="font-size: 9.5px; color: #717680; margin: 4px 0 0 0;">📍 ${rest.location} &bull; ${rest.category} (${rest.cuisineType})</p>
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(184, 148, 79, 0.15);">
-        ${rest.rating ? `<span style="font-size: 9.5px; color: #B8944F; font-weight: 700;">★ ${rest.rating} (${rest.reviewCount || 100}+ reviews)</span>` : "<span></span>"}
-        ${rest.isVeg ? `<span style="font-size: 8px; font-weight: 700; color: #4A5641; background-color: rgba(107, 122, 94, 0.12); border: 1px solid rgba(107, 122, 94, 0.3); padding: 2px 8px; border-radius: 9999px;">Pure Veg / Jain</span>` : ""}
-      </div>
-    </div>
-  `
-    )
-    .join("");
-
-  const terms = trip.tripTerms;
-
   const html = `
     <!DOCTYPE html>
     <html lang="en">
@@ -856,7 +956,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         
         @page {
           size: A4 portrait;
-          margin: 10mm 12mm 12mm 12mm;
+          margin: 14mm 8mm 14mm 8mm;
         }
         
         *, *::before, *::after {
@@ -865,16 +965,12 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           word-spacing: normal !important;
         }
 
-        html {
-          background-color: #F8F6F0 !important;
-        }
-
-        body {
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        html, body {
+          background-color: transparent !important;
           color: #14213D;
-          background-color: #F8F6F0 !important;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
           margin: 0;
-          padding: 16px 20px;
+          padding: 0 4px;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
           width: 100%;
@@ -989,7 +1085,7 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           : ""
       }
     </head>
-    <body class="space-y-5">
+    <body class="space-y-4">
       
       <!-- BACKGROUND WATERMARK -->
       <div class="pdf-watermark-container">
@@ -1000,84 +1096,88 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         }
       </div>
 
-      <!-- 1. MAGAZINE COVER BANNER -->
-      <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.3); border-radius: 16px; overflow: hidden; box-shadow: 0 4px 16px rgba(20, 33, 61, 0.06); margin-bottom: 18px;">
-        <!-- Full-bleed Hero Visual with Dark Luxury Overlay -->
-        <div style="height: 85mm; width: 100%; position: relative; overflow: hidden;">
+      <!-- ========================================== -->
+      <!-- 1. TRIP INTRODUCTION (COVER & METADATA)   -->
+      <!-- ========================================== -->
+      <div class="pdf-section break-avoid" style="background-color: transparent; border: 1px solid rgba(184, 148, 79, 0.3); border-radius: 14px; overflow: hidden; margin-bottom: 16px;">
+        <!-- Hero Visual with Dark Luxury Overlay -->
+        <div style="height: 80mm; width: 100%; position: relative; overflow: hidden;">
           <img src="${coverImageDataUri}" alt="Cover Image" style="height: 100%; width: 100%; object-fit: cover;" />
-          <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20, 33, 61, 0.4) 0%, rgba(20, 33, 61, 0.25) 40%, rgba(20, 33, 61, 0.88) 85%, rgba(20, 33, 61, 0.98) 100%);"></div>
+          <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20, 33, 61, 0.35) 0%, rgba(20, 33, 61, 0.2) 40%, rgba(20, 33, 61, 0.85) 85%, rgba(20, 33, 61, 0.98) 100%);"></div>
           
           <!-- Top Brand Header Bar on Cover -->
-          <div style="position: absolute; top: 16px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="position: absolute; top: 14px; left: 18px; right: 18px; display: flex; justify-content: space-between; align-items: center;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="font-serif-luxury" style="font-size: 18px; font-weight: 900; color: #FFFFFF; letter-spacing: 0.08em; text-transform: uppercase;">
+              <span class="font-serif-luxury" style="font-size: 17px; font-weight: 900; color: #FFFFFF; letter-spacing: 0.08em; text-transform: uppercase;">
                 TRIPPLANNER
               </span>
-              <span style="font-size: 9px; font-weight: 700; color: #B8944F; border-left: 1px solid rgba(184, 148, 79, 0.6); padding-left: 8px; letter-spacing: 0.12em; text-transform: uppercase;">
+              <span style="font-size: 8.5px; font-weight: 700; color: #B8944F; border-left: 1px solid rgba(184, 148, 79, 0.6); padding-left: 8px; letter-spacing: 0.12em; text-transform: uppercase;">
                 BESPOKE ITINERARY
               </span>
             </div>
-            <span style="font-size: 8.5px; font-weight: 700; color: #F3ECDD; background-color: rgba(20, 33, 61, 0.6); border: 1px solid rgba(184, 148, 79, 0.4); padding: 4px 10px; border-radius: 9999px; letter-spacing: 0.06em; text-transform: uppercase;">
+            <span style="font-size: 8px; font-weight: 700; color: #F3ECDD; background-color: rgba(20, 33, 61, 0.6); border: 1px solid rgba(184, 148, 79, 0.4); padding: 3px 8px; border-radius: 9999px; letter-spacing: 0.06em; text-transform: uppercase;">
               PROPOSAL ID: #${trip.id.slice(-6).toUpperCase()}
             </span>
           </div>
           
           <!-- Hero Title & Journey Summary -->
-          <div style="position: absolute; bottom: 20px; left: 24px; right: 24px;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-              <span style="height: 2px; width: 24px; background-color: #B8944F; display: inline-block;"></span>
-              <span style="font-size: 9.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.15em;">
-                CURATED TRAVEL EXPERIENCE
+          <div style="position: absolute; bottom: 16px; left: 20px; right: 20px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+              <span style="height: 2px; width: 20px; background-color: #B8944F; display: inline-block;"></span>
+              <span style="font-size: 9px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.15em;">
+                OFFICIAL TRAVEL BLUEPRINT
               </span>
             </div>
-            <h1 class="font-serif-luxury" style="font-size: 28px; font-weight: 800; color: #FFFFFF; line-height: 1.15; margin: 0; text-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+            <h1 class="font-serif-luxury" style="font-size: 26px; font-weight: 800; color: #FFFFFF; line-height: 1.15; margin: 0; text-shadow: 0 2px 8px rgba(0,0,0,0.5);">
               ${trip.title}
             </h1>
-            <p style="font-size: 13px; color: #F3ECDD; font-weight: 600; margin: 6px 0 0 0; letter-spacing: 0.02em;">
-              Route: <span style="color: #FFFFFF; font-weight: 700;">${trip.destination}</span> &bull; Ex-${trip.departureCity}
+            <p style="font-size: 12px; color: #F3ECDD; font-weight: 600; margin: 5px 0 0 0; letter-spacing: 0.02em;">
+              Destination: <span style="color: #FFFFFF; font-weight: 700;">${trip.destination}</span> &bull; Ex-${trip.departureCity}
             </p>
           </div>
         </div>
 
-        <!-- Luxury Metadata Information Grid -->
-        <div style="padding: 18px 24px; background-color: #FFFFFF;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 14px;">
+        <!-- Metadata Grid (Transparent Background) -->
+        <div style="padding: 14px 20px; background-color: transparent;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 12px;">
             <div>
-              <p style="color: #717680; font-weight: 700; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px 0;">TRAVEL SCHEDULE</p>
-              <p style="font-weight: 700; color: #14213D; font-size: 12px; margin: 0;">
+              <p style="color: #717680; font-weight: 700; font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 3px 0;">TRAVEL SCHEDULE</p>
+              <p style="font-weight: 700; color: #14213D; font-size: 11.5px; margin: 0;">
                 ${new Date(trip.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}&nbsp;&ndash;&nbsp;${new Date(trip.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </p>
-              <p style="color: #4A4E58; font-weight: 600; font-size: 10.5px; margin: 3px 0 0 0;">
+              <p style="color: #4A4E58; font-weight: 600; font-size: 10px; margin: 2px 0 0 0;">
                 ${trip.durationDays} Days / ${trip.durationNights} Nights &bull; ${trip.numTravellers} Travellers
               </p>
             </div>
             <div>
-              <p style="color: #717680; font-weight: 700; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px 0;">DEDICATED TRAVEL CONSULTANT</p>
-              <p style="font-weight: 700; color: #14213D; font-size: 12px; margin: 0;">${trip.consultantName}</p>
-              <p style="color: #4A4E58; font-weight: 500; font-size: 10.5px; margin: 3px 0 0 0;">Phone: ${trip.consultantPhone || "Agency Concierge"}</p>
+              <p style="color: #717680; font-weight: 700; font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 3px 0;">DEDICATED TRAVEL CONSULTANT</p>
+              <p style="font-weight: 700; color: #14213D; font-size: 11.5px; margin: 0;">${trip.consultantName || "Agency Travel Desk"}</p>
+              <p style="color: #4A4E58; font-weight: 500; font-size: 10px; margin: 2px 0 0 0;">Phone: ${trip.consultantPhone || "Agency Concierge"}</p>
             </div>
           </div>
 
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #717680; font-weight: 500; padding-top: 10px; letter-spacing: 0.04em;">
-            <p style="margin: 0;">&copy; TripPlanner &bull; Luxury Travel Management</p>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #717680; font-weight: 500; padding-top: 8px; letter-spacing: 0.04em;">
+            <p style="margin: 0;">&copy; TripPlanner &bull; Bespoke Itinerary Document</p>
             <p style="margin: 0; color: #14213D; font-weight: 600;">Proposal Date: ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
           </div>
         </div>
       </div>
 
-      <!-- 2. VISUAL JOURNEY & ROUTE MAP -->
-      <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid rgba(184, 148, 79, 0.2); padding-bottom: 10px; margin-bottom: 14px;">
+      <!-- ========================================== -->
+      <!-- 2. TOUR ROUTE (VISUAL JOURNEY MAP)        -->
+      <!-- ========================================== -->
+      <div class="pdf-section break-avoid" style="background-color: transparent; border: 1px solid rgba(184, 148, 79, 0.28); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid rgba(184, 148, 79, 0.2); padding-bottom: 8px; margin-bottom: 12px;">
           <div>
-            <span style="font-size: 8.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.1em; display: block;">
-              JOURNEY OVERVIEW &bull; ROUTE VISUALIZATION
+            <span style="font-size: 8px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.1em; display: block;">
+              JOURNEY OVERVIEW &bull; COMPLETE TOUR ROUTE
             </span>
-            <h2 class="font-serif-luxury" style="font-size: 16px; font-weight: 700; color: #14213D; margin: 2px 0 0 0;">
+            <h2 class="font-serif-luxury" style="font-size: 15px; font-weight: 700; color: #14213D; margin: 2px 0 0 0;">
               ${sourceCity.toUpperCase()} &rarr; ${destCity.toUpperCase()}
             </h2>
           </div>
-          <div style="font-size: 9px; font-weight: 700; color: #717680; letter-spacing: 0.04em;">
-            ${trip.itineraryDays.length} DAYS CONNECTED ROUTE &bull; EX-${sourceCity.toUpperCase()}
+          <div style="font-size: 8.5px; font-weight: 700; color: #717680; letter-spacing: 0.04em;">
+            ${trip.itineraryDays.length} DAYS CONNECTED TOUR &bull; EX-${sourceCity.toUpperCase()}
           </div>
         </div>
 
@@ -1090,50 +1190,52 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         </div>
       </div>
 
-      <!-- 3. FINANCIAL SUMMARY & TRIP HIGHLIGHTS AT A GLANCE -->
-      <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
-        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.15); padding-bottom: 8px; margin-bottom: 14px;">
+      <!-- ========================================== -->
+      <!-- 3. TRIP PRICE / QUOTATION SUMMARY         -->
+      <!-- ========================================== -->
+      <div class="pdf-section break-avoid" style="background-color: transparent; border: 1px solid rgba(184, 148, 79, 0.28); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 6px; margin-bottom: 12px;">
           <span style="font-weight: 800; color: #14213D;">${trip.title}</span>
-          <span style="font-weight: 700; color: #B8944F;">PROPOSAL SUMMARY &bull; COMMERCIAL QUOTATION</span>
+          <span style="font-weight: 700; color: #B8944F;">COMMERCIAL QUOTATION &bull; PRICE SUMMARY</span>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;">
           <!-- Pricing Plan Breakdown Card -->
-          <div style="background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.25); padding: 14px 16px; border-radius: 12px;">
-            <h3 style="font-size: 10px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px 0;">
+          <div style="border: 1px solid rgba(184, 148, 79, 0.25); padding: 12px 14px; border-radius: 10px; background-color: transparent;">
+            <h3 style="font-size: 9.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px 0;">
               PRICING PLAN BREAKDOWN
             </h3>
             <div style="display: flex; flex-direction: column;">${priceLines}</div>
             
-            <div style="padding-top: 10px; margin-top: 6px; border-top: 1px solid rgba(184, 148, 79, 0.2); display: flex; flex-direction: column; gap: 4px; font-size: 10.5px;">
-              <div style="display: flex; justify-content: space-between; color: #717680; font-size: 10px; font-weight: 600;">
-                <span>Per-Person Subtotal</span>
+            <div style="padding-top: 8px; margin-top: 4px; border-top: 1px solid rgba(184, 148, 79, 0.2); display: flex; flex-direction: column; gap: 3.5px; font-size: 10px;">
+              <div style="display: flex; justify-content: space-between; color: #717680; font-weight: 600;">
+                <span>Price Per Person</span>
                 <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">₹ ${priceQuoteSubtotal.toLocaleString("en-IN")}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; color: #717680; font-size: 10px; font-weight: 600;">
+              <div style="display: flex; justify-content: space-between; color: #717680; font-weight: 600;">
                 <span>Number of Travellers</span>
-                <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">${trip.numTravellers || 1}</span>
+                <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">${trip.numTravellers || 1} Person(s)</span>
               </div>
-              <div style="display: flex; justify-content: space-between; color: #717680; font-size: 10px; font-weight: 600;">
+              <div style="display: flex; justify-content: space-between; color: #717680; font-weight: 600;">
                 <span>Total Base Package</span>
                 <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">₹ ${(priceQuoteSubtotal * (trip.numTravellers || 1)).toLocaleString("en-IN")}</span>
               </div>
-              <div style="display: flex; justify-content: space-between; color: #717680; font-size: 10px; font-weight: 600;">
+              <div style="display: flex; justify-content: space-between; color: #717680; font-weight: 600;">
                 <span>Total TCS (${trip.tripFinancials?.tcsPercentage || 5}%)</span>
                 <span style="font-family: 'Inter', monospace; font-weight: 700; color: #14213D;">₹ ${(trip.tripFinancials?.tcsAmount || 0).toLocaleString("en-IN")}</span>
               </div>
               
-              <!-- Luxury Navy Total Payable Box -->
-              <div style="display: flex; justify-content: space-between; align-items: center; background-color: #14213D; border: 1px solid #B8944F; padding: 10px 12px; border-radius: 10px; margin-top: 8px; box-shadow: 0 2px 6px rgba(20, 33, 61, 0.15);">
-                <span style="font-size: 10.5px; font-weight: 700; color: #F3ECDD; text-transform: uppercase; letter-spacing: 0.05em;">Total Payable (with TCS)</span>
-                <span style="font-family: 'Inter', monospace; font-size: 14px; font-weight: 800; color: #B8944F;">₹ ${(trip.tripFinancials?.totalWithTcs || 0).toLocaleString("en-IN")}</span>
+              <!-- Total Payable Box (Transparent Luxury Outline) -->
+              <div style="display: flex; justify-content: space-between; align-items: center; border: 1.5px solid #14213D; padding: 8px 10px; border-radius: 8px; margin-top: 6px;">
+                <span style="font-size: 10px; font-weight: 700; color: #14213D; text-transform: uppercase; letter-spacing: 0.05em;">Final Total Payable (with TCS)</span>
+                <span style="font-family: 'Inter', monospace; font-size: 13.5px; font-weight: 800; color: #B8944F;">₹ ${(trip.tripFinancials?.totalWithTcs || 0).toLocaleString("en-IN")}</span>
               </div>
             </div>
 
             ${
               trip.tripFinancials?.notes
                 ? `
-              <div style="padding: 8px 10px; background-color: #FFFFFF; border-radius: 8px; border: 1px dashed rgba(184, 148, 79, 0.3); font-size: 9.5px; color: #4A4E58; line-height: 1.45; margin-top: 10px;">
+              <div style="padding: 6px 8px; border-radius: 6px; border: 1px dashed rgba(184, 148, 79, 0.3); font-size: 9px; color: #4A4E58; line-height: 1.4; margin-top: 8px;">
                 <span style="font-weight: 700; color: #14213D; display: block; margin-bottom: 2px;">Commercial Notes:</span>
                 ${trip.tripFinancials.notes}
               </div>
@@ -1143,16 +1245,16 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
           </div>
 
           <!-- Trip Highlights At A Glance -->
-          <div style="background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.25); padding: 14px 16px; border-radius: 12px;">
-            <h3 style="font-size: 10px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 10px 0;">
+          <div style="border: 1px solid rgba(184, 148, 79, 0.25); padding: 12px 14px; border-radius: 10px; background-color: transparent;">
+            <h3 style="font-size: 9.5px; font-weight: 800; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 8px 0;">
               TRIP HIGHLIGHTS AT A GLANCE
             </h3>
-            <table style="width: 100%; text-align: left; font-size: 10.5px; border-collapse: collapse;">
+            <table style="width: 100%; text-align: left; font-size: 10px; border-collapse: collapse;">
               <thead>
-                <tr style="border-bottom: 1.5px solid rgba(184, 148, 79, 0.25); color: #717680; font-weight: 700; text-transform: uppercase; font-size: 8px; letter-spacing: 0.06em;">
-                  <th style="padding-bottom: 6px; width: 18%;">Day</th>
-                  <th style="padding-bottom: 6px; width: 32%;">Region</th>
-                  <th style="padding-bottom: 6px; width: 50%;">Highlight</th>
+                <tr style="border-bottom: 1.5px solid rgba(184, 148, 79, 0.25); color: #717680; font-weight: 700; text-transform: uppercase; font-size: 7.5px; letter-spacing: 0.06em;">
+                  <th style="padding-bottom: 5px; width: 18%;">Day</th>
+                  <th style="padding-bottom: 5px; width: 32%;">Region</th>
+                  <th style="padding-bottom: 5px; width: 50%;">Highlight</th>
                 </tr>
               </thead>
               <tbody>
@@ -1163,197 +1265,69 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
         </div>
       </div>
 
-      <!-- 4. DAY-BY-DAY DETAILED ITINERARY -->
-      <div class="pdf-section-wrapper" style="margin-bottom: 18px;">
-        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #B8944F; padding-bottom: 6px; margin-bottom: 14px;" class="break-avoid">
-          <h2 class="font-serif-luxury" style="font-size: 16px; font-weight: 700; color: #14213D; margin: 0;">
-            Day-by-Day Detailed Itinerary
+      <!-- ========================================== -->
+      <!-- 4. DAY-WISE FULL PLAN (COMPLETE JOURNEY)  -->
+      <!-- ========================================== -->
+      <div class="pdf-section-wrapper" style="margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #B8944F; padding-bottom: 6px; margin-bottom: 12px;" class="break-avoid">
+          <h2 class="font-serif-luxury" style="font-size: 15px; font-weight: 700; color: #14213D; margin: 0;">
+            Day-by-Day Complete Itinerary
           </h2>
-          <span style="font-size: 9px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em;">
-            ${trip.itineraryDays.length} DAYS DETAILED JOURNEY
+          <span style="font-size: 8.5px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em;">
+            ${trip.itineraryDays.length} DAYS FULL PLAN
           </span>
         </div>
         ${detailedDaysHtml}
       </div>
 
-      <!-- 5. ACCOMMODATIONS & STAYS -->
-      ${
-        accommodationsHtml
-          ? `
-        <div class="pdf-section-wrapper" style="margin-bottom: 18px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #B8944F; padding-bottom: 6px; margin-bottom: 14px;" class="break-avoid">
-            <h2 class="font-serif-luxury" style="font-size: 16px; font-weight: 700; color: #14213D; margin: 0;">
-              Curated Accommodations &amp; Stays
-            </h2>
-            <span style="font-size: 9px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.08em;">
-              ${trip.accommodations.length} PROPERTIES CONFIRMED
-            </span>
-          </div>
-          ${accommodationsHtml}
-        </div>
-      `
-          : ""
-      }
+      <!-- ========================================== -->
+      <!-- 5. POLICIES & GUIDELINES (AT THE END)     -->
+      <!-- ========================================== -->
+      ${(() => {
+        const terms = trip.tripTerms || (trip as any).termsAndConditions || {};
+        const activePdfPolicies: { title: string; html: string }[] = [];
+        if (terms?.paymentPolicy && terms.paymentPolicy.trim()) {
+          activePdfPolicies.push({ title: "Payment Policy & Booking Deposit Schedule", html: terms.paymentPolicy });
+        }
+        if (terms?.cancellationPolicy && terms.cancellationPolicy.trim()) {
+          activePdfPolicies.push({ title: "Cancellation & Refund Policy", html: terms.cancellationPolicy });
+        }
+        if (terms?.visaRules && terms.visaRules.trim()) {
+          activePdfPolicies.push({ title: "Visa Rules & Passport Validity", html: terms.visaRules });
+        }
+        if (terms?.generalNotes && terms.generalNotes.trim()) {
+          activePdfPolicies.push({ title: "General Notes & Operational Advisory", html: terms.generalNotes });
+        }
 
-      <!-- 6. TRANSPORTATION & ADD-ONS -->
-      ${
-        flightsRows || addonsRows
-          ? `
-        <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
-          ${
-            flightsRows
-              ? `
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 8px;">
-                <h3 class="font-serif-luxury" style="font-size: 14px; font-weight: 700; color: #14213D; margin: 0; display: flex; align-items: center; gap: 6px;">
-                  <span>🚗</span> Transportation &amp; Transit Schedule
-                </h3>
-                <span style="font-size: 8.5px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.06em;">
-                  Arrangement: ${trip.transportationArrangement}
-                </span>
-              </div>
+        if (activePdfPolicies.length === 0) return "";
 
-              ${
-                trip.transportationArrangement === "Own"
-                  ? `
-                <div style="background-color: #FAF8F3; border: 1px solid rgba(184, 148, 79, 0.25); color: #4A4E58; font-size: 9.5px; padding: 8px 12px; border-radius: 8px; line-height: 1.45;">
-                  ℹ️ <strong style="color: #14213D;">Own Transportation:</strong> Traveller has opted to arrange their own transit for this journey. The schedule below is provided for itinerary reference.
-                </div>
-              `
-                  : ""
-              }
-
-              ${
-                trip.startingTransferDetails
-                  ? `
-                <div style="background-color: rgba(20, 33, 61, 0.06); border: 1px solid rgba(20, 33, 61, 0.15); color: #14213D; font-size: 9.5px; padding: 8px 12px; border-radius: 8px; line-height: 1.45;">
-                  🗺️ <strong>Starting Hub Transfer Details:</strong> ${trip.startingTransferDetails}
-                </div>
-              `
-                  : ""
-              }
-
-              ${
-                trip.packageTransportationDetails
-                  ? `
-                <div style="background-color: rgba(107, 122, 94, 0.08); border: 1px solid rgba(107, 122, 94, 0.25); color: #4A5641; font-size: 9.5px; padding: 8px 12px; border-radius: 8px; line-height: 1.45;">
-                  🎁 <strong>Package Included Transit:</strong> ${trip.packageTransportationDetails}
-                </div>
-              `
-                  : ""
-              }
-
-              <table style="width: 100%; text-align: left; font-size: 10.5px; border-collapse: collapse; margin-top: 4px;">
-                <thead style="background-color: #FAF8F3; color: #717680; font-weight: 700; border-bottom: 1.5px solid rgba(184, 148, 79, 0.25); font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em;">
-                  <tr>
-                    <th style="padding: 8px;">Route / Sector</th>
-                    <th style="padding: 8px;">Carrier</th>
-                    <th style="padding: 8px;">Departure</th>
-                    <th style="padding: 8px;">Arrival</th>
-                    <th style="padding: 8px;">Duration</th>
-                    <th style="padding: 8px; text-align: right;">Baggage Allowance</th>
-                  </tr>
-                </thead>
-                <tbody>${flightsRows}</tbody>
-              </table>
-            </div>
-          `
-              : ""
-          }
-
-          ${
-            addonsRows
-              ? `
-            <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 14px; ${flightsRows ? "border-top: 1px solid rgba(184, 148, 79, 0.18); margin-top: 14px;" : ""}">
-              <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 8px;">
-                <h3 class="font-serif-luxury" style="font-size: 14px; font-weight: 700; color: #14213D; margin: 0; display: flex; align-items: center; gap: 6px;">
-                  <span>➕</span> Included Add-ons &amp; Visa Packages
-                </h3>
-              </div>
-              <table style="width: 100%; text-align: left; font-size: 10.5px; border-collapse: collapse;">
-                <thead style="background-color: #FAF8F3; color: #717680; font-weight: 700; border-bottom: 1.5px solid rgba(184, 148, 79, 0.25); font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em;">
-                  <tr>
-                    <th style="padding: 8px;">Package / Service Name</th>
-                    <th style="padding: 8px;">Validity &amp; Processing Details</th>
-                    <th style="padding: 8px; text-align: right;">Cost</th>
-                  </tr>
-                </thead>
-                <tbody>${addonsRows}</tbody>
-              </table>
-            </div>
-          `
-              : ""
-          }
-        </div>
-      `
-          : ""
-      }
-
-      <!-- 7. DINING & CULINARY SUGGESTIONS -->
-      ${
-        diningCards
-          ? `
-        <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04);">
-          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 8px; margin-bottom: 12px;">
-            <h3 class="font-serif-luxury" style="font-size: 14px; font-weight: 700; color: #14213D; margin: 0; display: flex; align-items: center; gap: 6px;">
-              <span>🍴</span> Curated Dining &amp; Hotspots
-            </h3>
-            <span style="font-size: 8.5px; font-weight: 700; color: #B8944F; text-transform: uppercase; letter-spacing: 0.06em;">
-              HANDPICKED SUGGESTIONS
-            </span>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            ${diningCards}
-          </div>
-        </div>
-      `
-          : ""
-      }
-
-      <!-- 8. MASTER POLICIES & TERMS -->
-      ${
-        terms
-          ? `
-        <div class="pdf-section break-avoid" style="background-color: #FFFFFF; border: 1px solid rgba(184, 148, 79, 0.22); border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 8px rgba(20, 33, 61, 0.04); margin-bottom: 18px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 8px; margin-bottom: 12px;">
+        return `
+        <div class="pdf-section break-avoid" style="background-color: transparent; border: 1px solid rgba(184, 148, 79, 0.28); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #717680; border-bottom: 1px solid rgba(184, 148, 79, 0.18); padding-bottom: 6px; margin-bottom: 10px;">
             <span style="font-weight: 800; color: #14213D;">${trip.title}</span>
             <span style="font-weight: 700; color: #B8944F;">TERMS &bull; POLICIES &bull; COMMERCIAL GUIDELINES</span>
           </div>
 
-          <h2 class="font-serif-luxury" style="font-size: 16px; font-weight: 700; color: #14213D; margin: 0 0 12px 0;">
+          <h2 class="font-serif-luxury" style="font-size: 15px; font-weight: 700; color: #14213D; margin: 0 0 10px 0;">
             Master Policies &amp; Booking Terms
           </h2>
           
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 10.5px; color: #2B2E36;" class="prose max-w-none">
-            <div style="background-color: #FAF8F3; padding: 12px 14px; border: 1px solid rgba(184, 148, 79, 0.2); border-radius: 10px;">
-              <h4 style="font-weight: 800; color: #14213D; font-size: 11px; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.04em;">1. Payment Policy</h4>
-              <div style="line-height: 1.5; color: #4A4E58;">${terms.paymentPolicy || "Standard booking deposit and structured payment schedule apply."}</div>
-            </div>
-            
-            <div style="background-color: #FAF8F3; padding: 12px 14px; border: 1px solid rgba(184, 148, 79, 0.2); border-radius: 10px;">
-              <h4 style="font-weight: 800; color: #14213D; font-size: 11px; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.04em;">2. Cancellation Policy</h4>
-              <div style="line-height: 1.5; color: #4A4E58;">${terms.cancellationPolicy || "Strict operator cancellation policy and supplier penalties apply."}</div>
-            </div>
-
-            <div style="background-color: #FAF8F3; padding: 12px 14px; border: 1px solid rgba(184, 148, 79, 0.2); border-radius: 10px;">
-              <h4 style="font-weight: 800; color: #14213D; font-size: 11px; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.04em;">3. Visa Rules &amp; Entry Requirements</h4>
-              <div style="line-height: 1.5; color: #4A4E58;">${terms.visaRules || "Minimum 6 months passport validity required from scheduled date of return."}</div>
-            </div>
-
-            <div style="background-color: #FAF8F3; padding: 12px 14px; border: 1px solid rgba(184, 148, 79, 0.2); border-radius: 10px;">
-              <h4 style="font-weight: 800; color: #14213D; font-size: 11px; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.04em;">4. General Notes &amp; Advisory</h4>
-              <div style="line-height: 1.5; color: #4A4E58;">${terms.generalNotes || "Standard international travel advisories, health regulations, and insurance conditions apply."}</div>
-            </div>
+          <div style="display: grid; grid-template-columns: ${activePdfPolicies.length === 1 ? '1fr' : '1fr 1fr'}; gap: 10px; font-size: 10px; color: #2B2E36;" class="prose max-w-none">
+            ${activePdfPolicies.map((pol, idx) => `
+              <div style="border: 1px solid rgba(184, 148, 79, 0.25); padding: 10px 12px; border-radius: 8px; background-color: transparent;">
+                <h4 style="font-weight: 800; color: #14213D; font-size: 10.5px; margin: 0 0 5px 0; text-transform: uppercase; letter-spacing: 0.04em;">${idx + 1}. ${pol.title}</h4>
+                <div style="line-height: 1.5; color: #4A4E58;">${pol.html}</div>
+              </div>
+            `).join("")}
           </div>
 
-          <div style="border-top: 1px solid rgba(184, 148, 79, 0.18); padding-top: 12px; margin-top: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #717680; font-weight: 500;">
+          <div style="border-top: 1px solid rgba(184, 148, 79, 0.18); padding-top: 10px; margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #717680; font-weight: 500;">
             <span>&copy; TripPlanner &bull; Custom Travel Proposal</span>
             <span style="font-weight: 700; color: #14213D; text-transform: uppercase; letter-spacing: 0.05em;">Official Customer Travel Proposal</span>
           </div>
         </div>
-      `
-          : ""
-      }
+      `;
+      })()}
 
     </body>
     </html>
@@ -1361,4 +1335,3 @@ export async function renderPdfHtml(tripId: string, autoPrint: boolean = false):
 
   return { html, title: trip.title || trip.destination || "Itinerary" };
 }
-
